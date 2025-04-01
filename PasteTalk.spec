@@ -35,8 +35,7 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=False,
-    icon='1.ico',
+    console=False
 )
 
 coll = COLLECT(
