@@ -26,8 +26,9 @@ MIN_TEXT_LENGTH = config["min_text_length"]
 LOG_ENABLED = config["log_messages"]
 INDICATOR_WIDTH = config.get("indicator_width", 40)
 INDICATOR_HEIGHT = config.get("indicator_height", 40)
-INDICATOR_POSITION = config.get("indicator_position", "top-right")  # top-left, top-right, bottom-left, bottom-right
+INDICATOR_POSITION = config.get("indicator_position", "top-right")
 INDICATOR_MARGIN = config.get("indicator_margin", 20)
+HOTKEYS = set(config.get("hotkeys", ["ctrl", "win"]))
 
 WAV_FILE = "recording.wav"
 OGG_FILE = "recording.ogg"
@@ -181,13 +182,27 @@ async def process_recording():
 def start_hotkey_listener(loop):
     pressed_keys = set()
 
-    def on_hotkey(key):
-        if key == keyboard.Key.cmd_l or key == keyboard.Key.cmd_r:
-            pressed_keys.add('win')
-        elif key == keyboard.Key.ctrl_l or key == keyboard.Key.ctrl_r:
-            pressed_keys.add('ctrl')
+    def key_name(key):
+        try:
+            name = key.name
+        except AttributeError:
+            name = str(key).lower().replace("key.", "")
 
-        if 'win' in pressed_keys and 'ctrl' in pressed_keys:
+        # Нормализация
+        aliases = {
+            "cmd": "win", "cmd_l": "win", "cmd_r": "win",
+            "control": "ctrl", "control_l": "ctrl", "control_r": "ctrl",
+            "alt_l": "alt", "alt_r": "alt",
+            "shift_l": "shift", "shift_r": "shift"
+        }
+        normalized = aliases.get(name, name)
+        return normalized
+
+
+    def on_hotkey(key):
+        pressed_keys.add(key_name(key))
+
+        if all(k in pressed_keys for k in HOTKEYS):
             if is_recording.value:
                 is_recording.value = False
             else:
@@ -195,10 +210,7 @@ def start_hotkey_listener(loop):
             pressed_keys.clear()
 
     def on_release(key):
-        if key == keyboard.Key.cmd_l or key == keyboard.Key.cmd_r:
-            pressed_keys.discard('win')
-        elif key == keyboard.Key.ctrl_l or key == keyboard.Key.ctrl_r:
-            pressed_keys.discard('ctrl')
+        pressed_keys.discard(key_name(key))
 
     listener = keyboard.Listener(on_press=on_hotkey, on_release=on_release)
     listener.start()
@@ -209,7 +221,7 @@ async def main():
     await client.start()
     loop = asyncio.get_event_loop()
     start_hotkey_listener(loop)
-    print("⌨️ Нажимай Ctrl + Win: старт/стоп записи.")
+    print(f"⌨️ Нажимай комбинацию клавиш ({' + '.join(HOTKEYS)}) для старта/остановки записи.")
     while True:
         await asyncio.sleep(1)
 
