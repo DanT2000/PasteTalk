@@ -4,3 +4,4 @@ pynput
 numpy
 scipy
 pyperclip
+psutil
