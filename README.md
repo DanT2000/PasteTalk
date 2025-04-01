@@ -315,5 +315,4 @@ The indicator disappears automatically after 1 second.
 
 Created by **BlackDev** with ❤️  
 PRs and feedback welcome!
-```
 
