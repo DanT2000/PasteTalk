@@ -156,14 +156,66 @@ python main.py
 - [ ] История сообщений и лог-файл
 - [ ] Поддержка микрофона по выбору
 
+
+
+
+---
+
+## 🛠 Сборка `.exe` с помощью PyInstaller
+
+Проект включает готовый файл **`PasteTalk.spec`**, с помощью которого можно собрать исполняемый `.exe` без лишней настройки вручную.
+
+---
+
+### ✅ Что нужно подготовить:
+
+1. Установить зависимости:
+```bash
+pip install pyinstaller
+```
+
+2. Один раз запустить приложение вручную:
+```bash
+python main.py
+```
+Это необходимо, чтобы создать:
+- `config.json` — файл конфигурации
+- сессию Telegram (`giga_clipboard_session.session`) — авторизация пользователя
+
+---
+
+### 📁 Файлы, которые нужно включить при сборке:
+- `PasteTalk.spec` — конфигурация PyInstaller  
+- `main.py` — основной скрипт  
+- `config.json` — настройки пользователя  
+- `giga_clipboard_session.session` — **авторизованная сессия Telegram**
+
+---
+
+### ⚙️ Как собрать `.exe`:
+
+```bash
+pyinstaller PasteTalk.spec
+```
+
+После этого в папке `dist/PasteTalk` появится готовый `PasteTalk.exe`.
+
+---
+
+💡 **Важно**: чтобы всё работало сразу, скопируйте в финальную директорию вместе с `.exe` следующие файлы:
+- `config.json`
+- `giga_clipboard_session.session`
+
+Это избавит от необходимости повторной авторизации и настройки на другом ПК.
+
+
+
 ---
 
 ## 👤 Автор
 
 Разработано с душой: **BlackDev**  
 
-
----
 
 
 
@@ -312,6 +364,63 @@ The indicator disappears automatically after 1 second.
 - [ ] Support for other AI bots / APIs  
 - [ ] History log of voice-to-text interactions  
 - [ ] Microphone selection support  
+
+
+---
+
+## 🛠 Building `.exe` with PyInstaller
+
+The project includes a ready-to-use **`PasteTalk.spec`** file, which allows you to generate a standalone `.exe` without any manual setup.
+
+---
+
+### ✅ What you need before building:
+
+1. Install the required tools:
+```bash
+pip install pyinstaller
+```
+
+2. Run the application manually **once**:
+```bash
+python main.py
+```
+
+This step is required to generate:
+- `config.json` — user configuration file  
+- `giga_clipboard_session.session` — Telegram authorization session
+
+---
+
+### 📁 Files required for building:
+
+- `PasteTalk.spec` — PyInstaller config  
+- `main.py` — main script   
+- `config.json` — generated config file  
+- `giga_clipboard_session.session` — **authorized Telegram session**
+
+---
+
+### ⚙️ How to build:
+
+```bash
+pyinstaller PasteTalk.spec
+```
+
+After that, you'll find your compiled app in:
+
+```
+dist/PasteTalk/PasteTalk.exe
+```
+
+---
+
+💡 **Note**: To make sure the app works on another computer without re-authentication, include the following files alongside your `.exe`:
+
+- `config.json`
+- `giga_clipboard_session.session`
+
+This way, the user won’t need to log into Telegram again after deploying.
 
 ---
 
