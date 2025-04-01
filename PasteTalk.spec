@@ -10,8 +10,7 @@ a = Analysis(
     pathex=[base_path],
     binaries=[],
     datas=[
-        ('config.json', '.'),  # конфиг
-        ('1.ico', '.'),        # иконка (если есть)
+        ('config.json', '.')  # конфиг
     ],
     hiddenimports=[],
     hookspath=[],
