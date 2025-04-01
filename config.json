@@ -9,5 +9,6 @@
     "indicator_width": 60,
     "indicator_height": 40,
     "indicator_position": "bottom-right", 
-    "indicator_margin": 0
+    "indicator_margin": 0,
+    "hotkeys": ["ctrl_l", "win"]
 }
