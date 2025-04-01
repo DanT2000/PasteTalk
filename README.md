@@ -76,6 +76,7 @@ pip install -r requirements.txt
 | `indicator_position`   | Позиция индикатора: `top-left`, `top-right`, `bottom-left`, `bottom-right` |
 | `indicator_margin`     | Отступ от выбранного угла экрана (в пикселях) |
 | `indicator_width/height` | Размер прямоугольника-индикатора |
+| `hotkeys` | Горячие клавиши |
 
 ---
 
@@ -233,6 +234,7 @@ Located next to `main.py`. Example:
 | `indicator_position`| Position: `top-left`, `top-right`, `bottom-left`, `bottom-right`           |
 | `indicator_margin` | Margin from screen edge (pixels)                                           |
 | `indicator_width`, `indicator_height` | Indicator rectangle size                                |
+| `hotkeys` | Hot keys |
 
 ---
 
