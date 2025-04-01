@@ -4,14 +4,17 @@ from pynput import keyboard
 import numpy as np
 import threading
 import time
-from multiprocessing import Process, Value, Queue
 import tkinter as tk
 import json
 import os
 import pyperclip
 import asyncio
 import subprocess
+import sys
 from telethon import TelegramClient, events
+import sqlite3
+import psutil
+from queue import Queue
 
 # === Конфиг ===
 with open("config.json", "r", encoding="utf-8") as f:
@@ -33,85 +36,125 @@ HOTKEYS = set(config.get("hotkeys", ["ctrl", "win"]))
 WAV_FILE = "recording.wav"
 OGG_FILE = "recording.ogg"
 SAMPLERATE = 44100
-is_recording = Value('b', False)
+is_recording = threading.Event()
 recording = []
 
 client = TelegramClient("giga_clipboard_session", API_ID, API_HASH)
 chat_id_cache = None
 processing_lock = asyncio.Lock()
-indicator_queue = Queue()
+LOCKFILE = "PasteTalk.lock"
 
 # === Индикатор ===
-def indicator_process(queue: Queue):
-    root = tk.Tk()
-    root.overrideredirect(True)
-    root.attributes("-topmost", True)
-    root.configure(bg='white')
-    screen_width = root.winfo_screenwidth()
-    screen_height = root.winfo_screenheight()
+indicator_queue = Queue()
 
-    if INDICATOR_POSITION == "top-left":
-        x, y = INDICATOR_MARGIN, INDICATOR_MARGIN
-    elif INDICATOR_POSITION == "top-right":
-        x, y = screen_width - INDICATOR_WIDTH - INDICATOR_MARGIN, INDICATOR_MARGIN
-    elif INDICATOR_POSITION == "bottom-left":
-        x, y = INDICATOR_MARGIN, screen_height - INDICATOR_HEIGHT - INDICATOR_MARGIN
-    elif INDICATOR_POSITION == "bottom-right":
-        x, y = screen_width - INDICATOR_WIDTH - INDICATOR_MARGIN, screen_height - INDICATOR_HEIGHT - INDICATOR_MARGIN
-    else:
-        x, y = 100, 100
+def start_indicator_thread():
+    def run_indicator_loop():
+        root = tk.Tk()
+        root.overrideredirect(True)
+        root.attributes("-topmost", True)
+        root.configure(bg='white')
 
-    root.geometry(f"{INDICATOR_WIDTH}x{INDICATOR_HEIGHT}+{x}+{y}")
+        canvas = tk.Canvas(root, width=INDICATOR_WIDTH, height=INDICATOR_HEIGHT, highlightthickness=0, bg='white')
+        canvas.pack()
+        rect = canvas.create_rectangle(0, 0, INDICATOR_WIDTH, INDICATOR_HEIGHT, fill='white', outline='')
 
-    canvas = tk.Canvas(root, width=INDICATOR_WIDTH, height=INDICATOR_HEIGHT, highlightthickness=0, bg='white')
-    canvas.pack()
-    rect = canvas.create_rectangle(0, 0, INDICATOR_WIDTH, INDICATOR_HEIGHT, fill='red', outline='')
+        screen_width = root.winfo_screenwidth()
+        screen_height = root.winfo_screenheight()
 
-    def update_color(color):
-        canvas.itemconfig(rect, fill=color)
+        if INDICATOR_POSITION == "top-left":
+            x, y = INDICATOR_MARGIN, INDICATOR_MARGIN
+        elif INDICATOR_POSITION == "top-right":
+            x, y = screen_width - INDICATOR_WIDTH - INDICATOR_MARGIN, INDICATOR_MARGIN
+        elif INDICATOR_POSITION == "bottom-left":
+            x, y = INDICATOR_MARGIN, screen_height - INDICATOR_HEIGHT - INDICATOR_MARGIN
+        elif INDICATOR_POSITION == "bottom-right":
+            x, y = screen_width - INDICATOR_WIDTH - INDICATOR_MARGIN, screen_height - INDICATOR_HEIGHT - INDICATOR_MARGIN
+        else:
+            x, y = 100, 100
 
-    def close_after_delay():
-        root.after(1000, root.destroy)
+        root.geometry(f"{INDICATOR_WIDTH}x{INDICATOR_HEIGHT}+{x}+{y}")
 
-    def poll_queue():
+        last_color_time = [time.time()]  # список, чтобы быть мутабельным
+
+        def update():
+            try:
+                color = indicator_queue.get_nowait()
+                if color == "clear":
+                    root.withdraw()
+                else:
+                    canvas.itemconfig(rect, fill=color)
+                    root.deiconify()
+                    last_color_time[0] = time.time()
+                    if color in ("green", "blue"):
+                        root.after(1000, lambda: indicator_queue.put("clear"))
+            except:
+                pass
+
+            # если прошло более 5 секунд с последнего сигнала — скрыть
+            if time.time() - last_color_time[0] > 5:
+                root.withdraw()
+
+            root.after(100, update)
+
+
+        update()
+        root.mainloop()
+
+    threading.Thread(target=run_indicator_loop, daemon=True).start()
+
+def show_indicator(color):
+    indicator_queue.put(color)
+
+# === Утилиты ===
+def kill_other_instances():
+    current_pid = os.getpid()
+    for proc in psutil.process_iter(['pid', 'name']):
         try:
-            msg = queue.get_nowait()
-            if msg == "recording":
-                update_color("red")
-            elif msg == "processing":
-                update_color("yellow")
-            elif msg == "done":
-                update_color("green")
-                close_after_delay()
-            elif msg == "error":
-                update_color("blue")
-                close_after_delay()
+            if proc.info['name'] in ["PasteTalk.exe", "main.exe", "python.exe"] and proc.pid != current_pid:
+                proc.kill()
+        except Exception:
+            continue
+
+def is_already_running():
+    if os.path.exists(LOCKFILE):
+        try:
+            with open(LOCKFILE, "r") as f:
+                old_pid = int(f.read().strip())
+            if psutil.pid_exists(old_pid):
+                print("⚠️ Приложение уже запущено.")
+                return True
         except:
             pass
-        root.after(100, poll_queue)
+        os.remove(LOCKFILE)
+    with open(LOCKFILE, "w") as f:
+        f.write(str(os.getpid()))
+    return False
 
-    poll_queue()
-    root.mainloop()
+def cleanup_lockfile():
+    if os.path.exists(LOCKFILE):
+        os.remove(LOCKFILE)
 
-# === Конвертация ===
 def convert_to_ogg(wav_path, ogg_path):
+    creation_flag = 0
+    if sys.platform == "win32":
+        creation_flag = subprocess.CREATE_NO_WINDOW
+
     subprocess.run([
         "ffmpeg", "-y", "-i", wav_path,
         "-c:a", "libopus", "-b:a", "64k",
         ogg_path
-    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=creation_flag)
 
-# === Запись (синхронно) ===
 def record_audio_blocking():
     global recording
     recording = []
 
     def callback(indata, frames, time, status):
-        if is_recording.value:
+        if is_recording.is_set():
             recording.append(indata.copy())
 
     with sd.InputStream(samplerate=SAMPLERATE, channels=1, callback=callback):
-        while is_recording.value:
+        while is_recording.is_set():
             sd.sleep(100)
 
     audio = np.concatenate(recording, axis=0)
@@ -119,19 +162,16 @@ def record_audio_blocking():
     write(WAV_FILE, SAMPLERATE, audio_int16)
     convert_to_ogg(WAV_FILE, OGG_FILE)
 
-# === Основной цикл ===
+# === Основная логика ===
 async def process_recording():
     global chat_id_cache
 
     async with processing_lock:
-        indicator_queue.put("recording")
-        indicator_proc = Process(target=indicator_process, args=(indicator_queue,))
-        indicator_proc.start()
-
-        is_recording.value = True
+        show_indicator("red")
+        is_recording.set()
         await asyncio.to_thread(record_audio_blocking)
         print("🛑 Запись завершена")
-        indicator_queue.put("processing")
+        show_indicator("yellow")
 
         if not chat_id_cache:
             dialogs = await client.get_dialogs()
@@ -141,14 +181,14 @@ async def process_recording():
                     break
             if not chat_id_cache:
                 print("❌ Чат не найден.")
-                indicator_queue.put("error")
+                show_indicator("blue")
                 return
 
         try:
             await client.send_file(chat_id_cache, OGG_FILE, voice_note=True)
         except Exception as e:
             print(f"❌ Ошибка отправки: {e}")
-            indicator_queue.put("error")
+            show_indicator("blue")
             return
 
         print("⌛ Ожидание ответа от Гигачата...")
@@ -173,12 +213,11 @@ async def process_recording():
 
         try:
             await asyncio.wait_for(future, timeout=30)
-            indicator_queue.put("done")
+            show_indicator("green")
         except asyncio.TimeoutError:
             print("⚠️ Гигачат не ответил вовремя")
-            indicator_queue.put("error")
+            show_indicator("blue")
 
-# === Горячие клавиши ===
 def start_hotkey_listener(loop):
     pressed_keys = set()
 
@@ -187,8 +226,6 @@ def start_hotkey_listener(loop):
             name = key.name
         except AttributeError:
             name = str(key).lower().replace("key.", "")
-
-        # Нормализация
         aliases = {
             "cmd": "win", "cmd_l": "win", "cmd_r": "win",
             "control": "ctrl", "control_l": "ctrl", "control_r": "ctrl",
@@ -196,15 +233,14 @@ def start_hotkey_listener(loop):
             "shift_l": "shift", "shift_r": "shift"
         }
         normalized = aliases.get(name, name)
+        print(f"🔑 Нажата: {normalized}")
         return normalized
-
 
     def on_hotkey(key):
         pressed_keys.add(key_name(key))
-
         if all(k in pressed_keys for k in HOTKEYS):
-            if is_recording.value:
-                is_recording.value = False
+            if is_recording.is_set():
+                is_recording.clear()
             else:
                 asyncio.run_coroutine_threadsafe(process_recording(), loop)
             pressed_keys.clear()
@@ -218,6 +254,7 @@ def start_hotkey_listener(loop):
 # === Главный запуск ===
 async def main():
     print("🚀 Подключение к Telegram...")
+    start_indicator_thread()
     await client.start()
     loop = asyncio.get_event_loop()
     start_hotkey_listener(loop)
@@ -226,4 +263,16 @@ async def main():
         await asyncio.sleep(1)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    # kill_other_instances()
+    if is_already_running():
+        sys.exit()
+
+    try:
+        asyncio.run(main())
+    except Exception as e:
+        if "database is locked" in str(e).lower():
+            print("⚠️ Сессия Telegram занята другим процессом. Возможно, уже запущено другое окно.")
+        else:
+            print(f"❌ Ошибка: {e}")
+    finally:
+        cleanup_lockfile()
