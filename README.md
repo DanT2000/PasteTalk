@@ -1,4 +1,12 @@
 
+## 🧭 Навигация
+
+- 🇷🇺 [Русская версия](#-pastetalk--голос-в-текст-через-telegram-с-поддержкой-гигачата)
+- 🇬🇧 [English version](#pastetalkGB)
+
+---
+
+<a name="-pastetalk--голос-в-текст-через-telegram-с-поддержкой-гигачата"></a>
 
 # 🧠 PasteTalk — голос в текст через Telegram (с поддержкой Гигачата)
 
@@ -153,4 +161,159 @@ python main.py
 
 
 ---
+
+
+
+
+---
+<a name="pastetalkGB"></a>
+## 🇬🇧 PasteTalk — Voice to Text via Telegram (with GigaChat support)
+
+**PasteTalk** is a desktop voice-to-text utility for Windows. It lets you:
+
+- 🔴 Record voice using a hotkey
+- 📤 Send it to a Telegram chat with a bot (e.g., [GigaChat by Sberbank](https://sber.ru/gigachat))
+- ✍️ Receive transcribed text from the bot
+- 📋 Automatically copy the result to your clipboard
+
+Perfect for quick notes, voice commands, idea dumps or productivity workflows.
+
+---
+
+### 📦 Requirements
+
+- Python 3.10+ (⚠️ Python 3.13 is not officially supported by Telethon but might still work)
+- [FFmpeg](https://ffmpeg.org/download.html) — must be installed and in your system `PATH`
+- Telegram account
+- Chat with an active bot (GigaChat works well)
+
+---
+
+### 💾 Installation
+
+```bash
+git clone https://github.com/DanT2000/PasteTalk.git
+cd PasteTalk
+python -m venv .venv
+.venv\\Scripts\\activate  # On Windows
+pip install -r requirements.txt
+```
+
+---
+
+### ⚙️ Configuring `config.json`
+
+Located next to `main.py`. Example:
+
+```json
+{
+  "api_id": 123456,
+  "api_hash": "your_api_hash_here",
+  "target_chat_name": "Voice Buffer",
+  "giga_username": "gigachat_sberbot",
+  "clipboard_enabled": true,
+  "min_text_length": 5,
+  "log_messages": true,
+
+  "indicator_width": 60,
+  "indicator_height": 30,
+  "indicator_position": "top-right",
+  "indicator_margin": 20
+}
+```
+
+| Field              | Description                                                                 |
+|-------------------|-----------------------------------------------------------------------------|
+| `api_id`, `api_hash`  | Get from [my.telegram.org](https://my.telegram.org)                        |
+| `target_chat_name` | Part of the chat title where the bot is located                            |
+| `giga_username`    | Bot's username, e.g., `gigachat_sberbot`                                   |
+| `clipboard_enabled`| Whether to auto-copy bot response to clipboard                             |
+| `min_text_length`  | Minimum text length to trigger clipboard copy                              |
+| `log_messages`     | Whether to print GigaChat responses in console                             |
+| `indicator_position`| Position: `top-left`, `top-right`, `bottom-left`, `bottom-right`           |
+| `indicator_margin` | Margin from screen edge (pixels)                                           |
+| `indicator_width`, `indicator_height` | Indicator rectangle size                                |
+
+---
+
+### 🔐 Telegram Login
+
+On first launch, you’ll be asked to enter your **phone number**, **login code** from Telegram, and (if enabled) your **2FA password**.
+
+⚠️ It's recommended to use a **separate Telegram account** for this app, especially if you value your main account’s security or privacy.
+
+---
+
+### 🚀 How to Use
+
+1. Launch the app:
+```bash
+python main.py
+```
+
+2. Press **Ctrl + Win** → recording starts  
+3. Press **Ctrl + Win** again → recording stops & message is sent  
+4. Bot’s reply (if any) will be copied to clipboard automatically
+
+---
+
+### 🗣 GigaChat as a voice assistant
+
+If you start your voice message with **“GigaChat...”**, the bot will interpret it as a direct request and act like a voice assistant.
+
+> 💬 Example:  
+> _“GigaChat, what’s the news today?”_  
+> → Bot will transcribe your voice, then reply with an actual answer.
+
+That allows you to use PasteTalk as a **speech-controlled AI assistant** via Telegram.
+
+---
+
+### 🎨 Indicator Behavior
+
+A colored rectangle will appear on screen during use:
+
+| Color     | Meaning                  |
+|-----------|--------------------------|
+| 🔴 Red    | Recording                |
+| 🟡 Yellow | Sending / Waiting        |
+| 🟢 Green  | Success / Bot responded  |
+| 🔵 Blue   | Error / No response      |
+
+The indicator disappears automatically after 1 second.
+
+---
+
+### ❓ Troubleshooting
+
+- **No audio recorded?** → Make sure your default mic is active in system settings  
+- **No `ffmpeg`?** → Install it and ensure it’s in the system `PATH`  
+- **No response from bot?** → Check `target_chat_name` and `giga_username`  
+- **Indicator not showing?** → Tweak `indicator_position` and `indicator_margin`  
+- **Wrong text copied?** → Check `min_text_length` setting
+
+---
+
+### 💡 Tips
+
+- Use a **separate Telegram account** to avoid authorization risks
+- Customize the indicator rectangle to suit your screen setup
+- Make sure the bot (e.g., GigaChat) is invited to the target chat and works with voice messages
+
+---
+
+### 📌 Planned Features
+
+- [ ] EXE packaging via PyInstaller  
+- [ ] Support for other AI bots / APIs  
+- [ ] History log of voice-to-text interactions  
+- [ ] Microphone selection support  
+
+---
+
+### 👤 Author
+
+Created by **BlackDev** with ❤️  
+PRs and feedback welcome!
+```
 
