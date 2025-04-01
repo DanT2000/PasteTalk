@@ -25,7 +25,7 @@
 ## 💾 Установка
 
 ```bash
-git clone https://github.com/yourusername/PasteTalk.git
+git clone https://github.com/DanT2000/PasteTalk.git
 cd PasteTalk
 python -m venv .venv
 .venv\\Scripts\\activate  # для Windows
