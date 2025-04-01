@@ -1,2 +1,3 @@
 # PasteTalk
  
+choco install ffmpeg

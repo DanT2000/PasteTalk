@@ -1,0 +1,6 @@
+telethon
+sounddevice
+pynput
+numpy
+scipy
+pyperclip

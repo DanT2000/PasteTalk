@@ -1,10 +1,13 @@
 {
-    "api_id": 1234567,
-    "api_hash": "your_api_hash_here",
-    "target_chat_name": "Голосовой буфер",  
-    "giga_username": "gigachat_sberbot",  
+    "api_id": *******,
+    "api_hash": "***********",
+    "target_chat_name": "***********",  
+    "giga_username": "gigachat_bot",  
     "clipboard_enabled": true,
-    "min_text_length": 5,
-    "log_messages": true
-  }
-  
+    "min_text_length": 1,
+    "log_messages": true,
+    "indicator_width": 60,
+    "indicator_height": 40,
+    "indicator_position": "bottom-right", 
+    "indicator_margin": 0
+}
