@@ -20,6 +20,7 @@ function build(options = {}) {
   });
 
   app.get('/health', async () => ({ ok: true }));
+  require('./routes/client').register(app);
 
   return app;
 }
