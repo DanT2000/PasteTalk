@@ -15,7 +15,7 @@
 - Весь текст, который видит человек, — по-русски. Сообщения об ошибках говорят, что случилось, а не «что-то пошло не так».
 - Комментарии в коде — по-русски, и объясняют «почему», а не «что». Это правило действующего кода проекта, см. `app/main/llm.js`.
 - Ни звук, ни распознанный текст не сохраняются: ни в базу, ни на диск, ни в журнал.
-- Тесты — `node --test`. Никаких jest, vitest и mocha.
+- Тесты — `node --test` без аргументов: он сам находит `*.test.js`. Путь `node --test test/` на Windows не работает — Node принимает папку за модуль. Никаких jest, vitest и mocha.
 - Отступ 2 пробела, `'use strict'` в начале каждого файла CommonJS — как в `app/main/`.
 - Названия режимов улучшения: `clean` → «Почистить», `both` → «Почистить и переписать». Ровно те же, что на десктопе.
 - Файл базы: путь берётся из `PASTETALK_DB`, по умолчанию `./data/pastetalk.db`.
@@ -138,7 +138,7 @@ Expected: FAIL — `Cannot find module '../src/index'`
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "test": "node --test test/"
+    "test": "node --test"
   },
   "dependencies": {
     "@fastify/websocket": "^11.0.1",
@@ -1907,7 +1907,7 @@ module.exports = { register };
 
 - [ ] **Шаг 5: Убедиться, что тесты проходят**
 
-Run: `cd server && node --test test/`
+Run: `cd server && node --test`
 Expected: PASS — все тесты всех задач
 
 - [ ] **Шаг 6: Коммит**
@@ -2576,7 +2576,7 @@ if (session) {
 
 - [ ] **Шаг 6: Убедиться, что тесты проходят**
 
-Run: `cd server && node --test test/`
+Run: `cd server && node --test`
 Expected: PASS — все тесты
 
 - [ ] **Шаг 7: Проверить админку живьём при 150 % шрифта**
@@ -3074,7 +3074,7 @@ server/node_modules/
 
 - [ ] **Шаг 6: Прогнать все тесты**
 
-Run: `cd server && node --test test/`
+Run: `cd server && node --test`
 Expected: PASS — все тесты всех задач
 
 - [ ] **Шаг 7: Коммит**
