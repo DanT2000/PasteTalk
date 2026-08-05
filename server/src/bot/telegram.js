@@ -110,15 +110,19 @@ function stop() {
  */
 function sync() {
   const token = String(settings.get('bot.token', '') || '').trim();
+  // Прокси тоже часть настройки: опрос уже висит на своём переходнике, и
+  // смена адреса без перезапуска цикла ничего бы не изменила — бот так и
+  // падал бы с «fetch failed», хотя в админке всё вписано верно.
+  const route = `${proxy.url()}|${settings.get('proxy.scope', 'telegram')}`;
 
   if (!token) {
     stop();
     return false;
   }
-  if (live && live.token === token) return true;
+  if (live && live.token === token && live.route === route) return true;
 
   stop();
-  live = { token, offset: 0, stop: false };
+  live = { token, route, offset: 0, stop: false };
   loop(live).catch((error) => {
     process.stderr.write(`бот остановился: ${error.message}\n`);
   });
