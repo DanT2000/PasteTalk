@@ -36,3 +36,6 @@ scratch/
 *.m4a
 *.ogg
 samples/
+
+# Снимки для README нужны в репозитории.
+!docs/*.png

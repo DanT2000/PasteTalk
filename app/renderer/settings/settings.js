@@ -584,7 +584,14 @@ const MODE_HINTS = {
 
 function syncModeHint() {
   $('ai-mode-sub').textContent = MODE_HINTS[$('ai-mode').value] || '';
+  // Подпись должна говорить о текущем положении переключателя, а не
+  // висеть одним и тем же текстом при любом.
+  $('ai-enabled-sub').textContent = $('ai-enabled').checked
+    ? 'Кнопка ИИ на панели записи работает, а Ctrl+Alt+Enter заканчивает запись сразу улучшением'
+    : 'Пока выключено: кнопка ИИ на панели записи не работает';
 }
+
+$('ai-enabled').addEventListener('change', syncModeHint);
 
 $('ai-mode').addEventListener('change', () => { syncProvider(); syncModeHint(); });
 
@@ -966,6 +973,7 @@ async function start() {
     settings = fresh;
     applyAppearance();
     showValues();
+    syncModeHint();
   });
 }
 
