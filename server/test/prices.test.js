@@ -51,3 +51,19 @@ test('настройки переживают перезапись и храня
   settings.set('spillToCloud', false);
   assert.strictEqual(settings.get('spillToCloud'), false);
 });
+
+test('старая база донастраивается, а не падает', () => {
+  const db = require('../src/db');
+  db.close();
+  // База «до» появления одноразовых кодов: столбца code_until в ней нет.
+  const Database = require('better-sqlite3');
+  const old = new Database(':memory:');
+  old.exec(`CREATE TABLE keys (id INTEGER PRIMARY KEY, name TEXT NOT NULL,
+    code TEXT, created_at INTEGER NOT NULL, first_used_at INTEGER, revoked_at INTEGER)`);
+  old.close();
+
+  // Открываем нашим кодом — он обязан доложить недостающее.
+  db.open(':memory:');
+  const columns = db.open().prepare('PRAGMA table_info(keys)').all().map((c) => c.name);
+  assert.ok(columns.includes('code_until'), 'иначе развёрнутый сервер падает с no such column');
+});

@@ -71,6 +71,29 @@ CREATE INDEX IF NOT EXISTS usage_at ON usage(at);
 CREATE INDEX IF NOT EXISTS devices_key ON devices(key_id);
 `;
 
+/**
+ * Столбцы, добавленные после первого выпуска.
+ *
+ * CREATE TABLE IF NOT EXISTS существующую таблицу не трогает — а том живёт
+ * дольше образа. Без этого списка любое обновление схемы валит уже
+ * развёрнутый сервер с «no such column», и заметно это становится только
+ * тогда, когда человек не может войти.
+ */
+const ADDED = [
+  { table: 'keys', column: 'code_until', ddl: 'INTEGER' },
+];
+
+function migrate(database) {
+  for (const { table, column, ddl } of ADDED) {
+    const exists = database.prepare(`PRAGMA table_info(${table})`).all()
+      .some((row) => row.name === column);
+    if (exists) continue;
+    database.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
+    process.stdout.write(`База: добавлен столбец ${table}.${column}
+`);
+  }
+}
+
 let current = null;
 
 function defaultFile() {
@@ -94,6 +117,7 @@ function open(file = defaultFile()) {
   current.pragma('journal_mode = WAL');
   current.pragma('foreign_keys = ON');
   current.exec(SCHEMA);
+  migrate(current);
   return current;
 }
 
