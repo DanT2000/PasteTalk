@@ -14,6 +14,11 @@ function build(options = {}) {
   // десяти, и упереться в предел на длинной диктовке было бы обидно.
   const app = Fastify({ logger: false, bodyLimit: 32 * 1024 * 1024, ...options });
 
+  app.register(require('@fastify/websocket'));
+  app.register(async (scope) => {
+    require('./agent/socket').register(scope);
+  });
+
   app.get('/health', async () => ({ ok: true }));
 
   return app;
