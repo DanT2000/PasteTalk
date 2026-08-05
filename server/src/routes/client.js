@@ -39,7 +39,10 @@ function register(app) {
     }
   });
 
-  app.get('/v1/state', async () => {
+  // Только для своих: включён ли домашний компьютер — это расписание
+  // хозяина, и посторонним знать его незачем.
+  app.get('/v1/state', async (request, reply) => {
+    if (!who(request)) return reply.code(401).send({ error: 'Доступ отозван или токен неверный' });
     const agent = socket.state();
     return { ok: true, agentOnline: agent.online, agentName: agent.name };
   });

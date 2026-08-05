@@ -40,17 +40,25 @@ function sixDigits() {
 function freeCode(database) {
   for (let attempt = 0; attempt < 200; attempt += 1) {
     const code = sixDigits();
-    const busy = database
-      .prepare('SELECT 1 FROM keys WHERE code = ? AND code_until > ?')
-      .get(code, Date.now());
+    // Занятым считаем любой существующий код, даже протухший: пока
+    // строка не вычищена, выборка при активации наткнётся на неё первой
+    // и человек с живым кодом получит «код устарел».
+    const busy = database.prepare('SELECT 1 FROM keys WHERE code = ?').get(code);
     if (!busy) return code;
   }
   throw new Error('Не удалось подобрать свободный код');
 }
 
 /** Завести профиль и выдать к нему разовый код. */
+/** Вычистить протухшие коды. Держать их незачем, а мешать они умеют. */
+function sweepExpired(database) {
+  database.prepare('UPDATE keys SET code = NULL, code_until = NULL WHERE code_until <= ?')
+    .run(Date.now());
+}
+
 function issue(name, ttlMs = DEFAULT_CODE_TTL_MS) {
   const database = db.open();
+  sweepExpired(database);
   const title = String(name || '').trim() || 'Без имени';
   const code = freeCode(database);
   const until = Date.now() + Number(ttlMs || DEFAULT_CODE_TTL_MS);
@@ -68,6 +76,7 @@ function issue(name, ttlMs = DEFAULT_CODE_TTL_MS) {
  */
 function reissue(id, ttlMs = DEFAULT_CODE_TTL_MS) {
   const database = db.open();
+  sweepExpired(database);
   const key = database.prepare('SELECT * FROM keys WHERE id = ? AND revoked_at IS NULL').get(id);
   if (!key) throw new Error('Такого профиля нет');
   const code = freeCode(database);

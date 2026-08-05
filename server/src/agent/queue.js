@@ -60,6 +60,10 @@ function withSpill(makeAgentJob, cloudJob, ms = SPILL_MS) {
 
   return new Promise((resolve, reject) => {
     let settled = false;
+    // Отдельно от settled: облако ещё считает, но агент уже брошен, и его
+    // ответ принимать нельзя. Без этого дождавшаяся очереди брошенная
+    // задача возвращала undefined и роняла того, кто её ждал.
+    let spilled = false;
     const finish = (fn, value) => {
       if (settled) return;
       settled = true;
@@ -68,13 +72,14 @@ function withSpill(makeAgentJob, cloudJob, ms = SPILL_MS) {
 
     const timer = setTimeout(() => {
       if (settled) return;
+      spilled = true;
       attempt.abandon();
       cloudJob().then((value) => finish(resolve, value), (error) => finish(reject, error));
     }, ms);
 
     attempt.started.then(() => {
       clearTimeout(timer);
-      if (settled) return;
+      if (settled || spilled) return;
       attempt.done.then(
         (value) => finish(resolve, value),
         // Агент сорвался уже в работе — это не повод показывать человеку

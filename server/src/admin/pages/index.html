@@ -648,6 +648,15 @@ async function drawSettings() {
       + '<span class="why muted">Можно: deepseek, openai, aitunnel, custom</span></label>'
     + '</div>'
 
+    + '<div class="card"><h2>Когда домашний компьютер занят</h2>'
+    + '<label class="field"><span>Ждать очереди или уходить в облако</span>'
+      + '<select data-set="spillToCloud">'
+        + '<option value="true"' + (get('spillToCloud', true) === false ? '' : ' selected') + '>ждать 30 секунд, потом в облако</option>'
+        + '<option value="false"' + (get('spillToCloud', true) === false ? ' selected' : '') + '>всегда ждать компьютер, денег не тратить</option>'
+      + '</select>'
+      + '<span class="why muted">Облако стоит копейки, но избавляет от «оно висит». Второй вариант — если платить не хочется совсем</span></label>'
+    + '</div>'
+
     + '<div class="card"><h2>Прайс-лист</h2>'
     + '<p class="muted">Провайдеры фактическую стоимость не присылают, поэтому расход считается по этим числам. Меняются цены — поправьте здесь.</p>'
     + '<div id="prices">' + priceRows() + '</div></div>'
@@ -666,6 +675,8 @@ async function drawSettings() {
       const key = input.dataset.set;
       if (key.startsWith('chain.')) {
         body.settings[key] = input.value.split(',').map((part) => part.trim()).filter(Boolean);
+      } else if (key === 'spillToCloud') {
+        body.settings[key] = input.value === 'true';
       } else if (input.value.trim()) {
         // Пустое поле ключа означает «не трогали»: иначе сохранение формы
         // стирало бы ключ, которого она и не показывала.

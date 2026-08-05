@@ -17,15 +17,26 @@ const settings = require('../settings');
 const DEFAULT = 'admin';
 const MIN_LENGTH = 8;
 
+/**
+ * scrypt намеренно медленный — в этом его смысл. Но синхронный вызов
+ * занимает весь цикл событий: десяток запросов подряд, и сервер перестаёт
+ * отвечать всем — висят диктовки, опрос бота, пинги агента. Поэтому здесь
+ * только асинхронная форма.
+ */
 function hash(password, salt) {
-  return crypto.scryptSync(password, salt, 64).toString('hex');
+  return new Promise((resolve, reject) => {
+    crypto.scrypt(password, salt, 64, (error, key) => {
+      if (error) reject(error);
+      else resolve(key.toString('hex'));
+    });
+  });
 }
 
 function changed() {
   return Boolean(settings.get('admin.password', null));
 }
 
-function change(next) {
+async function change(next) {
   const password = String(next || '').trim();
   // Про admin говорим раньше, чем про длину: человек, вписавший его
   // второй раз, должен услышать настоящую причину отказа, а не то, что
@@ -33,14 +44,14 @@ function change(next) {
   if (password === DEFAULT) throw new Error('Этот пароль и так знают все');
   if (password.length < MIN_LENGTH) throw new Error(`Пароль короче ${MIN_LENGTH} знаков`);
   const salt = crypto.randomBytes(16).toString('hex');
-  settings.set('admin.password', `${salt}:${hash(password, salt)}`);
+  settings.set('admin.password', `${salt}:${await hash(password, salt)}`);
 }
 
-function check(password) {
+async function check(password) {
   const saved = settings.get('admin.password', null);
   if (!saved) return String(password) === DEFAULT;
   const [salt, digest] = String(saved).split(':');
-  const given = Buffer.from(hash(String(password), salt), 'hex');
+  const given = Buffer.from(await hash(String(password), salt), 'hex');
   const known = Buffer.from(digest, 'hex');
   // timingSafeEqual: сравнение по времени не должно подсказывать, сколько
   // знаков угадано. Длины сверяем заранее — иначе он бросит исключение.
@@ -62,8 +73,37 @@ function isLocal(address) {
   return false;
 }
 
-function allowed(password, address) {
-  if (!check(password)) return { ok: false, mustChange: false, error: 'Пароль не подходит' };
+/**
+ * Промахи по паролю панели считаем так же, как по кодам доступа: без
+ * этого пароль перебирается без всяких ограничений.
+ */
+const misses = new Map();
+const MAX_TRIES = 5;
+const PAUSE_MS = 10 * 60 * 1000;
+
+function forgetMisses() {
+  misses.clear();
+}
+
+async function allowed(password, address) {
+  const now = Date.now();
+  const state = misses.get(address);
+  if (state && state.until > now) {
+    return {
+      ok: false,
+      mustChange: false,
+      error: `Слишком много попыток. Подождите ${Math.ceil((state.until - now) / 60000)} мин.`,
+    };
+  }
+
+  if (!await check(password)) {
+    const fresh = misses.get(address) || { count: 0, until: 0 };
+    fresh.count += 1;
+    if (fresh.count >= MAX_TRIES) fresh.until = now + PAUSE_MS;
+    misses.set(address, fresh);
+    return { ok: false, mustChange: false, error: 'Пароль не подходит' };
+  }
+  misses.delete(address);
   if (changed()) return { ok: true, mustChange: false };
   if (!isLocal(address)) {
     return {
@@ -75,4 +115,7 @@ function allowed(password, address) {
   return { ok: true, mustChange: true };
 }
 
-module.exports = { check, changed, change, isLocal, allowed, DEFAULT, MIN_LENGTH };
+module.exports = {
+  check, changed, change, isLocal, allowed, forgetMisses,
+  DEFAULT, MIN_LENGTH, MAX_TRIES,
+};

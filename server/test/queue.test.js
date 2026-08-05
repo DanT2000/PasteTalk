@@ -92,3 +92,19 @@ test('брошенная в облако задача агентом уже не
   await new Promise((wait) => setTimeout(wait, 60));
   assert.strictEqual(agentRan, false, 'зря разбуженный агент занял бы видеокарту впустую');
 });
+
+test('брошенная задача не перебивает ответ облака своим ничем', async () => {
+  // Занимаем агента, чтобы вторая задача встала в очередь и не дождалась.
+  const blocker = queue.throughAgent(() => new Promise((done) => setTimeout(done, 120)));
+
+  const result = await queue.withSpill(
+    () => queue.throughAgent(async () => 'агент'),
+    () => new Promise((done) => setTimeout(() => done('облако'), 90)),
+    20,
+  );
+
+  // Пока облако считало, очередь дошла до брошенной задачи. Её ответ —
+  // undefined — не должен был обогнать облачный и уронить вызвавшего.
+  assert.strictEqual(result, 'облако');
+  await blocker.done;
+});

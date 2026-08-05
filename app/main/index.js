@@ -332,7 +332,7 @@ ipcMain.handle('relay:pair', async (_event, code) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         code: String(code || '').trim(),
-        kind: 'android',
+        kind: 'desktop',
         title: require('node:os').hostname(),
       }),
       signal: AbortSignal.timeout(15000),

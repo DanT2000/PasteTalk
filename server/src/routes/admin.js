@@ -36,7 +36,7 @@ function guard(request, reply) {
 
 function register(app) {
   app.post('/admin/login', async (request, reply) => {
-    const verdict = auth.allowed((request.body || {}).password, source(request));
+    const verdict = await auth.allowed((request.body || {}).password, source(request));
     if (!verdict.ok) return reply.code(403).send({ error: verdict.error });
 
     const id = crypto.randomBytes(24).toString('base64url');
@@ -47,7 +47,7 @@ function register(app) {
   app.post('/admin/password', async (request, reply) => {
     if (!guard(request, reply)) return undefined;
     try {
-      auth.change((request.body || {}).password);
+      await auth.change((request.body || {}).password);
       return { ok: true };
     } catch (error) {
       return reply.code(400).send({ error: error.message });

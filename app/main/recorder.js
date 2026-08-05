@@ -53,6 +53,9 @@ class Recorder extends EventEmitter {
     // Копилка звука для внешнего распознавания. null означает «копить не
     // надо» — иначе брошенная запись осталась бы висеть в памяти.
     this.chunks = null;
+    // Номер попытки. Растёт при каждой отмене: ответ, пришедший от
+    // прежней, узнаётся по устаревшему номеру и выбрасывается.
+    this.attempt = (this.attempt || 0) + 1;
   }
 
   get active() {
@@ -203,6 +206,7 @@ class Recorder extends EventEmitter {
 
   /** Отправить накопленное туда, где считают. */
   async finishRemote(reason) {
+    const attempt = this.attempt;
     const pcm = Buffer.concat(this.chunks || []);
     this.chunks = null;
     this.emitState(reason === 'limit' ? 'limit' : 'thinking');
@@ -215,8 +219,9 @@ class Recorder extends EventEmitter {
 
     try {
       const result = await remote.transcribe(pcm);
-      await this.deliver(result.text, result.durationS);
+      await this.deliver(result.text, result.durationS, attempt);
     } catch (error) {
+      if (attempt !== this.attempt) return;
       log.warn(`распознать снаружи не вышло: ${error.message}`);
       this.emitState('engineDown', { hint: error.message });
       this.scheduleHide(3600);
@@ -234,6 +239,7 @@ class Recorder extends EventEmitter {
     this.sessionId = null;
     this.emitState(reason === 'limit' ? 'limit' : 'thinking');
 
+    const attempt = this.attempt;
     let result;
     try {
       result = await engine.stopSession(id);
@@ -251,7 +257,7 @@ class Recorder extends EventEmitter {
       log.info(`выброшено как выдумка модели: «${item.text}» — ${item.reason}`);
     }
 
-    await this.deliver(result.text, result.durationS);
+    await this.deliver(result.text, result.durationS, attempt);
   }
 
   /**
@@ -260,7 +266,13 @@ class Recorder extends EventEmitter {
    * Общее для обоих путей — местного и внешнего. Разными они остаются
    * только до этого места: дальше человеку всё равно, кто считал.
    */
-  async deliver(raw, durationS = 0) {
+  async deliver(raw, durationS = 0, attempt = this.attempt) {
+    // Пришёл ответ от отменённой попытки — молча выбрасываем. Вставлять
+    // его человеку в чужое окно нельзя.
+    if (attempt !== this.attempt) {
+      log.info('ответ отменённой записи выброшен');
+      return;
+    }
     let text = (raw || '').trim();
     if (text && !config.get('text.keepPunctuation', true)) text = stripPunctuation(text);
     if (!text) {
@@ -334,7 +346,12 @@ class Recorder extends EventEmitter {
     }
     if (this.state === 'ai' && llm.cancel()) return 'ai';
     if (this.state === 'thinking') {
-      // Распознавание уже идёт в движке; ждать его смысла нет.
+      // Распознавание уже идёт, остановить его нельзя — но ответ, когда
+      // придёт, принимать нельзя тем более: человек мог уйти в другое
+      // окно, и вставка Ctrl+V ушла бы туда.
+      this.attempt += 1;
+      this.chunks = null;
+      this.sessionId = null;
       this.emitState('cancelled', { hint: 'Распознавание брошено' });
       this.scheduleHide(2000);
       return 'thinking';

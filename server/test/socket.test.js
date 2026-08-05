@@ -4,9 +4,20 @@ const test = require('node:test');
 const assert = require('node:assert');
 
 const db = require('../src/db');
+const keys = require('../src/keys');
 const socket = require('../src/agent/socket');
 
-test.beforeEach(() => { db.close(); db.open(':memory:'); socket.forget(); });
+test.beforeEach(() => { db.close(); db.open(':memory:'); keys.forgetMisses(); socket.forget(); });
+
+/** Агент без токена сервером не признаётся, поэтому заводим настоящий. */
+function agentToken() {
+  const key = keys.issue('Домашний ПК');
+  return keys.activate(key.code, 'desktop', null, 'ДОМ-ПК', '1.1.1.1').token;
+}
+
+function hello(name = 'ДОМ-ПК') {
+  return JSON.stringify({ type: 'hello', name, token: agentToken() });
+}
 
 test('без агента отправка задачи сразу говорит, что ПК не на связи', async () => {
   assert.strictEqual(socket.online(), false);
@@ -24,7 +35,7 @@ test('поздоровавшийся агент считается живым и
   const sent = [];
   const fake = { send: (raw) => sent.push(JSON.parse(raw)) };
 
-  socket.handle(fake, JSON.stringify({ type: 'hello', name: 'ДОМ-ПК' }));
+  socket.handle(fake, hello());
 
   assert.strictEqual(socket.online(), true);
   assert.strictEqual(socket.state().name, 'ДОМ-ПК');
@@ -35,7 +46,7 @@ test('поздоровавшийся агент считается живым и
 test('задача уходит агенту и её ответ возвращается вызвавшему', async () => {
   const sent = [];
   const fake = { send: (raw) => sent.push(JSON.parse(raw)) };
-  socket.handle(fake, JSON.stringify({ type: 'hello', name: 'ДОМ-ПК' }));
+  socket.handle(fake, hello());
 
   const promise = socket.send({ kind: 'stt', payload: { filename: 'a.ogg' } });
   const job = sent.find((message) => message.type === 'job');
@@ -49,7 +60,7 @@ test('задача уходит агенту и её ответ возвраща
 test('ошибка от агента доходит до вызвавшего словами, а не молчанием', async () => {
   const sent = [];
   const fake = { send: (raw) => sent.push(JSON.parse(raw)) };
-  socket.handle(fake, JSON.stringify({ type: 'hello', name: 'ДОМ-ПК' }));
+  socket.handle(fake, hello());
 
   const promise = socket.send({ kind: 'llm', payload: {} });
   const job = sent.find((message) => message.type === 'job');
@@ -60,7 +71,7 @@ test('ошибка от агента доходит до вызвавшего с
 
 test('обрыв посреди задачи не оставляет вызвавшего висеть навсегда', async () => {
   const fake = { send: () => {} };
-  socket.handle(fake, JSON.stringify({ type: 'hello', name: 'ДОМ-ПК' }));
+  socket.handle(fake, hello());
 
   const promise = socket.send({ kind: 'stt', payload: {} });
   socket.drop('ПК отключился');
@@ -69,15 +80,40 @@ test('обрыв посреди задачи не оставляет вызва�
   assert.strictEqual(socket.online(), false);
 });
 
+test('чужой без токена агентом не становится', () => {
+  const sent = [];
+  const fake = { send: (raw) => sent.push(JSON.parse(raw)), close: () => {} };
+
+  socket.handle(fake, JSON.stringify({ type: 'hello', name: 'ЧУЖОЙ' }));
+  assert.strictEqual(socket.online(), false, 'без токена — не агент');
+  assert.strictEqual(sent[0].type, 'denied');
+
+  socket.handle(fake, JSON.stringify({ type: 'hello', name: 'ЧУЖОЙ', token: 'выдуманный' }));
+  assert.strictEqual(socket.online(), false);
+});
+
+test('переподключение отпускает задачи прежнего сокета', async () => {
+  const first = { send: () => {}, close: () => {} };
+  socket.handle(first, hello());
+  const pending = socket.send({ kind: 'stt', payload: {} });
+
+  // Сеть моргнула: ПК пришёл новым сокетом раньше, чем сервер увидел close.
+  const second = { send: () => {}, close: () => {} };
+  socket.handle(second, hello());
+
+  await assert.rejects(() => pending, /переподключ/i);
+  assert.strictEqual(socket.online(), true);
+});
+
 test('мусор вместо json не роняет сервер', () => {
-  const fake = { send: () => {} };
+  const fake = { send: () => {}, close: () => {} };
   assert.doesNotThrow(() => socket.handle(fake, 'это не json'));
   assert.doesNotThrow(() => socket.handle(fake, JSON.stringify({ type: 'что-то своё' })));
 });
 
 test('ответ на неизвестную задачу тихо отбрасывается', () => {
   const fake = { send: () => {} };
-  socket.handle(fake, JSON.stringify({ type: 'hello', name: 'ДОМ-ПК' }));
+  socket.handle(fake, hello());
   assert.doesNotThrow(() => {
     socket.handle(fake, JSON.stringify({ type: 'result', id: 'нет такой', result: {} }));
   });

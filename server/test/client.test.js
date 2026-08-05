@@ -69,11 +69,23 @@ test('отозванный ключ перестаёт пускать по уж�
   await app.close();
 });
 
-test('состояние показывает, на связи ли ПК', async () => {
+test('состояние показывает своим, на связи ли ПК', async () => {
   const app = build();
-  const reply = await app.inject({ method: 'GET', url: '/v1/state' });
+  const key = keys.issue('Мама');
+  const { token } = keys.activate(key.code, 'android', null, 'Redmi', '1.1.1.1');
+
+  const reply = await app.inject({
+    method: 'GET', url: '/v1/state', headers: { authorization: `Bearer ${token}` },
+  });
   assert.strictEqual(reply.statusCode, 200);
   assert.strictEqual(reply.json().agentOnline, false);
+  await app.close();
+});
+
+test('состояние не рассказывает посторонним, дома ли хозяин', async () => {
+  const app = build();
+  const reply = await app.inject({ method: 'GET', url: '/v1/state' });
+  assert.strictEqual(reply.statusCode, 401);
   await app.close();
 });
 

@@ -3,6 +3,7 @@
 const crypto = require('node:crypto');
 
 const db = require('../db');
+const keys = require('../keys');
 
 /**
  * Соединение с домашним компьютером.
@@ -70,7 +71,26 @@ function send(job) {
   });
 }
 
+/**
+ * Агент здоровается.
+ *
+ * Токен проверяем обязательно: без этого ручка /agent открыта всему
+ * интернету, и любой, кто знает адрес сервера, назвался бы домашним
+ * компьютером — и получал бы чужие диктовки целиком, звуком.
+ */
 function greet(socket, data) {
+  const device = keys.authenticate(data.token || '');
+  if (!device) {
+    socket.send(JSON.stringify({ type: 'denied', message: 'Нужен код доступа' }));
+    try { socket.close(); } catch { /* уже закрывается */ }
+    return;
+  }
+
+  // Прежний сокет мог не успеть закрыться: моргнула сеть, ПК переподключился
+  // раньше, чем сервер увидел close. Его задачи надо отпустить здесь, иначе
+  // они провисят до таймаута и заблокируют очередь на десять минут.
+  if (live && live.socket !== socket) drop('ПК переподключился');
+
   const now = Date.now();
   const database = db.open();
   const name = data.name || 'ПК';
