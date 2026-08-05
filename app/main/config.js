@@ -43,7 +43,6 @@ const DEFAULTS = {
     record: 'Control+Alt+Space',
     recordAndImprove: 'Control+Alt+Return',
     improveClipboard: 'Control+Alt+I',
-    quickPanel: 'Control+Alt+Q',
   },
 
   appearance: {

@@ -163,13 +163,7 @@ recorder.on('text', (payload) => {
   windows.send('settings', 'history:add', { ...payload, at: Date.now() });
 });
 
-recorder.on('hide', () => {
-  windows.hideCapsule();
-  // Панель ушла — быстрые параметры ушли вместе с ней, и следующее
-  // нажатие сочетания должно открывать их, а не закрывать.
-  windows.send('capsule', 'capsule:quick', { visible: false });
-  hotkeys.quickPanelClosed();
-});
+recorder.on('hide', () => windows.hideCapsule());
 
 // ---------- горячие клавиши ----------
 
@@ -181,7 +175,6 @@ function registerHotkeys() {
       else startRecording('improve');
     },
     improveClipboard: () => improveClipboard(),
-    quickPanel: (visible) => windows.send('capsule', 'capsule:quick', { visible }),
   });
   if (failed.length) {
     windows.send('settings', 'hotkeys:conflict', failed);
@@ -329,28 +322,6 @@ ipcMain.on('capsule:action', (_event, action) => {
   }
   else if (action === 'settings') windows.showSettings();
   else if (action === 'cancel') { windows.send('audio', 'audio:stop', {}); recorder.abort('nospeech'); }
-});
-
-/**
- * Правки из панели быстрых параметров — на лету, посреди записи.
- *
- * Микрофон меняем сразу: перезапускаем захват, не прерывая сессию, — уже
- * сказанное остаётся, дальше пишем с нового устройства. Модель на ходу
- * менять нельзя: она грузится секунды, и запись бы оборвалась, поэтому
- * новая берётся со следующей записи.
- */
-ipcMain.on('capsule:set', (_event, patch) => {
-  const before = config.all();
-  const after = config.set(patch);
-  windows.broadcast('config:changed', after);
-
-  if (patch.microphoneId && patch.microphoneId !== before.microphoneId && recorder.active) {
-    windows.send('audio', 'audio:start', { deviceId: after.microphoneId });
-    log.info(`микрофон переключён на лету: ${after.microphoneId}`);
-  }
-  if (patch.model?.name && patch.model.name !== before.model.name) {
-    engine.loadModel(after.model).catch((error) => log.error(error));
-  }
 });
 
 ipcMain.on('audio:chunk', (_event, payload) => {

@@ -105,6 +105,8 @@ html[data-size="compact"] .cap-hint { display: none; }
 .cap-status { font-size: .8125rem; font-weight: 600; white-space: nowrap; }
 .cap-hint { font-size: .75rem; color: var(--dim); white-space: nowrap; min-width: 0;
   overflow: hidden; text-overflow: ellipsis; }
+/* Предупреждение видно с одного взгляда: цвет и вес, а не только текст. */
+.cap-hint.is-warning { color: var(--live); font-weight: 600; }
 .cap-timer { margin-left: auto; flex: none; font-size: .75rem; color: var(--dim);
   font-family: "Cascadia Mono", Consolas, ui-monospace, monospace; font-variant-numeric: tabular-nums; }
 .capsule[data-tone="live"] .cap-status { color: var(--live); }
@@ -121,24 +123,6 @@ html[data-size="compact"] .cap-hint { display: none; }
 @keyframes slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(350%); } }
 
 @keyframes spin { to { transform: rotate(360deg); } }
-
-.quick {
-  position: absolute; left: 50%; bottom: calc(100% + .5rem); transform: translateX(-50%);
-  width: 100%; min-width: 15rem;
-  background: var(--glass); backdrop-filter: blur(1.25rem);
-  border: 1px solid var(--stroke-strong); border-radius: .75rem; box-shadow: var(--shadow);
-  padding: .75rem; display: none; gap: .5rem; flex-direction: column;
-}
-.capsule.has-quick .quick { display: flex; }
-.quick-row { display: flex; align-items: center; gap: .625rem; }
-.quick-row > span { font-size: .75rem; color: var(--dim); flex: 0 0 5.5rem; }
-.quick select {
-  flex: 1; min-width: 0; appearance: none; font: inherit; font-size: .75rem; color: var(--text);
-  background: rgba(0,0,0,.2); border: 1px solid var(--stroke-strong); border-radius: .25rem;
-  padding: .3125rem .5rem; cursor: pointer;
-}
-html[data-theme="light"] .quick select { background: #fff; }
-.quick-note { font-size: .6875rem; color: var(--dim); }
 
 :focus-visible { outline: .125rem solid var(--accent); outline-offset: .125rem; border-radius: .25rem; }
 

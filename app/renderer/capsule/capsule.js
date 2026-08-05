@@ -95,6 +95,7 @@ function chime(next) {
 function apply(payload) {
   if (payload.state !== 'countdown') clearInterval(countdownTimer);
   clearTimeout(hintTimer);
+  hintEl.classList.remove('is-warning');
   cap.dataset.state = payload.state;
   chime(payload.state);
   previous = payload.state;
@@ -142,19 +143,22 @@ window.capsule.onCountdown(({ ms }) => {
 window.capsule.onLevel((payload) => {
   if (cap.dataset.wave === 'live') pushLevel(payload.level);
 });
-window.capsule.onQuick((payload) => cap.classList.toggle('has-quick', Boolean(payload.visible)));
-
 document.getElementById('mic').addEventListener('click', () => window.capsule.action('toggle'));
 document.getElementById('gear').addEventListener('click', () => window.capsule.action('settings'));
 let hintTimer = null;
 aiBtn.addEventListener('click', () => {
   if (aiBtn.classList.contains('is-off')) {
-    hintEl.textContent = 'Улучшение выключено в настройках';
+    // Панель к этому моменту уже могла показывать «Текст в буфере» и
+    // вот-вот погаснуть. Перехватываем и подписью, и цветом: короткая
+    // серая строка внизу теряется, а её нужно заметить.
+    hintEl.textContent = 'Улучшение текста выключено в настройках';
+    hintEl.classList.add('is-warning');
     clearTimeout(hintTimer);
     hintTimer = setTimeout(() => {
+      hintEl.classList.remove('is-warning');
       const state = STATES[cap.dataset.state] || {};
       hintEl.textContent = state.hint || '';
-    }, 3000);
+    }, 7000);
     return;
   }
   window.capsule.action('improve');
@@ -172,47 +176,7 @@ function applyConfig(settings) {
   root.dataset.theme = theme === 'system'
     ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
     : theme;
-  document.getElementById('q-lang').value = settings.language || 'auto';
-  document.getElementById('q-model').value = settings.model?.name || 'large-v3';
 }
-
-/* ---- быстрые параметры ---- */
-
-function shortName(label) {
-  if (!label) return 'Микрофон без названия';
-  const withoutId = label.replace(/\s*\([0-9a-f]{4}:[0-9a-f]{4}\)\s*$/i, '').trim();
-  const inner = /^(?:Микрофон|Microphone)\s*\((.+)\)$/i.exec(withoutId);
-  return (inner ? inner[1] : withoutId).trim() || label;
-}
-
-async function fillMicrophones() {
-  const select = document.getElementById('q-mic');
-  const chosen = config?.microphoneId || 'default';
-  let devices = [];
-  try {
-    devices = await window.capsule.microphones();
-  } catch { /* без разрешения останется только «по умолчанию» */ }
-
-  select.innerHTML = '<option value="default">По умолчанию</option>';
-  devices
-    .filter((device) => device.deviceId && device.deviceId !== 'default' && device.deviceId !== 'communications')
-    .forEach((device) => {
-      const option = document.createElement('option');
-      option.value = device.deviceId;
-      option.textContent = shortName(device.label);
-      select.appendChild(option);
-    });
-  select.value = [...select.options].some((o) => o.value === chosen) ? chosen : 'default';
-}
-
-document.getElementById('q-mic').addEventListener('change', (event) =>
-  window.capsule.set({ microphoneId: event.target.value }));
-document.getElementById('q-lang').addEventListener('change', (event) =>
-  window.capsule.set({ language: event.target.value }));
-document.getElementById('q-model').addEventListener('change', (event) =>
-  window.capsule.set({ model: { name: event.target.value } }));
-
-window.capsule.onQuick((payload) => { if (payload.visible) fillMicrophones(); });
 
 window.capsule.onConfig(applyConfig);
 window.capsule.onTheme(() => window.capsule.config().then(applyConfig));

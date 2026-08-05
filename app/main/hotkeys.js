@@ -5,18 +5,9 @@ const { globalShortcut } = require('electron');
 const config = require('./config');
 const log = require('./logger').scoped('hotkeys');
 
-/**
- * Горячие клавиши.
- *
- * Важное ограничение: Windows сообщает приложению только о нажатии
- * сочетания, но не об отпускании. Узнать, держат клавишу или уже нет,
- * без перехвата всей клавиатуры невозможно — а ставить такой перехват
- * ради одной панели неправильно. Поэтому панель быстрых параметров
- * работает переключателем: нажали — открылась, нажали ещё раз — закрылась.
- */
+/** Горячие клавиши приложения. */
 
 let handlers = {};
-let quickVisible = false;
 
 function label(accelerator) {
   return String(accelerator || '')
@@ -33,7 +24,6 @@ function register(actions) {
     ['record', () => actions.record()],
     ['recordAndImprove', () => actions.recordAndImprove()],
     ['improveClipboard', () => actions.improveClipboard()],
-    ['quickPanel', () => toggleQuickPanel(actions)],
   ];
 
   const failed = [];
@@ -56,18 +46,7 @@ function register(actions) {
   return failed;
 }
 
-function toggleQuickPanel(actions) {
-  quickVisible = !quickVisible;
-  actions.quickPanel(quickVisible);
-}
-
-/** Панель закрывают не только клавишей — надо знать об этом. */
-function quickPanelClosed() {
-  quickVisible = false;
-}
-
 function unregister() {
-  quickVisible = false;
   globalShortcut.unregisterAll();
 }
 
@@ -84,4 +63,4 @@ function isFree(accelerator) {
   }
 }
 
-module.exports = { register, unregister, isFree, label, quickPanelClosed, handlers: () => handlers };
+module.exports = { register, unregister, isFree, label, handlers: () => handlers };
