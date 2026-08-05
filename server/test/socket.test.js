@@ -118,3 +118,26 @@ test('ответ на неизвестную задачу тихо отбрас�
     socket.handle(fake, JSON.stringify({ type: 'result', id: 'нет такой', result: {} }));
   });
 });
+
+test('телефон агентом не становится, даже со своим токеном', () => {
+  const sent = [];
+  const fake = { send: (raw) => sent.push(JSON.parse(raw)), close: () => {} };
+  const key = keys.issue('Мама');
+  const phone = keys.activate(key.code, 'android', null, 'Redmi', '1.1.1.1');
+
+  socket.handle(fake, JSON.stringify({ type: 'hello', name: 'ЧУЖОЙ', token: phone.token }));
+
+  assert.strictEqual(socket.online(), false, 'иначе телефон получал бы чужие диктовки звуком');
+  assert.strictEqual(sent[0].type, 'denied');
+});
+
+test('чужой сокет не освежает жизнь настоящего агента', () => {
+  const real = { send: () => {}, close: () => {} };
+  socket.handle(real, hello());
+  const was = socket.state().lastSeen;
+
+  const stranger = { send: () => {}, close: () => {} };
+  socket.handle(stranger, JSON.stringify({ type: 'pong' }));
+
+  assert.strictEqual(socket.state().lastSeen, was, 'мусор от постороннего не продлевает связь');
+});

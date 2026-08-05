@@ -1163,6 +1163,7 @@ const RELAY_WORDS = {
   connecting: 'Подключаюсь…',
   online: 'На связи с сервером',
   error: 'Не подключилось',
+  denied: 'Сервер не принял',
 };
 
 function showRelay(state) {

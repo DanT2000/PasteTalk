@@ -72,6 +72,14 @@ class Recorder extends EventEmitter {
   async start(mode = 'plain') {
     if (this.busy || this.state === 'listening') return;
 
+    // Прежняя запись ещё считается, а человек жмёт клавишу снова —
+    // «кажется, не сработало». Её ответ принимать уже нельзя: он доведёт
+    // дело до reset() и погасит новую запись на полуслове.
+    if (this.state === 'thinking' || this.state === 'ai') {
+      this.attempt += 1;
+      this.cancelHide();
+    }
+
     // Когда считает не эта машина, движок не нужен вовсе: копим звук
     // и отправим целиком. Проверять его готовность тут нельзя — на
     // слабом компьютере модель может быть вообще не загружена.
@@ -312,14 +320,23 @@ class Recorder extends EventEmitter {
     // человек нажал кнопку и не увидел, чем всё кончилось.
     this.cancelHide();
     this.emitState('ai');
+    const attempt = this.attempt;
     try {
       const improved = await llm.improve(text);
+      // llm.cancel() бьёт по общему запросу и на чужой задаче с телефона
+      // может не сработать вовсе. Номер попытки надёжнее: он говорит, что
+      // человек уже передумал, и вставлять текст в чужое окно нельзя.
+      if (attempt !== this.attempt) {
+        log.info('улучшение отменённой записи выброшено');
+        return;
+      }
       await paste.deliver(improved, autoPaste);
       this.lastText = improved;
       this.emit('text', { text: improved, improved: true });
       this.emitState('aidone');
       this.scheduleHide(HIDE_AFTER_MS);
     } catch (error) {
+      if (attempt !== this.attempt) return;
       if (llm.isCancelled(error)) {
         log.info('улучшение отменено человеком');
         this.emitState('cancelled', { hint: 'Обычный текст остался в буфере' });
@@ -344,7 +361,13 @@ class Recorder extends EventEmitter {
       this.abort('cancelled', 'Запись отменена');
       return 'recording';
     }
-    if (this.state === 'ai' && llm.cancel()) return 'ai';
+    if (this.state === 'ai') {
+      this.attempt += 1;
+      llm.cancel();
+      this.emitState('cancelled', { hint: 'Обычный текст остался в буфере' });
+      this.scheduleHide(2400);
+      return 'ai';
+    }
     if (this.state === 'thinking') {
       // Распознавание уже идёт, остановить его нельзя — но ответ, когда
       // придёт, принимать нельзя тем более: человек мог уйти в другое

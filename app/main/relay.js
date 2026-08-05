@@ -126,6 +126,14 @@ class Relay extends EventEmitter {
       this.reply({ type: 'pong' });
       return;
     }
+    if (data.type === 'denied') {
+      // Сервер отказал: код отозвали или база пересоздалась. Долбиться
+      // дальше бесполезно, а человек должен увидеть настоящую причину.
+      log.warn(`сервер отказал: ${data.message}`);
+      this.disconnect();
+      this.setState('denied', data.message || 'Сервер не признал этот компьютер');
+      return;
+    }
     if (data.type !== 'job') return;
 
     try {

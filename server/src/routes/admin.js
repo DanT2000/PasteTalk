@@ -21,9 +21,7 @@ const socket = require('../agent/socket');
 const sessions = new Map();
 const SESSION_MS = 12 * 60 * 60 * 1000;
 
-function source(request) {
-  return request.headers['x-forwarded-for']?.split(',')[0].trim() || request.ip;
-}
+const { clientIp } = require('../net');
 
 function guard(request, reply) {
   const session = sessions.get(request.headers['x-admin-session']);
@@ -36,7 +34,7 @@ function guard(request, reply) {
 
 function register(app) {
   app.post('/admin/login', async (request, reply) => {
-    const verdict = await auth.allowed((request.body || {}).password, source(request));
+    const verdict = await auth.allowed((request.body || {}).password, clientIp(request));
     if (!verdict.ok) return reply.code(403).send({ error: verdict.error });
 
     const id = crypto.randomBytes(24).toString('base64url');

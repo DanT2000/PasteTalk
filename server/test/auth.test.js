@@ -80,3 +80,14 @@ test('пароль панели не перебирается без огран�
   // Другой адрес не при чём.
   assert.strictEqual((await auth.allowed('корабль-ветер-камень', '192.168.2.30')).ok, true);
 });
+
+test('одновременные попытки не проскакивают мимо счётчика', async () => {
+  await auth.change('корабль-ветер-камень');
+  // Полсотни разом: раньше синхронный scrypt их выстраивал, а с
+  // асинхронным они все проходили гейт до записи первого промаха.
+  const wave = await Promise.all(
+    Array.from({ length: 50 }, () => auth.allowed('мимо', '203.0.113.9')),
+  );
+  const locked = wave.filter((r) => /подожд/i.test(r.error || '')).length;
+  assert.ok(locked >= 40, `лимитом отбито ${locked} из 50`);
+});

@@ -181,7 +181,9 @@ function registerHotkeys() {
   const failed = hotkeys.register({
     record: () => toggleRecording('plain'),
     recordAndImprove: () => {
-      if (recorder.active) { windows.send('audio', 'audio:stop', {}); recorder.finish('done').then(() => recorder.improve()); }
+      // finish() при режиме improve улучшает сам — второй вызов прогнал бы
+      // через модель уже улучшенный текст: вдвое дольше и вдвое дороже.
+      if (recorder.active) { windows.send('audio', 'audio:stop', {}); recorder.finish('done'); }
       else startRecording('improve');
     },
     improveClipboard: () => improveClipboard(),

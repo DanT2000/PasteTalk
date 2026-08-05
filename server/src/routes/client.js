@@ -13,12 +13,7 @@ const socket = require('../agent/socket');
  * улучшения: отвалится ИИ, а пользоваться уже есть чем.
  */
 
-function source(request) {
-  // За обратным прокси Coolify настоящий адрес приходит заголовком,
-  // а request.ip показал бы сам прокси — и тогда промахи всех людей
-  // сложились бы в один счётчик.
-  return request.headers['x-forwarded-for']?.split(',')[0].trim() || request.ip;
-}
+const { clientIp } = require('../net');
 
 function who(request) {
   const header = request.headers.authorization || '';
@@ -33,7 +28,7 @@ function register(app) {
       return reply.code(400).send({ error: 'Неизвестный вид устройства' });
     }
     try {
-      return { token: keys.activate(code, kind, externalId, title, source(request)).token };
+      return { token: keys.activate(code, kind, externalId, title, clientIp(request)).token };
     } catch (error) {
       return reply.code(403).send({ error: error.message });
     }

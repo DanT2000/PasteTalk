@@ -87,8 +87,15 @@ function forgetMisses() {
 
 async function allowed(password, address) {
   const now = Date.now();
-  const state = misses.get(address);
-  if (state && state.until > now) {
+  // Попытку засчитываем ДО проверки: scrypt асинхронный, и полсотни
+  // одновременных запросов иначе проскочили бы гейт все разом, до того
+  // как хоть один промах успел записаться.
+  const state = misses.get(address) || { count: 0, until: 0 };
+  state.count += 1;
+  if (state.count > MAX_TRIES) state.until = now + PAUSE_MS;
+  misses.set(address, state);
+
+  if (state.until > now) {
     return {
       ok: false,
       mustChange: false,
@@ -97,10 +104,6 @@ async function allowed(password, address) {
   }
 
   if (!await check(password)) {
-    const fresh = misses.get(address) || { count: 0, until: 0 };
-    fresh.count += 1;
-    if (fresh.count >= MAX_TRIES) fresh.until = now + PAUSE_MS;
-    misses.set(address, fresh);
     return { ok: false, mustChange: false, error: 'Пароль не подходит' };
   }
   misses.delete(address);

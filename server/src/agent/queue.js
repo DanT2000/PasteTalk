@@ -104,8 +104,6 @@ async function transcribe({ audio, filename, language }) {
     executedBy: 'cloud',
   });
 
-  if (!socket.online()) return cloud();
-
   const agent = () => throughAgent(async () => ({
     ...await socket.send({
       kind: 'stt',
@@ -114,8 +112,11 @@ async function transcribe({ audio, filename, language }) {
     executedBy: 'agent',
   }));
 
-  if (spillAllowed()) return withSpill(agent, cloud);
-  return agent().done.catch(cloud);
+  // «Никогда не тратить деньги» должно значить именно это: ни когда ПК
+  // выключен, ни когда задача на нём сорвалась.
+  if (!spillAllowed()) return agent().done;
+  if (!socket.online()) return cloud();
+  return withSpill(agent, cloud);
 }
 
 async function improve({ text, mode }) {
@@ -128,15 +129,14 @@ async function improve({ text, mode }) {
     executedBy: 'cloud',
   });
 
-  if (!socket.online()) return cloud();
-
   const agent = () => throughAgent(async () => ({
     ...await socket.send({ kind: 'llm', payload: { text, mode } }),
     executedBy: 'agent',
   }));
 
-  if (spillAllowed()) return withSpill(agent, cloud);
-  return agent().done.catch(cloud);
+  if (!spillAllowed()) return agent().done;
+  if (!socket.online()) return cloud();
+  return withSpill(agent, cloud);
 }
 
 module.exports = { transcribe, improve, throughAgent, withSpill, SPILL_MS };
