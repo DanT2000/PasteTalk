@@ -13,7 +13,23 @@ const settings = require('../settings');
 // на середине означал бы, что деньги списаны, а текста нет.
 const TIMEOUT_MS = 5 * 60 * 1000;
 
-async function transcribe(providerId, { audio, filename, language }) {
+/**
+ * Сколько секунд звука в файле.
+ *
+ * Провайдер длительность возвращать не обязан — AITunnel её не шлёт, и
+ * без своей оценки весь расход считался бы нулём. Для WAV читаем
+ * заголовок, для прочего верим тому, что сказал клиент.
+ */
+function seconds(audio, fromProvider, fromClient) {
+  if (fromProvider > 0) return fromProvider;
+  if (audio.length > 44 && audio.toString('ascii', 0, 4) === 'RIFF') {
+    const bytesPerSecond = audio.readUInt32LE(28);
+    if (bytesPerSecond > 0) return (audio.length - 44) / bytesPerSecond;
+  }
+  return Number(fromClient) > 0 ? Number(fromClient) : 0;
+}
+
+async function transcribe(providerId, { audio, filename, language, clientSeconds }) {
   const preset = CLOUD[providerId];
   if (!preset) throw new Error(`Провайдер ${providerId} неизвестен`);
 
@@ -41,9 +57,9 @@ async function transcribe(providerId, { audio, filename, language }) {
   const data = await response.json();
   return {
     text: (data.text || '').trim(),
-    seconds: Number(data.duration || 0),
+    seconds: seconds(audio, Number(data.duration || 0), clientSeconds),
     model,
   };
 }
 
-module.exports = { transcribe };
+module.exports = { transcribe, seconds };

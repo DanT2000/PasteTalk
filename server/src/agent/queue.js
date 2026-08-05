@@ -94,11 +94,11 @@ function spillAllowed() {
   return settings.get('spillToCloud', true) !== false;
 }
 
-async function transcribe({ audio, filename, language }) {
+async function transcribe({ audio, filename, language, clientSeconds }) {
   const cloud = async () => ({
     ...await chains.run(
       chains.sttChain(),
-      (id) => stt.transcribe(id, { audio, filename, language }),
+      (id) => stt.transcribe(id, { audio, filename, language, clientSeconds }),
       'распознаванием',
     ),
     executedBy: 'cloud',

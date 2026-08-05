@@ -117,3 +117,16 @@ test('по дням возвращается ровно тридцать точ�
   // Пустые дни не пропущены: иначе неделя молчания на графике исчезнет.
   assert.ok(days.slice(0, 29).every((d) => d.agentMinutes === 0));
 });
+
+test('длительность берётся из wav, когда провайдер её не вернул', () => {
+  const { seconds } = require('../src/providers/stt');
+  // Заголовок WAV: 16 кГц, моно, 16 бит — 32000 байт в секунду.
+  const wav = Buffer.alloc(44 + 32000);
+  wav.write('RIFF', 0);
+  wav.writeUInt32LE(32000, 28);
+  assert.strictEqual(seconds(wav, 0, 0), 1);
+  // Провайдер сказал — верим ему.
+  assert.strictEqual(seconds(wav, 7.5, 0), 7.5);
+  // Не wav и провайдер молчит — верим клиенту, иначе расход будет нулевым.
+  assert.strictEqual(seconds(Buffer.alloc(100), 0, 12), 12);
+});

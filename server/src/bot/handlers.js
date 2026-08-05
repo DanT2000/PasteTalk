@@ -71,6 +71,9 @@ async function onVoice(update, { tg, queue }, device) {
   try {
     const result = await queue.transcribe({
       audio, filename: 'voice.oga', language: null,
+      // Telegram сам говорит, сколько секунд в голосовом, — своей оценки
+      // для ogg у нас нет, а без длительности расход считается нулём.
+      clientSeconds: voice.duration || 0,
     });
     const text = (result.text || '').trim();
     if (!text) {

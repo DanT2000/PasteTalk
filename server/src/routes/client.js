@@ -46,12 +46,12 @@ function register(app) {
     const device = who(request);
     if (!device) return reply.code(401).send({ error: 'Доступ отозван или токен неверный' });
 
-    const { audio, filename = 'voice.ogg', language = null } = request.body || {};
+    const { audio, filename = 'voice.ogg', language = null, seconds = 0 } = request.body || {};
     if (!audio) return reply.code(400).send({ error: 'Не приложен звук' });
 
     try {
       const result = await queue.transcribe({
-        audio: Buffer.from(audio, 'base64'), filename, language,
+        audio: Buffer.from(audio, 'base64'), filename, language, clientSeconds: seconds,
       });
       // Расход пишем только за то, что вышло: неудачная попытка денег не
       // стоила, и показывать её в счётчике значило бы врать.
