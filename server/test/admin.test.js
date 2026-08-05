@@ -1,0 +1,208 @@
+'use strict';
+
+const test = require('node:test');
+const assert = require('node:assert');
+
+const db = require('../src/db');
+const keys = require('../src/keys');
+const usage = require('../src/usage');
+const settings = require('../src/settings');
+const { build } = require('../src/index');
+
+test.beforeEach(() => { db.close(); db.open(':memory:'); keys.forgetMisses(); });
+
+async function login(app, password = 'admin', address = '192.168.2.30') {
+  return app.inject({
+    method: 'POST', url: '/admin/login',
+    headers: { 'x-forwarded-for': address },
+    payload: { password },
+  });
+}
+
+async function session(app) {
+  return { 'x-admin-session': (await login(app)).json().session };
+}
+
+test('без входа списки не отдаются', async () => {
+  const app = build();
+  const reply = await app.inject({ method: 'GET', url: '/admin/api/people' });
+  assert.strictEqual(reply.statusCode, 401);
+  await app.close();
+});
+
+test('выдуманная сессия не пускает', async () => {
+  const app = build();
+  const reply = await app.inject({
+    method: 'GET', url: '/admin/api/people',
+    headers: { 'x-admin-session': 'я-тут-главный' },
+  });
+  assert.strictEqual(reply.statusCode, 401);
+  await app.close();
+});
+
+test('первый вход из локальной сети требует сменить пароль', async () => {
+  const app = build();
+  const reply = await login(app);
+  assert.strictEqual(reply.statusCode, 200);
+  assert.strictEqual(reply.json().mustChange, true);
+  await app.close();
+});
+
+test('снаружи с паролем по умолчанию не пускает', async () => {
+  const app = build();
+  const reply = await login(app, 'admin', '188.18.55.140');
+  assert.strictEqual(reply.statusCode, 403);
+  assert.match(reply.json().error, /локальной сети/i);
+  await app.close();
+});
+
+test('ключ заводится с именем, виден в списке и удаляется', async () => {
+  const app = build();
+  const headers = await session(app);
+
+  const made = await app.inject({
+    method: 'POST', url: '/admin/api/keys', headers, payload: { name: 'Мама' },
+  });
+  assert.strictEqual(made.statusCode, 200);
+  assert.match(made.json().code, /^\d{6}$/);
+
+  const people = await app.inject({ method: 'GET', url: '/admin/api/people', headers });
+  assert.strictEqual(people.json().people[0].name, 'Мама');
+  assert.strictEqual(people.json().people[0].revoked, false);
+
+  const gone = await app.inject({
+    method: 'DELETE', url: `/admin/api/keys/${made.json().id}`, headers,
+  });
+  assert.strictEqual(gone.statusCode, 200);
+
+  const after = await app.inject({ method: 'GET', url: '/admin/api/people', headers });
+  assert.strictEqual(after.json().people[0].revoked, true);
+  await app.close();
+});
+
+test('в списке видно устройства и расход человека', async () => {
+  const app = build();
+  const headers = await session(app);
+  const key = keys.issue('Мама');
+  keys.activate(key.code, 'android', null, 'Redmi Note 12', '1.1.1.1');
+  usage.record({ keyId: key.id, deviceKind: 'android', audioSeconds: 120, executedBy: 'agent' });
+
+  const people = (await app.inject({ method: 'GET', url: '/admin/api/people', headers })).json();
+  const person = people.people.find((row) => row.name === 'Мама');
+  assert.strictEqual(person.minutes, 2);
+  assert.strictEqual(person.devices.length, 1);
+  assert.strictEqual(person.devices[0].title, 'Redmi Note 12');
+  await app.close();
+});
+
+test('устройство отвязывается по отдельности', async () => {
+  const app = build();
+  const headers = await session(app);
+  const key = keys.issue('Мама');
+  keys.activate(key.code, 'android', null, 'Redmi', '1.1.1.1');
+  keys.activate(key.code, 'telegram', '42', 'Мама', '1.1.1.1');
+
+  const before = (await app.inject({ method: 'GET', url: '/admin/api/people', headers })).json();
+  const deviceId = before.people[0].devices[0].id;
+
+  await app.inject({ method: 'DELETE', url: `/admin/api/devices/${deviceId}`, headers });
+  const after = (await app.inject({ method: 'GET', url: '/admin/api/people', headers })).json();
+  assert.strictEqual(after.people[0].devices.length, 1);
+  await app.close();
+});
+
+test('телеграм привязывается вручную по номеру', async () => {
+  const app = build();
+  const headers = await session(app);
+  const key = keys.issue('Мама');
+
+  const bound = await app.inject({
+    method: 'POST', url: `/admin/api/keys/${key.id}/bind`, headers,
+    payload: { externalId: '123456789', title: 'Мама' },
+  });
+  assert.strictEqual(bound.statusCode, 200);
+  assert.strictEqual(keys.byExternal('telegram', '123456789').keyId, key.id);
+  await app.close();
+});
+
+test('привязка без номера отвергается понятно', async () => {
+  const app = build();
+  const headers = await session(app);
+  const key = keys.issue('Мама');
+  const reply = await app.inject({
+    method: 'POST', url: `/admin/api/keys/${key.id}/bind`, headers, payload: {},
+  });
+  assert.strictEqual(reply.statusCode, 400);
+  assert.match(reply.json().error, /номер/i);
+  await app.close();
+});
+
+test('расход подписан как оценка по своему прайсу', async () => {
+  const app = build();
+  const headers = await session(app);
+  const spend = await app.inject({ method: 'GET', url: '/admin/api/spend', headers });
+  assert.match(spend.json().note, /оценка/i);
+  await app.close();
+});
+
+test('состояние ПК читается', async () => {
+  const app = build();
+  const headers = await session(app);
+  const state = await app.inject({ method: 'GET', url: '/admin/api/agent', headers });
+  assert.strictEqual(state.json().online, false);
+  await app.close();
+});
+
+test('ключи провайдеров сохраняются, но обратно приходят звёздочками', async () => {
+  const app = build();
+  const headers = await session(app);
+
+  await app.inject({
+    method: 'POST', url: '/admin/api/settings', headers,
+    payload: { settings: { 'key.aitunnel': 'sk-aitunnel-настоящий' } },
+  });
+
+  const shown = (await app.inject({ method: 'GET', url: '/admin/api/settings', headers })).json();
+  assert.strictEqual(shown.settings['key.aitunnel'], '***');
+  assert.strictEqual(settings.get('key.aitunnel'), 'sk-aitunnel-настоящий');
+  await app.close();
+});
+
+test('сохранение формы со звёздочками не стирает ключ', async () => {
+  const app = build();
+  const headers = await session(app);
+  settings.set('key.aitunnel', 'sk-aitunnel-настоящий');
+
+  await app.inject({
+    method: 'POST', url: '/admin/api/settings', headers,
+    payload: { settings: { 'key.aitunnel': '***', 'chain.llm': ['deepseek'] } },
+  });
+
+  assert.strictEqual(settings.get('key.aitunnel'), 'sk-aitunnel-настоящий');
+  assert.deepStrictEqual(settings.get('chain.llm'), ['deepseek']);
+  await app.close();
+});
+
+test('смена пароля закрывает вход по admin', async () => {
+  const app = build();
+  const headers = await session(app);
+
+  const changed = await app.inject({
+    method: 'POST', url: '/admin/password', headers,
+    payload: { password: 'корабль-ветер-камень' },
+  });
+  assert.strictEqual(changed.statusCode, 200);
+
+  assert.strictEqual((await login(app, 'admin')).statusCode, 403);
+  assert.strictEqual((await login(app, 'корабль-ветер-камень', '188.18.55.140')).statusCode, 200);
+  await app.close();
+});
+
+test('страница админки отдаётся', async () => {
+  const app = build();
+  const page = await app.inject({ method: 'GET', url: '/admin/' });
+  assert.strictEqual(page.statusCode, 200);
+  assert.match(page.headers['content-type'], /text\/html/);
+  assert.match(page.body, /PasteTalk/);
+  await app.close();
+});

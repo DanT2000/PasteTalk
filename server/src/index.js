@@ -21,6 +21,7 @@ function build(options = {}) {
 
   app.get('/health', async () => ({ ok: true }));
   require('./routes/client').register(app);
+  require('./routes/admin').register(app);
 
   return app;
 }

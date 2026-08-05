@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PasteTalk — админка</title>
+<style>
+/* Всё в rem: страницу читает человек со слабым зрением, и увеличение
+   шрифта в браузере обязано растягивать вёрстку целиком, а не рвать её. */
+:root { color-scheme: light dark; }
+* { box-sizing: border-box; }
+body {
+  margin: 0 auto; padding: 1rem; max-width: 62rem;
+  font: 1rem/1.5 system-ui, -apple-system, Segoe UI, sans-serif;
+}
+h1 { font-size: 1.5rem; margin: 0 0 1rem; }
+h2 { font-size: 1.125rem; margin: 0 0 0.75rem; }
+nav { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
+nav button {
+  font: inherit; padding: 0.5rem 1rem; border: 1px solid; border-radius: 0.5rem;
+  background: transparent; color: inherit; cursor: pointer;
+}
+nav button[aria-selected="true"] { font-weight: 700; text-decoration: underline; }
+.card { border: 1px solid; border-radius: 0.75rem; padding: 1rem; margin-bottom: 1rem; }
+.page { display: none; }
+.page.on { display: block; }
+.wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; min-width: 34rem; }
+th, td { text-align: left; padding: 0.5rem; border-bottom: 1px solid; vertical-align: top; }
+label { display: block; margin-bottom: 0.75rem; }
+input { font: inherit; padding: 0.4rem; width: 100%; max-width: 26rem; display: block; margin-top: 0.25rem; }
+button.act { font: inherit; padding: 0.4rem 0.75rem; cursor: pointer; margin-right: 0.5rem; }
+.note { opacity: 0.75; font-size: 0.875rem; }
+.err { color: #c0392b; font-weight: 700; }
+.big { font-size: 1.25rem; font-weight: 700; }
+</style>
+</head>
+<body>
+
+<div id="gate">
+  <h1>PasteTalk</h1>
+  <div class="card">
+    <label>Пароль<input type="password" id="pass" autocomplete="current-password"></label>
+    <button class="act" id="enter">Войти</button>
+    <p class="err" id="gate-err"></p>
+  </div>
+</div>
+
+<div id="change" hidden>
+  <h1>Смените пароль</h1>
+  <div class="card">
+    <p class="note">Пока пароль не сменён, панель работает только из домашней сети.</p>
+    <label>Новый пароль<input type="password" id="pass2" autocomplete="new-password"></label>
+    <button class="act" id="save-pass">Сохранить</button>
+    <p class="err" id="change-err"></p>
+  </div>
+</div>
+
+<main id="app" hidden>
+  <h1>PasteTalk</h1>
+  <nav>
+    <button data-tab="people" aria-selected="true">Люди</button>
+    <button data-tab="spend" aria-selected="false">Расход</button>
+    <button data-tab="agent" aria-selected="false">ПК</button>
+    <button data-tab="settings" aria-selected="false">Настройки</button>
+  </nav>
+  <p class="err" id="app-err"></p>
+
+  <section class="page on" data-page="people">
+    <div class="card">
+      <label>Имя нового ключа<input id="new-name" placeholder="Мама"></label>
+      <button class="act" id="make-key">Выдать код</button>
+      <p id="made"></p>
+    </div>
+    <div class="card wrap"><table id="people"></table></div>
+  </section>
+
+  <section class="page" data-page="spend"><div class="card" id="spend"></div></section>
+  <section class="page" data-page="agent"><div class="card" id="agent"></div></section>
+  <section class="page" data-page="settings"><div class="card" id="settings"></div></section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let session = sessionStorage.getItem('pastetalk-admin') || '';
+
+// Чужие имена и названия устройств попадают на страницу — вставлять их
+// как разметку нельзя, иначе имя ключа станет исполняемым кодом.
+function safe(value) {
+  return String(value == null ? '' : value).replace(/[&<>"']/g, (ch) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[ch]));
+}
+
+async function api(url, options = {}) {
+  const response = await fetch(url, {
+    ...options,
+    headers: { 'Content-Type': 'application/json', 'X-Admin-Session': session, ...(options.headers || {}) },
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || 'Сервер ответил ' + response.status);
+  return data;
+}
+
+$('enter').addEventListener('click', async () => {
+  $('gate-err').textContent = '';
+  try {
+    const data = await api('/admin/login', {
+      method: 'POST', body: JSON.stringify({ password: $('pass').value }),
+    });
+    session = data.session;
+    sessionStorage.setItem('pastetalk-admin', session);
+    $('gate').hidden = true;
+    if (data.mustChange) $('change').hidden = false;
+    else { $('app').hidden = false; refresh(); }
+  } catch (error) {
+    $('gate-err').textContent = error.message;
+  }
+});
+
+$('save-pass').addEventListener('click', async () => {
+  $('change-err').textContent = '';
+  try {
+    await api('/admin/password', { method: 'POST', body: JSON.stringify({ password: $('pass2').value }) });
+    $('change').hidden = true;
+    $('app').hidden = false;
+    refresh();
+  } catch (error) {
+    $('change-err').textContent = error.message;
+  }
+});
+
+document.querySelectorAll('nav button').forEach((button) => {
+  button.addEventListener('click', () => {
+    document.querySelectorAll('nav button')
+      .forEach((other) => other.setAttribute('aria-selected', String(other === button)));
+    document.querySelectorAll('.page')
+      .forEach((page) => page.classList.toggle('on', page.dataset.page === button.dataset.tab));
+    refresh();
+  });
+});
+
+$('make-key').addEventListener('click', async () => {
+  try {
+    const key = await api('/admin/api/keys', {
+      method: 'POST', body: JSON.stringify({ name: $('new-name').value }),
+    });
+    $('made').textContent = 'Код для «' + key.name + '»: ' + key.code;
+    $('new-name').value = '';
+    drawPeople();
+  } catch (error) {
+    $('app-err').textContent = error.message;
+  }
+});
+
+function when(ms) {
+  return ms ? new Date(ms).toLocaleString('ru') : '—';
+}
+
+async function drawPeople() {
+  const { people } = await api('/admin/api/people');
+  const rows = people.map((person) => {
+    const devices = person.devices.map((device) =>
+      (device.kind === 'telegram' ? 'Telegram' : 'Android') + ': ' + safe(device.title || '—')
+      + ' <button class="act" data-device="' + device.id + '">убрать</button>').join('<br>');
+    return '<tr>'
+      + '<td>' + safe(person.name) + (person.revoked ? ' <span class="note">(отозван)</span>' : '') + '</td>'
+      + '<td>' + safe(person.code) + '</td>'
+      + '<td>' + person.minutes + ' мин</td>'
+      + '<td>' + person.rub + ' ₽</td>'
+      + '<td>' + (devices || '—') + '</td>'
+      + '<td><button class="act" data-key="' + person.id + '">удалить</button></td>'
+      + '</tr>';
+  }).join('');
+
+  $('people').innerHTML = '<tr><th>Имя</th><th>Код</th><th>За месяц</th><th>Расход</th>'
+    + '<th>Устройства</th><th></th></tr>' + rows;
+
+  $('people').querySelectorAll('[data-key]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      await api('/admin/api/keys/' + button.dataset.key, { method: 'DELETE' });
+      drawPeople();
+    });
+  });
+  $('people').querySelectorAll('[data-device]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      await api('/admin/api/devices/' + button.dataset.device, { method: 'DELETE' });
+      drawPeople();
+    });
+  });
+}
+
+async function drawSpend() {
+  const data = await api('/admin/api/spend');
+  $('spend').innerHTML = '<h2>За этот месяц</h2>'
+    + '<p>Через свой компьютер: <span class="big">' + data.agentMinutes + ' мин</span> — бесплатно</p>'
+    + '<p>Через облако: <span class="big">' + data.cloudMinutes + ' мин</span> на <span class="big">'
+    + data.rub + ' ₽</span></p>'
+    + '<p class="note">' + safe(data.note) + '</p>'
+    + '<div class="wrap"><table><tr><th>Модель</th><th>Рублей</th><th>Обращений</th></tr>'
+    + data.byModel.map((row) => '<tr><td>' + safe(row.model) + '</td><td>' + row.rub
+      + '</td><td>' + row.count + '</td></tr>').join('')
+    + '</table></div>';
+}
+
+async function drawAgent() {
+  const data = await api('/admin/api/agent');
+  $('agent').innerHTML = '<h2>Домашний компьютер</h2>'
+    + '<p class="big">' + (data.online ? 'На связи' : 'Не на связи')
+    + (data.name ? ' — ' + safe(data.name) : '') + '</p>'
+    + '<p class="note">Последний отклик: ' + when(data.lastSeen)
+    + '. Задач сделано: ' + data.jobsDone + '</p>';
+}
+
+function field(label, key, value, hint) {
+  return '<label>' + label + (hint ? ' <span class="note">' + hint + '</span>' : '')
+    + '<input data-set="' + key + '" value="' + safe(value) + '"></label>';
+}
+
+async function drawSettings() {
+  const data = await api('/admin/api/settings');
+  const get = (key, fallback) => (data.settings[key] === undefined ? fallback : data.settings[key]);
+
+  $('settings').innerHTML = '<h2>Настройки</h2>'
+    + '<p class="note">Введённые ключи обратно не показываются — вместо них звёздочки. '
+    + 'Звёздочки при сохранении означают «не трогали».</p>'
+    + field('Ключ AITunnel', 'key.aitunnel', get('key.aitunnel', ''))
+    + field('Ключ OpenAI', 'key.openai', get('key.openai', ''))
+    + field('Ключ DeepSeek', 'key.deepseek', get('key.deepseek', ''))
+    + field('Цепочка распознавания', 'chain.stt', get('chain.stt', ['aitunnel']).join(', '),
+      '— через запятую; DeepSeek сюда нельзя, у него нет распознавания')
+    + field('Цепочка улучшения', 'chain.llm', get('chain.llm', ['deepseek']).join(', '), '— через запятую')
+    + field('Прайс-лист', 'prices', JSON.stringify(data.prices), '— JSON, ₽ за минуту и за млн токенов')
+    + '<button class="act" id="save-settings">Сохранить</button>'
+    + '<p class="err" id="settings-err"></p>';
+
+  $('save-settings').addEventListener('click', async () => {
+    $('settings-err').textContent = '';
+    const body = { settings: {} };
+    try {
+      document.querySelectorAll('[data-set]').forEach((input) => {
+        const key = input.dataset.set;
+        if (key === 'prices') { body.prices = JSON.parse(input.value); return; }
+        if (key.startsWith('chain.')) {
+          body.settings[key] = input.value.split(',').map((part) => part.trim()).filter(Boolean);
+          return;
+        }
+        body.settings[key] = input.value;
+      });
+      await api('/admin/api/settings', { method: 'POST', body: JSON.stringify(body) });
+      drawSettings();
+    } catch (error) {
+      $('settings-err').textContent = 'Не сохранилось: ' + error.message;
+    }
+  });
+}
+
+function refresh() {
+  $('app-err').textContent = '';
+  const active = document.querySelector('nav button[aria-selected="true"]').dataset.tab;
+  const draw = { people: drawPeople, spend: drawSpend, agent: drawAgent, settings: drawSettings }[active];
+  draw().catch((error) => { $('app-err').textContent = error.message; });
+}
+
+if (session) {
+  $('gate').hidden = true;
+  $('app').hidden = false;
+  refresh();
+}
+</script>
+</body>
+</html>
