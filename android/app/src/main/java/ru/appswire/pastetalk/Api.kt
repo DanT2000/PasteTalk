@@ -64,15 +64,22 @@ class Api(private val store: Store) {
         return token
     }
 
-    /** Звук на входе, текст на выходе. */
-    fun transcribe(audio: ByteArray): String {
+    /**
+     * Звук на входе, текст на выходе.
+     *
+     * Длительность шлём свою: m4a сервер измерить не умеет, а провайдер её
+     * возвращать не обязан — без неё расход считался бы нулём, и телефон,
+     * главный сценарий, был бы невидим в админке.
+     */
+    fun transcribe(audio: ByteArray, seconds: Int): String {
         val connection = open("/v1/transcribe", 300_000)
         connection.setRequestProperty("Authorization", "Bearer ${store.token}")
         val answer = send(
             connection,
             JSONObject()
                 .put("audio", Base64.encodeToString(audio, Base64.NO_WRAP))
-                .put("filename", "voice.m4a"),
+                .put("filename", "voice.m4a")
+                .put("seconds", seconds),
         )
         return answer.optString("text").trim()
     }

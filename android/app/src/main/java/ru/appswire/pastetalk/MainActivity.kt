@@ -38,6 +38,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -99,8 +100,19 @@ class MainActivity : ComponentActivity() {
 
     override fun onStop() {
         super.onStop()
-        // Ушли из приложения посреди записи — микрофон отпускаем.
-        voice.cancel()
+        // Ушли из приложения посреди записи — микрофон отпускаем. Экран об
+        // этом обязан узнать: иначе человек вернётся к красной кнопке и
+        // бегущему счётчику, нажмёт «закончить» и получит пустоту вместо
+        // двух минут речи.
+        if (voice.busy) {
+            voice.cancel()
+            onRecordingLost?.invoke()
+        }
+    }
+
+    companion object {
+        /** Кто-то на экране должен знать, что запись оборвалась. */
+        var onRecordingLost: (() -> Unit)? = null
     }
 }
 
@@ -234,6 +246,16 @@ private fun MainScreen(api: Api, voice: Voice, onSettings: () -> Unit, onRevoked
         ActivityResultContracts.RequestPermission(),
     ) { granted -> mayRecord = granted }
 
+    // Свернули приложение, повернули телефон, ответили на звонок — запись
+    // прервалась системой. Показываем это сразу, а не при нажатии.
+    DisposableEffect(Unit) {
+        MainActivity.onRecordingLost = {
+            stage = Stage.IDLE
+            note = "Запись прервалась — приложение уходило в фон"
+        }
+        onDispose { MainActivity.onRecordingLost = null }
+    }
+
     // Счётчик секунд: человек должен видеть, что запись идёт, а не гадать.
     LaunchedEffect(stage) {
         if (stage != Stage.RECORDING) return@LaunchedEffect
@@ -250,6 +272,8 @@ private fun MainScreen(api: Api, voice: Voice, onSettings: () -> Unit, onRevoked
     }
 
     fun finish() {
+        // Секунды запомним до сброса счётчика: сервер сам их не измерит.
+        val recorded = seconds
         val audio = voice.stop()
         if (audio.isEmpty()) {
             stage = Stage.IDLE
@@ -259,7 +283,7 @@ private fun MainScreen(api: Api, voice: Voice, onSettings: () -> Unit, onRevoked
         stage = Stage.THINKING
         note = ""
         scope.launch {
-            val outcome = runCatching { withContext(Dispatchers.IO) { api.transcribe(audio) } }
+            val outcome = runCatching { withContext(Dispatchers.IO) { api.transcribe(audio, recorded) } }
             stage = Stage.IDLE
             outcome.fold(
                 onSuccess = { fresh ->

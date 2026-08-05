@@ -18,6 +18,33 @@ const DEFAULT = 'admin';
 const MIN_LENGTH = 8;
 
 /**
+ * Пароль для первого входа откуда угодно.
+ *
+ * Заводской admin принимается только из домашней сети — но сервер часто
+ * стоит на чужом VPS, и тогда своей сети у человека нет вовсе: войти
+ * нечем, а сменить пароль без сессии нельзя. Поэтому при первом запуске
+ * сочиняется разовый пароль и печатается в журнал контейнера. Увидеть
+ * журнал может только тот, у кого есть доступ к серверу, — а значит он и
+ * есть владелец.
+ */
+function setupPassword() {
+  let saved = settings.get('admin.setup', null);
+  if (!saved) {
+    const words = ['ключ', 'ветер', 'камень', 'парус', 'берег', 'сокол', 'мост', 'зерно',
+      'лампа', 'корень', 'поле', 'снег', 'холм', 'река', 'кедр', 'якорь'];
+    saved = Array.from({ length: 3 }, () =>
+      words[crypto.randomInt(0, words.length)]).join('-');
+    settings.set('admin.setup', saved);
+    process.stdout.write(
+      `\n  Пароль для первого входа: ${saved}\n`
+      + '  Он действует, пока вы не назначите свой.'
+      + ' Из домашней сети работает и admin.\n\n',
+    );
+  }
+  return saved;
+}
+
+/**
  * scrypt намеренно медленный — в этом его смысл. Но синхронный вызов
  * занимает весь цикл событий: десяток запросов подряд, и сервер перестаёт
  * отвечать всем — висят диктовки, опрос бота, пинги агента. Поэтому здесь
@@ -45,11 +72,13 @@ async function change(next) {
   if (password.length < MIN_LENGTH) throw new Error(`Пароль короче ${MIN_LENGTH} знаков`);
   const salt = crypto.randomBytes(16).toString('hex');
   settings.set('admin.password', `${salt}:${await hash(password, salt)}`);
+  // Разовый больше не нужен: своим паролем человек уже владеет.
+  settings.set('admin.setup', '');
 }
 
 async function check(password) {
   const saved = settings.get('admin.password', null);
-  if (!saved) return String(password) === DEFAULT;
+  if (!saved) return String(password) === DEFAULT || String(password) === setupPassword();
   const [salt, digest] = String(saved).split(':');
   const given = Buffer.from(await hash(String(password), salt), 'hex');
   const known = Buffer.from(digest, 'hex');
@@ -127,6 +156,9 @@ async function allowed(password, address) {
   }
   misses.delete(address);
   if (changed()) return { ok: true, mustChange: false };
+  // Разовым паролем из журнала — откуда угодно: своей сети у человека на
+  // чужом VPS попросту нет.
+  if (String(password) === setupPassword()) return { ok: true, mustChange: true };
   if (!isLocal(address)) {
     return {
       ok: false,

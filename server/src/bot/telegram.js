@@ -81,6 +81,7 @@ async function loop(state) {
 
     for (const update of updates) {
       state.offset = update.update_id + 1;
+      settings.set('bot.offset', state.offset);
       if (state.stop) return;
       try {
         await handlers.handle(update, { tg, queue });
@@ -122,7 +123,10 @@ function sync() {
   if (live && live.token === token && live.route === route) return true;
 
   stop();
-  live = { token, route, offset: 0, stop: false };
+  // Смещение переживает перезапуск: Telegram подтверждает пачку только
+  // следующим запросом, и без памяти то же голосовое распозналось бы и
+  // оплатилось второй раз — после смены настроек или пересборки.
+  live = { token, route, offset: Number(settings.get('bot.offset', 0)) || 0, stop: false };
   loop(live).catch((error) => {
     process.stderr.write(`бот остановился: ${error.message}\n`);
   });

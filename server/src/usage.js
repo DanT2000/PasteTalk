@@ -36,9 +36,21 @@ function record(entry) {
   return Number(info.lastInsertRowid);
 }
 
+/**
+ * Начало месяца по времени сервера, а не по UTC.
+ *
+ * Владелец в UTC+3 иначе три часа после полуночи первого числа видел бы
+ * итог прошлого месяца. Часовой пояс задаётся переменной TZ у контейнера.
+ */
 function monthStart(now = Date.now()) {
   const date = new Date(now);
-  return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1);
+  return new Date(date.getFullYear(), date.getMonth(), 1).getTime();
+}
+
+/** Начало суток по времени сервера — для столбиков в админке. */
+function dayStart(at) {
+  const date = new Date(at);
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
 }
 
 function round(value) {
@@ -88,18 +100,29 @@ function daily(now = Date.now(), days = 30) {
 
   const rows = database.prepare(`
     SELECT
-      CAST(at / ? AS INTEGER) AS bucket,
+      at,
       SUM(CASE WHEN executed_by = 'agent' THEN audio_seconds ELSE 0 END) AS agent_seconds,
       SUM(CASE WHEN executed_by = 'cloud' THEN audio_seconds ELSE 0 END) AS cloud_seconds,
       SUM(stt_cost_rub + llm_cost_rub) AS rub
-    FROM usage WHERE at >= ? GROUP BY bucket
-  `).all(dayMs, since);
+    FROM usage WHERE at >= ? GROUP BY at
+  `).all(since);
 
-  const byBucket = new Map(rows.map((row) => [row.bucket, row]));
+  // Раскладываем по местным суткам: SQL о часовом поясе не знает, а
+  // граница в три часа ночи для человека выглядит ошибкой.
+  const byDay = new Map();
+  for (const row of rows) {
+    const key = dayStart(row.at);
+    const cell = byDay.get(key) || { agent_seconds: 0, cloud_seconds: 0, rub: 0 };
+    cell.agent_seconds += row.agent_seconds || 0;
+    cell.cloud_seconds += row.cloud_seconds || 0;
+    cell.rub += row.rub || 0;
+    byDay.set(key, cell);
+  }
+
   const out = [];
   for (let i = 0; i < days; i += 1) {
-    const at = since + i * dayMs;
-    const row = byBucket.get(Math.floor(at / dayMs));
+    const at = dayStart(since + i * dayMs);
+    const row = byDay.get(at);
     out.push({
       at,
       agentMinutes: round((row?.agent_seconds || 0) / 60),

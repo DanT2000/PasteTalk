@@ -109,12 +109,13 @@ function relaxKeysCode(database) {
       name          TEXT NOT NULL,
       code          TEXT,
       code_until    INTEGER,
+      may_serve     INTEGER NOT NULL DEFAULT 0,
       created_at    INTEGER NOT NULL,
       first_used_at INTEGER,
       revoked_at    INTEGER
     );
-    INSERT INTO keys_new (id, name, code, code_until, created_at, first_used_at, revoked_at)
-      SELECT id, name, code, code_until, created_at, first_used_at, revoked_at FROM keys;
+    INSERT INTO keys_new (id, name, code, code_until, may_serve, created_at, first_used_at, revoked_at)
+      SELECT id, name, code, code_until, may_serve, created_at, first_used_at, revoked_at FROM keys;
     DROP TABLE keys;
     ALTER TABLE keys_new RENAME TO keys;
     COMMIT;

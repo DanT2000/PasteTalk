@@ -127,11 +127,19 @@ class Relay extends EventEmitter {
       return;
     }
     if (data.type === 'denied') {
-      // Сервер отказал: код отозвали или база пересоздалась. Долбиться
-      // дальше бесполезно, а человек должен увидеть настоящую причину.
+      // Сервер отказал: право отозвали или агентом стал другой компьютер.
+      // Причину показываем, но пробовать не перестаём — владелец мог
+      // выключить право на минуту и включить обратно, и после этого ПК
+      // обязан вернуться сам, без перезапуска программы.
       log.warn(`сервер отказал: ${data.message}`);
-      this.disconnect();
-      this.setState('denied', data.message || 'Сервер не признал этот компьютер');
+      this.hint = data.message || 'Сервер не признал этот компьютер';
+      this.setState('denied', this.hint);
+      const socket = this.socket;
+      this.socket = null;
+      try { socket?.close(); } catch { /* уже закрыт */ }
+      // Долгая пауза: отказ — не мигание сети, долбиться незачем.
+      clearTimeout(this.timer);
+      this.timer = setTimeout(() => this.connect(), 60000);
       return;
     }
     if (data.type !== 'job') return;

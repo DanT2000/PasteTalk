@@ -40,6 +40,17 @@ async function start() {
   process.stdout.write(bot.sync() ? 'Telegram-бот опрашивает\n' : 'Telegram-бот выключен: токен не задан\n');
 }
 
+// Необработанная ошибка в обработчике сокета не должна класть сервер:
+// агент переподключается каждые две секунды и уронил бы его насмерть.
+process.on('uncaughtException', (error) => {
+  process.stderr.write(`Сбой, но продолжаем: ${error.stack || error.message}
+`);
+});
+process.on('unhandledRejection', (error) => {
+  process.stderr.write(`Обещание отвергнуто: ${error?.stack || error}
+`);
+});
+
 if (require.main === module) start();
 
 module.exports = { build, start };

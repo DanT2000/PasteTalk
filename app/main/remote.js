@@ -175,8 +175,18 @@ async function viaCloud(pcm) {
 }
 
 /** Распознать накопленный звук там, куда указано в настройках. */
+// Двадцать пять мегабайт — предел у OpenAI-совместимых шлюзов. Наш WAV
+// весит 1.92 МБ в минуту, то есть около тринадцати минут. Сказать об этом
+// надо ДО отправки: иначе провайдер ответит 413, а звук уже стёрт.
+const CLOUD_LIMIT_BYTES = 25 * 1024 * 1024 - 1024 * 1024;
+
 async function transcribe(pcm) {
   if (!pcm || pcm.length === 0) return { text: '', durationS: 0 };
+  if (where() === 'cloud' && pcm.length + 44 > CLOUD_LIMIT_BYTES) {
+    const minutes = Math.floor(CLOUD_LIMIT_BYTES / (SAMPLE_RATE * 2) / 60);
+    throw new Error(`Слишком длинная запись для облака — предел около ${minutes} минут.`
+      + ' Попробуйте короче или считайте на сервере PasteTalk');
+  }
   const started = Date.now();
   const result = where() === 'server' ? await viaServer(pcm) : await viaCloud(pcm);
   log.info(`распознано снаружи (${where()}) за ${Date.now() - started} мс, символов ${result.text.length}`);

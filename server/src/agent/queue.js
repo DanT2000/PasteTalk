@@ -116,6 +116,10 @@ async function transcribe({ audio, filename, language, clientSeconds }) {
   // выключен, ни когда задача на нём сорвалась.
   if (!spillAllowed()) return agent().done;
   if (!socket.online()) return cloud();
+  // Облака может не быть вовсе: человек настроил только домашний ПК.
+  // Тогда ждать его — единственный разумный путь, иначе диктовка гибнет
+  // при исправном компьютере, всего лишь занятом на полминуты.
+  if (!chains.sttChain().length) return agent().done;
   return withSpill(agent, cloud);
 }
 
@@ -136,6 +140,7 @@ async function improve({ text, mode }) {
 
   if (!spillAllowed()) return agent().done;
   if (!socket.online()) return cloud();
+  if (!chains.llmChain().length) return agent().done;
   return withSpill(agent, cloud);
 }
 

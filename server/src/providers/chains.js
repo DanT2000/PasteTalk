@@ -12,7 +12,9 @@ const settings = require('../settings');
 
 class AllFailed extends Error {
   constructor(what, causes) {
-    super(`Связи с ${what} нет`);
+    // Одну причину показываем человеку: чаще всего провайдер один, и
+    // «не задан ключ AITunnel» куда полезнее, чем «связи нет».
+    super(causes.length === 1 ? causes[0].replace(/^[^:]+: /, '') : `Связи с ${what} нет`);
     this.name = 'AllFailed';
     this.causes = causes;
   }
@@ -27,6 +29,11 @@ async function run(providerIds, attempt, what = 'облаком') {
       causes.push(`${id}: ${error.message}`);
     }
   }
+  // Причины обязаны быть видны: без них владелец, забывший вписать ключ,
+  // читает «связи нет» и лезет чинить сеть и прокси.
+  process.stderr.write(causes.length
+    ? `Не вышло с ${what}: ${causes.join('; ')}\n`
+    : `Не вышло с ${what}: список провайдеров пуст\n`);
   throw new AllFailed(what, causes);
 }
 
