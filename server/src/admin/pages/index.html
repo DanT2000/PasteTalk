@@ -6,87 +6,182 @@
 <link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="%23E9A72C" stroke-width="2" stroke-linecap="round"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v4"/></svg>'>
 <title>PasteTalk — админка</title>
 <style>
-/* Всё в rem: страницу читает человек со слабым зрением, и увеличение
-   шрифта в браузере обязано растягивать вёрстку целиком, а не рвать её. */
-:root { color-scheme: light dark; }
+/* Те же цвета, что на витрине и в приложении: панель должна выглядеть
+   продолжением программы, а не чужой страницей.
+   Всё в rem — увеличение шрифта обязано растягивать вёрстку целиком. */
+:root {
+  --bg: #FFFFFF; --fg: #1B1B1F; --muted: #5B5B66; --line: #EDEDF1;
+  --card: #F7F7FA; --accent: #B87400; --on-accent: #FFFFFF;
+  --local: #2F7D53; --cloud: #B87400; --bad: #C0392B;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1B1B1F; --fg: #F4F4F7; --muted: #A0A0AC; --line: #2C2C33;
+    --card: #232329; --accent: #E9A72C; --on-accent: #1B1B1F;
+    --local: #63C48D; --cloud: #E9A72C; --bad: #F2686C;
+  }
+}
 * { box-sizing: border-box; }
 body {
-  margin: 0 auto; padding: 1rem; max-width: 62rem;
-  font: 1rem/1.5 system-ui, -apple-system, Segoe UI, sans-serif;
+  margin: 0; background: var(--bg); color: var(--fg);
+  font: 1rem/1.55 system-ui, -apple-system, Segoe UI, sans-serif;
 }
-h1 { font-size: 1.5rem; margin: 0 0 1rem; }
-h2 { font-size: 1.125rem; margin: 0 0 0.75rem; }
-nav { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
+.wrap { max-width: 62rem; margin: 0 auto; padding: 1.5rem 1.25rem 4rem; }
+
+.top { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+.top svg.mark { width: 1.75rem; height: 1.75rem; color: var(--accent); flex: none; }
+.top b { font-size: 1.25rem; }
+.top .grow { flex: 1 1 auto; }
+.pill {
+  font-size: 0.8125rem; padding: 0.25rem 0.7rem; border-radius: 999px;
+  border: 1px solid var(--line); color: var(--muted);
+}
+.pill.on { color: var(--local); border-color: currentColor; }
+
+nav { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 1.5rem; }
 nav button {
-  font: inherit; padding: 0.5rem 1rem; border: 1px solid; border-radius: 0.5rem;
-  background: transparent; color: inherit; cursor: pointer;
+  font: inherit; padding: 0.5rem 1rem; border: 1px solid var(--line);
+  border-radius: 0.6rem; background: transparent; color: var(--muted); cursor: pointer;
 }
-nav button[aria-selected="true"] { font-weight: 700; text-decoration: underline; }
-.card { border: 1px solid; border-radius: 0.75rem; padding: 1rem; margin-bottom: 1rem; }
+nav button:hover { color: var(--fg); }
+nav button[aria-selected="true"] {
+  background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 600;
+}
+
+.card {
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: 0.9rem; padding: 1.25rem; margin-bottom: 1rem;
+}
+.card h2 { font-size: 1.0625rem; margin: 0 0 0.75rem; }
+.card h3 { font-size: 0.9375rem; margin: 1.5rem 0 0.75rem; color: var(--muted); font-weight: 600; }
+.card h3:first-child { margin-top: 0; }
 .page { display: none; }
 .page.on { display: block; }
-.wrap { overflow-x: auto; }
-table { width: 100%; border-collapse: collapse; min-width: 34rem; }
-th, td { text-align: left; padding: 0.5rem; border-bottom: 1px solid; vertical-align: top; }
-label { display: block; margin-bottom: 0.75rem; }
-input { font: inherit; padding: 0.4rem; width: 100%; max-width: 26rem; display: block; margin-top: 0.25rem; }
-button.act { font: inherit; padding: 0.4rem 0.75rem; cursor: pointer; margin-right: 0.5rem; }
-.note { opacity: 0.75; font-size: 0.875rem; }
-.err { color: #c0392b; font-weight: 700; }
-.big { font-size: 1.25rem; font-weight: 700; }
+
+.tiles { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); margin-bottom: 1rem; }
+.tile { background: var(--card); border: 1px solid var(--line); border-radius: 0.9rem; padding: 1rem 1.25rem; }
+.tile .label { font-size: 0.8125rem; color: var(--muted); }
+.tile .value { font-size: 1.75rem; font-weight: 700; line-height: 1.2; margin-top: 0.25rem; }
+.tile .small { font-size: 1.0625rem; }
+.tile .under { font-size: 0.8125rem; color: var(--muted); margin-top: 0.25rem; }
+.tile.local .value { color: var(--local); }
+.tile.cloud .value { color: var(--cloud); }
+
+.chart { width: 100%; height: 10rem; display: block; }
+.legend { display: flex; gap: 1.25rem; flex-wrap: wrap; font-size: 0.8125rem; color: var(--muted); margin-top: 0.75rem; }
+.legend i { display: inline-block; width: 0.75rem; height: 0.75rem; border-radius: 0.2rem; margin-right: 0.4rem; vertical-align: -1px; }
+
+.bars { display: grid; gap: 0.6rem; }
+.bar-row { display: grid; grid-template-columns: minmax(6rem, 12rem) 1fr auto; gap: 0.75rem; align-items: center; }
+.bar-track { display: block; background: var(--line); border-radius: 999px; height: 0.6rem; overflow: hidden; }
+.bar-fill { display: block; background: var(--accent); height: 100%; border-radius: 999px; }
+.bar-name, .bar-val { font-size: 0.875rem; }
+.bar-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bar-val { color: var(--muted); white-space: nowrap; }
+
+.wrap-x { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; min-width: 44rem; }
+td.num, th.num { white-space: nowrap; }
+th, td { text-align: left; padding: 0.6rem 0.5rem; border-bottom: 1px solid var(--line); vertical-align: middle; }
+th { font-size: 0.8125rem; color: var(--muted); font-weight: 600; }
+tr:last-child td { border-bottom: none; }
+
+.code {
+  font: 700 1.25rem/1 ui-monospace, Menlo, Consolas, monospace;
+  letter-spacing: 0.12em; color: var(--accent);
+}
+
+label.field { display: block; margin-bottom: 1rem; font-size: 0.875rem; color: var(--muted); }
+input, select {
+  font: inherit; color: var(--fg); background: var(--bg);
+  padding: 0.5rem 0.6rem; border: 1px solid var(--line); border-radius: 0.5rem;
+}
+label.field input, label.field select { width: 100%; max-width: 28rem; display: block; margin-top: 0.3rem; }
+label.field .why { display: block; margin-top: 0.3rem; font-size: 0.8125rem; }
+.btn {
+  font: inherit; padding: 0.5rem 1rem; border-radius: 0.5rem; cursor: pointer;
+  border: 1px solid var(--accent); background: var(--accent); color: var(--on-accent); font-weight: 600;
+}
+.btn.ghost { background: transparent; color: var(--fg); border-color: var(--line); font-weight: 400; }
+.btn.tiny { padding: 0.25rem 0.6rem; font-size: 0.8125rem; }
+.row-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+.muted { color: var(--muted); font-size: 0.875rem; }
+.err { color: var(--bad); font-weight: 600; }
+.ok { color: var(--local); font-weight: 600; }
+.empty { color: var(--muted); text-align: center; padding: 2rem 1rem; }
+.devices { display: grid; gap: 0.35rem; font-size: 0.875rem; }
 </style>
 </head>
 <body>
+<div class="wrap">
 
 <div id="gate">
-  <h1>PasteTalk</h1>
+  <div class="top">
+    <svg class="mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+      <rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v4"/>
+    </svg>
+    <b>PasteTalk</b>
+  </div>
   <div class="card">
-    <label>Пароль<input type="password" id="pass" autocomplete="current-password"></label>
-    <button class="act" id="enter">Войти</button>
+    <h2>Вход в панель</h2>
+    <label class="field">Пароль<input type="password" id="pass" autocomplete="current-password"></label>
+    <button class="btn" id="enter">Войти</button>
     <p class="err" id="gate-err"></p>
   </div>
 </div>
 
 <div id="change" hidden>
-  <h1>Смените пароль</h1>
+  <div class="top">
+    <svg class="mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+      <rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v4"/>
+    </svg>
+    <b>PasteTalk</b>
+  </div>
   <div class="card">
-    <p class="note">Пока пароль не сменён, панель работает только из домашней сети.</p>
-    <label>Новый пароль<input type="password" id="pass2" autocomplete="new-password"></label>
-    <button class="act" id="save-pass">Сохранить</button>
+    <h2>Придумайте пароль</h2>
+    <p class="muted">Пока пароль не сменён, панель работает только из домашней сети. Она раздаёт коды доступа и хранит ключи провайдеров — пароля <b>admin</b> для этого мало.</p>
+    <label class="field">Новый пароль<input type="password" id="pass2" autocomplete="new-password"></label>
+    <button class="btn" id="save-pass">Сохранить и войти</button>
     <p class="err" id="change-err"></p>
   </div>
 </div>
 
 <main id="app" hidden>
-  <h1>PasteTalk</h1>
+  <div class="top">
+    <svg class="mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+      <rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v4"/>
+    </svg>
+    <b>PasteTalk</b>
+    <span class="grow"></span>
+    <span class="pill" id="pill-agent">компьютер: …</span>
+    <span class="pill" id="pill-bot">бот: …</span>
+  </div>
+
   <nav>
-    <button data-tab="people" aria-selected="true">Люди</button>
-    <button data-tab="spend" aria-selected="false">Расход</button>
-    <button data-tab="agent" aria-selected="false">ПК</button>
+    <button data-tab="spend" aria-selected="true">Расход</button>
+    <button data-tab="people" aria-selected="false">Люди</button>
+    <button data-tab="agent" aria-selected="false">Компьютер</button>
     <button data-tab="settings" aria-selected="false">Настройки</button>
   </nav>
   <p class="err" id="app-err"></p>
 
-  <section class="page on" data-page="people">
-    <div class="card">
-      <label>Имя нового ключа<input id="new-name" placeholder="Мама"></label>
-      <button class="act" id="make-key">Выдать код</button>
-      <p id="made"></p>
-    </div>
-    <div class="card wrap"><table id="people"></table></div>
-  </section>
-
-  <section class="page" data-page="spend"><div class="card" id="spend"></div></section>
-  <section class="page" data-page="agent"><div class="card" id="agent"></div></section>
-  <section class="page" data-page="settings"><div class="card" id="settings"></div></section>
+  <section class="page on" data-page="spend"><div id="spend"></div></section>
+  <section class="page" data-page="people"><div id="people"></div></section>
+  <section class="page" data-page="agent"><div id="agent"></div></section>
+  <section class="page" data-page="settings"><div id="settings"></div></section>
 </main>
 
+</div>
 <script>
+'use strict';
+
 const $ = (id) => document.getElementById(id);
 let session = sessionStorage.getItem('pastetalk-admin') || '';
 
-// Чужие имена и названия устройств попадают на страницу — вставлять их
-// как разметку нельзя, иначе имя ключа станет исполняемым кодом.
+/**
+ * Чужие имена и названия устройств попадают на страницу. Вставлять их как
+ * разметку нельзя: имя профиля стало бы исполняемым кодом на экране владельца.
+ */
 function safe(value) {
   return String(value == null ? '' : value).replace(/[&<>"']/g, (ch) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -99,25 +194,67 @@ async function api(url, options = {}) {
     headers: { 'Content-Type': 'application/json', 'X-Admin-Session': session, ...(options.headers || {}) },
   });
   const data = await response.json().catch(() => ({}));
+  if (response.status === 401) {
+    // Сессия кончилась — вернуть на вход, а не делать вид, что всё хорошо.
+    sessionStorage.removeItem('pastetalk-admin');
+    session = '';
+    $('app').hidden = true;
+    $('gate').hidden = false;
+    $('gate-err').textContent = 'Сессия истекла, войдите заново';
+    throw new Error('Нужно войти заново');
+  }
   if (!response.ok) throw new Error(data.error || 'Сервер ответил ' + response.status);
   return data;
 }
 
-$('enter').addEventListener('click', async () => {
+function money(value) {
+  const n = Number(value || 0);
+  return (n === 0 ? '0' : n.toFixed(2).replace(/\.?0+$/, '')) + ' ₽';
+}
+
+function minutes(value) {
+  const n = Math.round(Number(value || 0));
+  if (n < 60) return n + ' мин';
+  const hours = Math.floor(n / 60);
+  const rest = n % 60;
+  return rest ? hours + ' ч ' + rest + ' мин' : hours + ' ч';
+}
+
+function when(ms) {
+  return ms ? new Date(ms).toLocaleString('ru') : '—';
+}
+
+/** Сколько осталось коду жить, словами. */
+function left(until) {
+  const ms = (until || 0) - Date.now();
+  if (ms <= 0) return '';
+  const min = Math.floor(ms / 60000);
+  const sec = Math.floor((ms % 60000) / 1000);
+  return min > 0 ? min + ' мин ' + sec + ' с' : sec + ' с';
+}
+
+// ---------- вход ----------
+
+async function enter(password) {
   $('gate-err').textContent = '';
   try {
-    const data = await api('/admin/login', {
-      method: 'POST', body: JSON.stringify({ password: $('pass').value }),
-    });
+    const data = await api('/admin/login', { method: 'POST', body: JSON.stringify({ password }) });
     session = data.session;
     sessionStorage.setItem('pastetalk-admin', session);
     $('gate').hidden = true;
-    if (data.mustChange) $('change').hidden = false;
-    else { $('app').hidden = false; refresh(); }
+    if (data.mustChange) {
+      $('change').hidden = false;
+    } else {
+      $('app').hidden = false;
+      refresh();
+    }
   } catch (error) {
     $('gate-err').textContent = error.message;
   }
-});
+}
+
+$('enter').addEventListener('click', () => enter($('pass').value));
+$('pass').addEventListener('keydown', (event) => { if (event.key === 'Enter') enter($('pass').value); });
 
 $('save-pass').addEventListener('click', async () => {
   $('change-err').textContent = '';
@@ -131,6 +268,8 @@ $('save-pass').addEventListener('click', async () => {
   }
 });
 
+// ---------- вкладки ----------
+
 document.querySelectorAll('nav button').forEach((button) => {
   button.addEventListener('click', () => {
     document.querySelectorAll('nav button')
@@ -141,46 +280,174 @@ document.querySelectorAll('nav button').forEach((button) => {
   });
 });
 
-$('make-key').addEventListener('click', async () => {
-  try {
-    const key = await api('/admin/api/keys', {
-      method: 'POST', body: JSON.stringify({ name: $('new-name').value }),
-    });
-    $('made').textContent = 'Код для «' + key.name + '»: ' + key.code;
-    $('new-name').value = '';
-    drawPeople();
-  } catch (error) {
-    $('app-err').textContent = error.message;
-  }
-});
+// ---------- расход ----------
+
+/**
+ * Столбики по дням. Рисуем сами: тридцать прямоугольников не стоят
+ * зависимости, которая ещё и не загрузится, если сервер закрыт от сети.
+ */
+function chart(days) {
+  if (!days.length) return '<p class="muted">Пока не о чем рисовать.</p>';
+  const top = Math.max(0.1, ...days.map((d) => d.agentMinutes + d.cloudMinutes));
+  const step = 100 / days.length;
+  const width = step * 0.7;
+
+  const columns = days.map((day, index) => {
+    const x = index * step + (step - width) / 2;
+    const agent = (day.agentMinutes / top) * 100;
+    const cloud = (day.cloudMinutes / top) * 100;
+    const title = new Date(day.at).toLocaleDateString('ru')
+      + ': свой ' + day.agentMinutes + ' мин, облако ' + day.cloudMinutes + ' мин';
+    let out = '<g><title>' + safe(title) + '</title>';
+    if (cloud > 0) {
+      out += '<rect x="' + x + '" y="' + (100 - agent - cloud) + '" width="' + width
+        + '" height="' + cloud + '" fill="var(--cloud)"/>';
+    }
+    if (agent > 0) {
+      out += '<rect x="' + x + '" y="' + (100 - agent) + '" width="' + width
+        + '" height="' + agent + '" fill="var(--local)"/>';
+    }
+    return out + '</g>';
+  }).join('');
+
+  return '<svg class="chart" viewBox="0 0 100 100" preserveAspectRatio="none" role="img"'
+    + ' aria-label="Минуты диктовки по дням за последний месяц">' + columns + '</svg>';
+}
+
+function modelBars(byModel) {
+  if (!byModel.length) return '<p class="muted">Облаком пока не пользовались — платить не за что.</p>';
+  const top = Math.max(...byModel.map((row) => row.rub), 0.01);
+  return '<div class="bars">' + byModel.map((row) =>
+    '<div class="bar-row">'
+    + '<span class="bar-name" title="' + safe(row.model) + '">' + safe(row.model) + '</span>'
+    + '<span class="bar-track"><span class="bar-fill" style="width:'
+      + Math.max(2, (row.rub / top) * 100) + '%"></span></span>'
+    + '<span class="bar-val">' + money(row.rub) + ' · ' + row.count + ' обр.</span>'
+    + '</div>').join('') + '</div>';
+}
+
+async function drawSpend() {
+  const data = await api('/admin/api/spend');
+  const total = data.agentMinutes + data.cloudMinutes;
+  const saved = total > 0 ? Math.round((data.agentMinutes / total) * 100) : 0;
+
+  $('spend').innerHTML =
+    '<div class="tiles">'
+    + '<div class="tile local"><div class="label">Через свой компьютер</div>'
+      + '<div class="value">' + minutes(data.agentMinutes) + '</div>'
+      + '<div class="under">бесплатно</div></div>'
+    + '<div class="tile cloud"><div class="label">Через облако</div>'
+      + '<div class="value">' + minutes(data.cloudMinutes) + '</div>'
+      + '<div class="under">' + money(data.rub) + '</div></div>'
+    + '<div class="tile"><div class="label">Своим железом</div>'
+      + '<div class="value">' + saved + ' %</div>'
+      + '<div class="under">от всей диктовки за месяц</div></div>'
+    + '</div>'
+
+    + '<div class="card"><h2>По дням</h2>' + chart(data.daily || [])
+    + '<div class="legend">'
+      + '<span><i style="background:var(--local)"></i>свой компьютер</span>'
+      + '<span><i style="background:var(--cloud)"></i>облако</span>'
+      + '<span>за последние 30 дней</span>'
+    + '</div></div>'
+
+    + '<div class="card"><h2>По моделям за месяц</h2>' + modelBars(data.byModel || [])
+    + '<p class="muted" style="margin:1rem 0 0">' + safe(data.note) + '</p></div>';
+}
+
+// ---------- люди ----------
 
 const DEVICE_WORDS = { telegram: 'Telegram', android: 'Телефон', desktop: 'Компьютер' };
 
-function when(ms) {
-  return ms ? new Date(ms).toLocaleString('ru') : '—';
+function codeCell(person) {
+  if (person.revoked) return '<span class="muted">—</span>';
+  const alive = person.code && person.codeUntil > Date.now();
+  if (alive) {
+    return '<div><span class="code">' + safe(person.code) + '</span></div>'
+      + '<div class="muted" data-until="' + person.codeUntil + '">действует ещё ' + left(person.codeUntil) + '</div>';
+  }
+  return '<span class="muted">' + (person.devices.length ? 'использован' : 'устарел') + '</span>';
 }
 
 async function drawPeople() {
   const { people } = await api('/admin/api/people');
+
   const rows = people.map((person) => {
-    const devices = person.devices.map((device) =>
-      DEVICE_WORDS[device.kind] + ': ' + safe(device.title || '—')
-      + ' <button class="act" data-device="' + device.id + '">убрать</button>').join('<br>');
+    const devices = person.devices.length
+      ? '<div class="devices">' + person.devices.map((device) =>
+          '<div class="row-actions"><span>' + (DEVICE_WORDS[device.kind] || safe(device.kind))
+          + ': ' + safe(device.title || '—') + '</span>'
+          + '<button class="btn ghost tiny" data-device="' + device.id + '">отвязать</button></div>').join('')
+        + '</div>'
+      : '<span class="muted">никто ещё не вошёл</span>';
+
     return '<tr>'
-      + '<td>' + safe(person.name) + (person.revoked ? ' <span class="note">(отозван)</span>' : '') + '</td>'
-      + '<td>' + safe(person.code) + '</td>'
-      + '<td>' + person.minutes + ' мин</td>'
-      + '<td>' + person.rub + ' ₽</td>'
-      + '<td>' + (devices || '—') + '</td>'
-      + '<td><button class="act" data-key="' + person.id + '">удалить</button></td>'
+      + '<td><div>' + safe(person.name) + (person.revoked ? ' <span class="muted">(отозван)</span>' : '') + '</div>'
+        + '<td>' + codeCell(person) + '</td>'
+      + '<td class="num">' + minutes(person.minutes) + '</td>'
+      + '<td class="num">' + money(person.rub) + '</td>'
+      + '<td>' + devices + '</td>'
+      + '<td><div class="row-actions">'
+        + (person.revoked ? '' : '<button class="btn ghost tiny" data-code="' + person.id + '">новый код</button>'
+          + '<button class="btn ghost tiny" data-bind="' + person.id + '">телеграм вручную</button>'
+          + '<button class="btn ghost tiny" data-key="' + person.id + '">удалить</button>')
+      + '</div></td>'
       + '</tr>';
   }).join('');
 
-  $('people').innerHTML = '<tr><th>Имя</th><th>Код</th><th>За месяц</th><th>Расход</th>'
-    + '<th>Устройства</th><th></th></tr>' + rows;
+  $('people').innerHTML =
+    '<div class="card"><h2>Выдать доступ</h2>'
+    + '<p class="muted">Код одноразовый: сработал — исчез. Одно устройство — один профиль, чтобы потом было видно, откуда пришёл доступ. Нужны телефон и телеграм — заведите «Мама, телефон» и «Мама, телеграм».</p>'
+    + '<div class="row-actions" style="margin-top:1rem">'
+      + '<input id="new-name" placeholder="Мама, телефон" style="flex:1 1 12rem;max-width:20rem">'
+      + '<select id="new-ttl">'
+        + '<option value="600000">действует 10 минут</option>'
+        + '<option value="1800000">30 минут</option>'
+        + '<option value="3600000">1 час</option>'
+        + '<option value="86400000">сутки</option>'
+      + '</select>'
+      + '<button class="btn" id="make-key">Выдать код</button>'
+    + '</div>'
+    + '<p id="made" class="ok" style="margin-bottom:0"></p></div>'
+
+    + '<div class="card"><h2>Кто пользуется</h2>'
+    + (people.length
+      ? '<div class="wrap-x"><table><tr><th>Профиль</th><th>Код</th><th class="num">За месяц</th><th class="num">Расход</th>'
+        + '<th>Устройства</th><th></th></tr>' + rows + '</table></div>'
+      : '<p class="empty">Пока никого. Выдайте первый код выше.</p>')
+    + '</div>';
+
+  $('make-key').addEventListener('click', async () => {
+    try {
+      const key = await api('/admin/api/keys', {
+        method: 'POST',
+        body: JSON.stringify({ name: $('new-name').value, ttlMs: Number($('new-ttl').value) }),
+      });
+      await drawPeople();
+      $('made').textContent = 'Код для «' + key.name + '»: ' + key.code
+        + ' — передайте его до конца срока, второй раз он не покажется';
+    } catch (error) {
+      $('app-err').textContent = error.message;
+    }
+  });
+
+  $('people').querySelectorAll('[data-code]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      try {
+        const key = await api('/admin/api/keys/' + button.dataset.code + '/code', {
+          method: 'POST', body: JSON.stringify({ ttlMs: Number($('new-ttl').value) }),
+        });
+        await drawPeople();
+        $('made').textContent = 'Новый код для «' + key.name + '»: ' + key.code;
+      } catch (error) {
+        $('app-err').textContent = error.message;
+      }
+    });
+  });
 
   $('people').querySelectorAll('[data-key]').forEach((button) => {
     button.addEventListener('click', async () => {
+      if (!confirm('Удалить профиль? Все его устройства перестанут работать сразу.')) return;
       await api('/admin/api/keys/' + button.dataset.key, { method: 'DELETE' });
       drawPeople();
     });
@@ -191,80 +458,258 @@ async function drawPeople() {
       drawPeople();
     });
   });
+  $('people').querySelectorAll('[data-bind]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const id = prompt('Номер человека в Telegram. Он узнаёт его командой /id в самом боте.');
+      if (!id) return;
+      try {
+        await api('/admin/api/keys/' + button.dataset.bind + '/bind', {
+          method: 'POST', body: JSON.stringify({ externalId: id.trim(), title: '' }),
+        });
+        drawPeople();
+      } catch (error) {
+        $('app-err').textContent = error.message;
+      }
+    });
+  });
 }
 
-async function drawSpend() {
-  const data = await api('/admin/api/spend');
-  $('spend').innerHTML = '<h2>За этот месяц</h2>'
-    + '<p>Через свой компьютер: <span class="big">' + data.agentMinutes + ' мин</span> — бесплатно</p>'
-    + '<p>Через облако: <span class="big">' + data.cloudMinutes + ' мин</span> на <span class="big">'
-    + data.rub + ' ₽</span></p>'
-    + '<p class="note">' + safe(data.note) + '</p>'
-    + '<div class="wrap"><table><tr><th>Модель</th><th>Рублей</th><th>Обращений</th></tr>'
-    + data.byModel.map((row) => '<tr><td>' + safe(row.model) + '</td><td>' + row.rub
-      + '</td><td>' + row.count + '</td></tr>').join('')
-    + '</table></div>';
-}
+// Обратный отсчёт у живых кодов: без него владелец не понимает, успевает
+// он передать код или уже нет.
+setInterval(() => {
+  document.querySelectorAll('[data-until]').forEach((node) => {
+    const rest = left(Number(node.dataset.until));
+    node.textContent = rest ? 'действует ещё ' + rest : 'код устарел';
+  });
+}, 1000);
+
+// ---------- компьютер ----------
 
 async function drawAgent() {
   const data = await api('/admin/api/agent');
-  $('agent').innerHTML = '<h2>Домашний компьютер</h2>'
-    + '<p class="big">' + (data.online ? 'На связи' : 'Не на связи')
-    + (data.name ? ' — ' + safe(data.name) : '') + '</p>'
-    + '<p class="note">Последний отклик: ' + when(data.lastSeen)
-    + '. Задач сделано: ' + data.jobsDone + '</p>';
+  $('agent').innerHTML =
+    '<div class="tiles">'
+    + '<div class="tile ' + (data.online ? 'local' : '') + '"><div class="label">Состояние</div>'
+      + '<div class="value">' + (data.online ? 'На связи' : 'Не на связи') + '</div>'
+      + '<div class="under">' + (data.name ? safe(data.name) : 'ещё не подключался') + '</div></div>'
+    + '<div class="tile"><div class="label">Задач выполнено</div>'
+      + '<div class="value">' + data.jobsDone + '</div>'
+      + '<div class="under">с первого подключения</div></div>'
+    + '<div class="tile"><div class="label">Последний отклик</div>'
+      + '<div class="value small">' + when(data.lastSeen) + '</div></div>'
+    + '</div>'
+
+    + '<div class="card"><h2>Проверка связи</h2>'
+    + '<p class="muted">Соединение может числиться живым, когда сеть уже отвалилась. Пинг спрашивает компьютер по-настоящему и ждёт ответа.</p>'
+    + '<div class="row-actions" style="margin-top:1rem">'
+      + '<button class="btn" id="ping">Пинг</button><span id="ping-res" class="muted"></span>'
+    + '</div></div>'
+
+    + '<div class="card"><h2>Как подключить компьютер</h2>'
+    + '<p class="muted">На компьютере с видеокартой: PasteTalk → Настройки → Интеграция. Укажите адрес этого сервера, введите код доступа из раздела «Люди» и включите «Работать как агент сервера».</p>'
+    + '<p class="muted">Пока компьютер на связи, диктовка считается на нём и не стоит ничего. Выключен — задачи уходят в облако.</p></div>';
+
+  $('ping').addEventListener('click', async () => {
+    const out = $('ping-res');
+    out.className = 'muted';
+    out.textContent = 'Спрашиваю…';
+    $('ping').disabled = true;
+    try {
+      const result = await api('/admin/api/agent/ping', { method: 'POST' });
+      out.className = result.ok ? 'ok' : 'err';
+      out.textContent = result.ok ? 'Ответил за ' + result.ms + ' мс' : result.error;
+    } catch (error) {
+      out.className = 'err';
+      out.textContent = error.message;
+    }
+    $('ping').disabled = false;
+    badges();
+  });
 }
 
-function field(label, key, value, hint) {
-  return '<label>' + label + (hint ? ' <span class="note">' + hint + '</span>' : '')
-    + '<input data-set="' + key + '" value="' + safe(value) + '"></label>';
+// ---------- настройки ----------
+
+let priceTable = { stt: {}, llm: {} };
+
+function priceRows() {
+  const stt = Object.entries(priceTable.stt || {}).map(([model, rub], i) =>
+    '<tr>'
+    + '<td><input data-stt-name="' + i + '" value="' + safe(model) + '"></td>'
+    + '<td><input data-stt-val="' + i + '" value="' + rub + '" type="number" step="0.01" min="0" style="max-width:7rem"></td>'
+    + '<td><button class="btn ghost tiny" data-drop-stt="' + safe(model) + '">убрать</button></td>'
+    + '</tr>').join('');
+
+  const llm = Object.entries(priceTable.llm || {}).map(([model, row], i) =>
+    '<tr>'
+    + '<td><input data-llm-name="' + i + '" value="' + safe(model) + '"></td>'
+    + '<td><input data-llm-in="' + i + '" value="' + row.in + '" type="number" step="1" min="0" style="max-width:6rem"></td>'
+    + '<td><input data-llm-out="' + i + '" value="' + row.out + '" type="number" step="1" min="0" style="max-width:6rem"></td>'
+    + '<td><button class="btn ghost tiny" data-drop-llm="' + safe(model) + '">убрать</button></td>'
+    + '</tr>').join('');
+
+  return '<h3>Распознавание речи — рублей за минуту звука</h3>'
+    + '<div class="wrap-x"><table><tr><th>Модель</th><th>₽ / мин</th><th></th></tr>'
+    + (stt || '<tr><td colspan="3" class="muted">пусто</td></tr>') + '</table></div>'
+    + '<div class="row-actions" style="margin-top:0.75rem"><button class="btn ghost tiny" id="add-stt">Добавить модель</button></div>'
+    + '<h3>Улучшение текста — рублей за миллион токенов</h3>'
+    + '<div class="wrap-x"><table><tr><th>Модель</th><th>₽ вход</th><th>₽ выход</th><th></th></tr>'
+    + (llm || '<tr><td colspan="4" class="muted">пусто</td></tr>') + '</table></div>'
+    + '<div class="row-actions" style="margin-top:0.75rem"><button class="btn ghost tiny" id="add-llm">Добавить модель</button></div>';
+}
+
+/** Собрать прайс из полей. Имена моделей тоже правятся, поэтому идём по номерам. */
+function readPrices() {
+  const table = { stt: {}, llm: {} };
+  document.querySelectorAll('[data-stt-name]').forEach((input) => {
+    const model = input.value.trim();
+    if (!model) return;
+    const value = document.querySelector('[data-stt-val="' + input.dataset.sttName + '"]');
+    table.stt[model] = Number(value ? value.value : 0) || 0;
+  });
+  document.querySelectorAll('[data-llm-name]').forEach((input) => {
+    const model = input.value.trim();
+    if (!model) return;
+    const i = input.dataset.llmName;
+    table.llm[model] = {
+      in: Number(document.querySelector('[data-llm-in="' + i + '"]')?.value || 0) || 0,
+      out: Number(document.querySelector('[data-llm-out="' + i + '"]')?.value || 0) || 0,
+    };
+  });
+  return table;
+}
+
+function redrawPrices() {
+  $('prices').innerHTML = priceRows();
+  bindPriceButtons();
+}
+
+function bindPriceButtons() {
+  $('add-stt')?.addEventListener('click', () => {
+    priceTable = readPrices();
+    priceTable.stt['новая-модель'] = 0;
+    redrawPrices();
+  });
+  $('add-llm')?.addEventListener('click', () => {
+    priceTable = readPrices();
+    priceTable.llm['новая-модель'] = { in: 0, out: 0 };
+    redrawPrices();
+  });
+  document.querySelectorAll('[data-drop-stt]').forEach((button) => {
+    button.addEventListener('click', () => {
+      priceTable = readPrices();
+      delete priceTable.stt[button.dataset.dropStt];
+      redrawPrices();
+    });
+  });
+  document.querySelectorAll('[data-drop-llm]').forEach((button) => {
+    button.addEventListener('click', () => {
+      priceTable = readPrices();
+      delete priceTable.llm[button.dataset.dropLlm];
+      redrawPrices();
+    });
+  });
+}
+
+function keyField(label, key, value, why) {
+  const filled = value === '***';
+  return '<label class="field">' + label
+    + '<input data-set="' + key + '" type="password" value="" placeholder="'
+      + (filled ? 'ключ задан — оставьте пустым, чтобы не менять' : 'не задан') + '">'
+    + '<span class="why muted">' + why + '</span></label>';
 }
 
 async function drawSettings() {
   const data = await api('/admin/api/settings');
+  priceTable = JSON.parse(JSON.stringify(data.prices || { stt: {}, llm: {} }));
   const get = (key, fallback) => (data.settings[key] === undefined ? fallback : data.settings[key]);
 
-  $('settings').innerHTML = '<h2>Настройки</h2>'
-    + '<p class="note">Введённые ключи обратно не показываются — вместо них звёздочки. '
-    + 'Звёздочки при сохранении означают «не трогали».</p>'
-    + field('Токен Telegram-бота', 'bot.token', get('bot.token', ''),
-      data.botRunning ? '— бот опрашивает' : '— бот выключен')
-    + field('Ключ AITunnel', 'key.aitunnel', get('key.aitunnel', ''))
-    + field('Ключ OpenAI', 'key.openai', get('key.openai', ''))
-    + field('Ключ DeepSeek', 'key.deepseek', get('key.deepseek', ''))
-    + field('Цепочка распознавания', 'chain.stt', get('chain.stt', ['aitunnel']).join(', '),
-      '— через запятую; DeepSeek сюда нельзя, у него нет распознавания')
-    + field('Цепочка улучшения', 'chain.llm', get('chain.llm', ['deepseek']).join(', '), '— через запятую')
-    + field('Прайс-лист', 'prices', JSON.stringify(data.prices), '— JSON, ₽ за минуту и за млн токенов')
-    + '<button class="act" id="save-settings">Сохранить</button>'
-    + '<p class="err" id="settings-err"></p>';
+  $('settings').innerHTML =
+    '<div class="card"><h2>Telegram-бот</h2>'
+    + '<p class="muted">' + (data.botRunning
+      ? '<span class="ok">Бот опрашивает Telegram.</span> Люди с кодом могут присылать ему голосовые.'
+      : 'Бот выключен. Впишите токен от @BotFather — он начнёт отвечать сразу, перезапуск не нужен.') + '</p>'
+    + keyField('Токен бота', 'bot.token', get('bot.token', ''), 'Берётся у @BotFather. Пустой — бот молчит')
+    + '</div>'
+
+    + '<div class="card"><h2>Ключи провайдеров</h2>'
+    + '<p class="muted">Нужны, когда домашний компьютер выключен. Введённый ключ обратно не показывается: пустое поле оставляет его как был.</p>'
+    + keyField('AITunnel', 'key.aitunnel', get('key.aitunnel', ''), 'Умеет и речь, и текст. Ключ берётся на aitunnel.ru')
+    + keyField('OpenAI', 'key.openai', get('key.openai', ''), 'Умеет и речь, и текст')
+    + keyField('DeepSeek', 'key.deepseek', get('key.deepseek', ''), 'Только текст — распознавания речи у них нет')
+    + '</div>'
+
+    + '<div class="card"><h2>Кого спрашивать и в каком порядке</h2>'
+    + '<p class="muted">Не ответил первый — идём ко второму. Через запятую.</p>'
+    + '<label class="field">Распознавание речи'
+      + '<input data-set="chain.stt" value="' + safe((get('chain.stt', ['aitunnel']) || []).join(', ')) + '">'
+      + '<span class="why muted">Можно: aitunnel, openai, custom. DeepSeek сюда нельзя — речь он не умеет</span></label>'
+    + '<label class="field">Улучшение текста'
+      + '<input data-set="chain.llm" value="' + safe((get('chain.llm', ['deepseek']) || []).join(', ')) + '">'
+      + '<span class="why muted">Можно: deepseek, openai, aitunnel, custom</span></label>'
+    + '</div>'
+
+    + '<div class="card"><h2>Прайс-лист</h2>'
+    + '<p class="muted">Провайдеры фактическую стоимость не присылают, поэтому расход считается по этим числам. Меняются цены — поправьте здесь.</p>'
+    + '<div id="prices">' + priceRows() + '</div></div>'
+
+    + '<div class="row-actions"><button class="btn" id="save-settings">Сохранить</button>'
+    + '<span id="settings-note" class="muted"></span></div>';
+
+  bindPriceButtons();
 
   $('save-settings').addEventListener('click', async () => {
-    $('settings-err').textContent = '';
-    const body = { settings: {} };
+    const note = $('settings-note');
+    note.className = 'muted';
+    note.textContent = 'Сохраняю…';
+    const body = { settings: {}, prices: readPrices() };
+    document.querySelectorAll('[data-set]').forEach((input) => {
+      const key = input.dataset.set;
+      if (key.startsWith('chain.')) {
+        body.settings[key] = input.value.split(',').map((part) => part.trim()).filter(Boolean);
+      } else if (input.value.trim()) {
+        // Пустое поле ключа означает «не трогали»: иначе сохранение формы
+        // стирало бы ключ, которого она и не показывала.
+        body.settings[key] = input.value.trim();
+      }
+    });
     try {
-      document.querySelectorAll('[data-set]').forEach((input) => {
-        const key = input.dataset.set;
-        if (key === 'prices') { body.prices = JSON.parse(input.value); return; }
-        if (key.startsWith('chain.')) {
-          body.settings[key] = input.value.split(',').map((part) => part.trim()).filter(Boolean);
-          return;
-        }
-        body.settings[key] = input.value;
-      });
-      await api('/admin/api/settings', { method: 'POST', body: JSON.stringify(body) });
-      drawSettings();
+      const result = await api('/admin/api/settings', { method: 'POST', body: JSON.stringify(body) });
+      note.className = 'ok';
+      note.textContent = result.botRunning ? 'Сохранено, бот опрашивает' : 'Сохранено';
+      await drawSettings();
+      badges();
     } catch (error) {
-      $('settings-err').textContent = 'Не сохранилось: ' + error.message;
+      note.className = 'err';
+      note.textContent = 'Не сохранилось: ' + error.message;
     }
   });
 }
 
+// ---------- значки в шапке ----------
+
+async function badges() {
+  try {
+    const agent = await api('/admin/api/agent');
+    const pill = $('pill-agent');
+    pill.textContent = 'компьютер: ' + (agent.online ? 'на связи' : 'не на связи');
+    pill.className = 'pill' + (agent.online ? ' on' : '');
+  } catch { /* значок не главное */ }
+  try {
+    const conf = await api('/admin/api/settings');
+    const pill = $('pill-bot');
+    pill.textContent = 'бот: ' + (conf.botRunning ? 'работает' : 'выключен');
+    pill.className = 'pill' + (conf.botRunning ? ' on' : '');
+  } catch { /* значок не главное */ }
+}
+
+// ---------- общее ----------
+
 function refresh() {
   $('app-err').textContent = '';
   const active = document.querySelector('nav button[aria-selected="true"]').dataset.tab;
-  const draw = { people: drawPeople, spend: drawSpend, agent: drawAgent, settings: drawSettings }[active];
+  const draw = { spend: drawSpend, people: drawPeople, agent: drawAgent, settings: drawSettings }[active];
   draw().catch((error) => { $('app-err').textContent = error.message; });
+  badges();
 }
 
 if (session) {

@@ -5,17 +5,24 @@ const crypto = require('node:crypto');
 const db = require('./db');
 
 /**
- * Доступ: ключ — это человек, а не устройство.
+ * Доступ: ключ — это профиль с именем, код — разовый пропуск к нему.
  *
- * Код намеренно не одноразовый: один и тот же человек вводит его и в боте,
- * и на телефоне. Плата за удобство — узнавший код чужой тоже привяжется,
- * поэтому устройств на ключ не больше пяти, каждое видно в админке и любое
- * отвязывается отдельно.
+ * Код одноразовый и живёт недолго: подсмотренный или пересланный код
+ * должен успеть устареть раньше, чем им кто-то воспользуется. Ввели —
+ * код исчезает, устройство привязано, дальше оно ходит по токену.
+ *
+ * Нужно два устройства — заводится два профиля: «Мама, телефон» и
+ * «Мама, телеграм». Так в админке сразу видно, откуда пришёл доступ, и
+ * лишний можно убрать, не трогая нужный.
+ *
+ * Потерялся код — выдаётся новый той же кнопкой. Прежние устройства при
+ * этом продолжают работать: у них уже есть токен.
  */
 
 const MAX_DEVICES = 5;
 const MAX_TRIES = 3;
 const PAUSE_MS = 10 * 60 * 1000;
+const DEFAULT_CODE_TTL_MS = 10 * 60 * 1000;
 
 // Промахи считаем в памяти: перезапуск сервера снимает запрет, и это не
 // страшно — перебор шести цифр требует тысяч попыток, а не десятка.
@@ -29,18 +36,44 @@ function sixDigits() {
   return String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
 }
 
-function issue(name) {
-  const database = db.open();
-  const title = String(name || '').trim() || 'Без имени';
-  for (let attempt = 0; attempt < 50; attempt += 1) {
+/** Свободные шесть цифр. Занятыми считаются только живые коды. */
+function freeCode(database) {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
     const code = sixDigits();
-    if (database.prepare('SELECT 1 FROM keys WHERE code = ?').get(code)) continue;
-    const info = database
-      .prepare('INSERT INTO keys (name, code, created_at) VALUES (?, ?, ?)')
-      .run(title, code, Date.now());
-    return { id: Number(info.lastInsertRowid), name: title, code };
+    const busy = database
+      .prepare('SELECT 1 FROM keys WHERE code = ? AND code_until > ?')
+      .get(code, Date.now());
+    if (!busy) return code;
   }
   throw new Error('Не удалось подобрать свободный код');
+}
+
+/** Завести профиль и выдать к нему разовый код. */
+function issue(name, ttlMs = DEFAULT_CODE_TTL_MS) {
+  const database = db.open();
+  const title = String(name || '').trim() || 'Без имени';
+  const code = freeCode(database);
+  const until = Date.now() + Number(ttlMs || DEFAULT_CODE_TTL_MS);
+  const info = database
+    .prepare('INSERT INTO keys (name, code, code_until, created_at) VALUES (?, ?, ?, ?)')
+    .run(title, code, until, Date.now());
+  return { id: Number(info.lastInsertRowid), name: title, code, codeUntil: until };
+}
+
+/**
+ * Выдать новый код к существующему профилю.
+ *
+ * Нужно, когда человек не успел ввести прежний или потерял его. Уже
+ * привязанные устройства этого не замечают: у них есть токен.
+ */
+function reissue(id, ttlMs = DEFAULT_CODE_TTL_MS) {
+  const database = db.open();
+  const key = database.prepare('SELECT * FROM keys WHERE id = ? AND revoked_at IS NULL').get(id);
+  if (!key) throw new Error('Такого профиля нет');
+  const code = freeCode(database);
+  const until = Date.now() + Number(ttlMs || DEFAULT_CODE_TTL_MS);
+  database.prepare('UPDATE keys SET code = ?, code_until = ? WHERE id = ?').run(code, until, id);
+  return { id, name: key.name, code, codeUntil: until };
 }
 
 function list() {
@@ -100,17 +133,26 @@ function activate(code, kind, externalId, title, source = '') {
     throw new Error(`Слишком много попыток. Подождите ${Math.ceil((state.until - now) / 60000)} мин.`);
   }
 
+  const clean = String(code || '').trim();
   const key = database
     .prepare('SELECT * FROM keys WHERE code = ? AND revoked_at IS NULL')
-    .get(String(code || '').trim());
+    .get(clean);
   if (!key) {
     noteMiss(source);
     throw new Error('Такого кода нет');
+  }
+  if (!key.code_until || key.code_until <= now) {
+    // Просроченный код — не промах: человек не подбирал, он опоздал.
+    // Запирать его за это было бы несправедливо.
+    throw new Error('Код устарел. Попросите новый');
   }
 
   misses.delete(source);
   const bound = attach(key.id, kind, externalId, title);
 
+  // Код одноразовый: сработал — и больше его нет. Подсмотренный или
+  // пересланный дальше уже ничего не откроет.
+  database.prepare('UPDATE keys SET code = NULL, code_until = NULL WHERE id = ?').run(key.id);
   if (!key.first_used_at) {
     database.prepare('UPDATE keys SET first_used_at = ? WHERE id = ?').run(now, key.id);
   }
@@ -155,6 +197,6 @@ function authenticate(token) {
 }
 
 module.exports = {
-  issue, list, revoke, unbind, bind, byExternal, activate, authenticate, forgetMisses,
-  MAX_DEVICES, MAX_TRIES, PAUSE_MS,
+  issue, reissue, list, revoke, unbind, bind, byExternal, activate, authenticate, forgetMisses,
+  MAX_DEVICES, MAX_TRIES, PAUSE_MS, DEFAULT_CODE_TTL_MS,
 };

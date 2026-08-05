@@ -62,6 +62,7 @@ function register(app) {
         id: key.id,
         name: key.name,
         code: key.code,
+        codeUntil: key.code_until,
         revoked: Boolean(key.revoked_at),
         minutes: spend.get(key.id)?.minutes || 0,
         rub: spend.get(key.id)?.rub || 0,
@@ -74,7 +75,19 @@ function register(app) {
 
   app.post('/admin/api/keys', async (request, reply) => {
     if (!guard(request, reply)) return undefined;
-    return keys.issue((request.body || {}).name);
+    const { name, ttlMs } = request.body || {};
+    return keys.issue(name, Number(ttlMs) || keys.DEFAULT_CODE_TTL_MS);
+  });
+
+  // Новый код к тому же профилю: человек не успел ввести прежний или
+  // потерял его. Уже привязанные устройства этого не замечают.
+  app.post('/admin/api/keys/:id/code', async (request, reply) => {
+    if (!guard(request, reply)) return undefined;
+    try {
+      return keys.reissue(Number(request.params.id), Number((request.body || {}).ttlMs) || undefined);
+    } catch (error) {
+      return reply.code(400).send({ error: error.message });
+    }
   });
 
   app.delete('/admin/api/keys/:id', async (request, reply) => {
@@ -105,6 +118,7 @@ function register(app) {
     if (!guard(request, reply)) return undefined;
     return {
       ...usage.monthly(),
+      daily: usage.daily(),
       note: 'Оценка по своему прайсу: провайдеры фактическую стоимость не присылают',
     };
   });
@@ -112,6 +126,11 @@ function register(app) {
   app.get('/admin/api/agent', async (request, reply) => {
     if (!guard(request, reply)) return undefined;
     return socket.state();
+  });
+
+  app.post('/admin/api/agent/ping', async (request, reply) => {
+    if (!guard(request, reply)) return undefined;
+    return socket.ping();
   });
 
   app.get('/admin/api/settings', async (request, reply) => {

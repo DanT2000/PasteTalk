@@ -103,3 +103,17 @@ test('содержимое диктовки в базу не попадает', 
   assert.ok(!columns.includes('text'));
   assert.ok(!columns.includes('audio'));
 });
+
+test('по дням возвращается ровно тридцать точек, включая пустые', () => {
+  const usage = require('../src/usage');
+  const keys = require('../src/keys');
+  const key = keys.issue('Мама');
+  usage.record({ keyId: key.id, deviceKind: 'android', audioSeconds: 60, executedBy: 'agent' });
+
+  const days = usage.daily();
+  assert.strictEqual(days.length, 30);
+  // Сегодня — последняя точка, и в ней наша минута.
+  assert.strictEqual(days[29].agentMinutes, 1);
+  // Пустые дни не пропущены: иначе неделя молчания на графике исчезнет.
+  assert.ok(days.slice(0, 29).every((d) => d.agentMinutes === 0));
+});

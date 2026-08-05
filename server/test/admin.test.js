@@ -80,6 +80,51 @@ test('ключ заводится с именем, виден в списке и
   await app.close();
 });
 
+test('новый код к профилю выдаётся отдельной кнопкой', async () => {
+  const app = build();
+  const headers = await session(app);
+  const key = keys.issue('Мама');
+
+  const again = await app.inject({
+    method: 'POST', url: `/admin/api/keys/${key.id}/code`, headers, payload: { ttlMs: 3600000 },
+  });
+  assert.strictEqual(again.statusCode, 200);
+  assert.match(again.json().code, /^\d{6}$/);
+  assert.notStrictEqual(again.json().code, key.code);
+  await app.close();
+});
+
+test('срок кода приходит вместе с ним', async () => {
+  const app = build();
+  const headers = await session(app);
+  const made = await app.inject({
+    method: 'POST', url: '/admin/api/keys', headers, payload: { name: 'Папа', ttlMs: 3600000 },
+  });
+  assert.ok(made.json().codeUntil > Date.now() + 55 * 60 * 1000);
+
+  const people = (await app.inject({ method: 'GET', url: '/admin/api/people', headers })).json();
+  assert.ok(people.people[0].codeUntil > Date.now());
+  await app.close();
+});
+
+test('пинг без компьютера отвечает честно, а не молчит', async () => {
+  const app = build();
+  const headers = await session(app);
+  const reply = await app.inject({ method: 'POST', url: '/admin/api/agent/ping', headers });
+  assert.strictEqual(reply.statusCode, 200);
+  assert.strictEqual(reply.json().ok, false);
+  assert.match(reply.json().error, /не на связи/i);
+  await app.close();
+});
+
+test('расход отдаёт разбивку по дням для графика', async () => {
+  const app = build();
+  const headers = await session(app);
+  const spend = (await app.inject({ method: 'GET', url: '/admin/api/spend', headers })).json();
+  assert.strictEqual(spend.daily.length, 30);
+  await app.close();
+});
+
 test('в списке видно устройства и расход человека', async () => {
   const app = build();
   const headers = await session(app);
@@ -100,7 +145,8 @@ test('устройство отвязывается по отдельности'
   const headers = await session(app);
   const key = keys.issue('Мама');
   keys.activate(key.code, 'android', null, 'Redmi', '1.1.1.1');
-  keys.activate(key.code, 'telegram', '42', 'Мама', '1.1.1.1');
+  // Код одноразовый: на второе устройство нужен новый.
+  keys.activate(keys.reissue(key.id).code, 'telegram', '42', 'Мама', '1.1.1.1');
 
   const before = (await app.inject({ method: 'GET', url: '/admin/api/people', headers })).json();
   const deviceId = before.people[0].devices[0].id;

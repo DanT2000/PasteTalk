@@ -129,6 +129,12 @@ class Relay extends EventEmitter {
     if (data.type !== 'job') return;
 
     try {
+      // Проверка связи из админки. Отвечаем сразу и ничего не считаем:
+      // владелец спрашивает «жив ли ты», а не «распознай мне».
+      if (data.kind === 'ping') {
+        this.reply({ type: 'result', id: data.id, result: { pong: true } });
+        return;
+      }
       const result = data.kind === 'stt'
         ? await this.doStt(data.payload)
         : await this.doLlm(data.payload);

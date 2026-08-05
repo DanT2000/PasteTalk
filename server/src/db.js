@@ -19,7 +19,8 @@ const SCHEMA = `
 CREATE TABLE IF NOT EXISTS keys (
   id            INTEGER PRIMARY KEY,
   name          TEXT NOT NULL,
-  code          TEXT NOT NULL UNIQUE,
+  code          TEXT,
+  code_until    INTEGER,
   created_at    INTEGER NOT NULL,
   first_used_at INTEGER,
   revoked_at    INTEGER

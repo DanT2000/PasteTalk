@@ -118,9 +118,26 @@ function handle(socket, message) {
   pending.resolve(data.result);
 }
 
+/**
+ * Спросить компьютер, жив ли он, и замерить ответ.
+ *
+ * Отдельно от «на связи»: сокет может числиться открытым, пока сеть уже
+ * отвалилась, и узнать правду можно только дождавшись ответа.
+ */
+async function ping() {
+  if (!online()) return { ok: false, error: 'ПК не на связи' };
+  const started = Date.now();
+  try {
+    await send({ kind: 'ping', payload: {} });
+    return { ok: true, ms: Date.now() - started };
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
+}
+
 function register(app) {
   app.get('/agent', { websocket: true }, (socket) => {
-    const ping = setInterval(() => {
+    const heartbeat = setInterval(() => {
       if (live && Date.now() - live.lastSeen > DEAD_MS) {
         drop('ПК перестал отвечать');
         try { socket.close(); } catch { /* уже закрыт */ }
@@ -131,10 +148,10 @@ function register(app) {
 
     socket.on('message', (raw) => handle(socket, raw.toString()));
     socket.on('close', () => {
-      clearInterval(ping);
+      clearInterval(heartbeat);
       if (live?.socket === socket) drop('ПК отключился');
     });
   });
 }
 
-module.exports = { register, handle, drop, forget, online, send, state, PING_MS, DEAD_MS };
+module.exports = { register, handle, drop, forget, online, send, ping, state, PING_MS, DEAD_MS };
