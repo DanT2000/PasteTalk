@@ -5,6 +5,7 @@ const { app, ipcMain, clipboard, shell, dialog, nativeTheme, systemPreferences }
 
 const config = require('./config');
 const engine = require('./engine');
+const history = require('./history');
 const hotkeys = require('./hotkeys');
 const llm = require('./llm');
 const logger = require('./logger');
@@ -160,7 +161,9 @@ recorder.on('state', (payload) => {
 recorder.on('partial', (payload) => windows.send('capsule', 'capsule:partial', payload));
 
 recorder.on('text', (payload) => {
-  windows.send('settings', 'history:add', { ...payload, at: Date.now() });
+  const entry = history.add(payload);
+  windows.send('settings', 'history:changed', history.all());
+  if (entry) windows.send('capsule', 'capsule:history', { has: true });
 });
 
 recorder.on('hide', () => windows.hideCapsule());
@@ -181,12 +184,43 @@ function registerHotkeys() {
   }
 }
 
+/**
+ * Улучшить то, что уже сказано.
+ *
+ * Сначала смотрим в буфер обмена — если человек только что вставил свой
+ * текст, поправить надо именно его. Пусто или буфер уже занят чем-то
+ * посторонним — берём последнюю запись из истории: диктовка могла быть
+ * пять минут назад, и возвращаться к ней должно быть можно.
+ */
 async function improveClipboard() {
-  const text = clipboard.readText().trim();
-  if (!text) return;
+  const fromClipboard = clipboard.readText().trim();
+  const last = history.latest();
+  const text = fromClipboard || (last ? (last.improved || last.text) : '');
+
+  if (!text) {
+    recorder.cancelHide();
+    windows.showCapsule();
+    windows.send('capsule', 'capsule:state', { state: 'aierror', hint: 'Улучшать пока нечего' });
+    recorder.scheduleHide(2600);
+    return;
+  }
+
   recorder.cancelHide();
   windows.showCapsule();
   await recorder.improve(text);
+}
+
+/** Прогнать через модель последнюю надиктованную запись, минуя буфер. */
+async function improveLast() {
+  const last = history.latest();
+  recorder.cancelHide();
+  windows.showCapsule();
+  if (!last) {
+    windows.send('capsule', 'capsule:state', { state: 'aierror', hint: 'История пока пуста' });
+    recorder.scheduleHide(2600);
+    return;
+  }
+  await recorder.improve(last.text);
 }
 
 // ---------- управление ----------
@@ -321,6 +355,8 @@ ipcMain.on('capsule:action', (_event, action) => {
     }
   }
   else if (action === 'settings') windows.showSettings();
+  else if (action === 'history') windows.showSettings('history');
+  else if (action === 'improveLast') improveLast();
   else if (action === 'cancel') { windows.send('audio', 'audio:stop', {}); recorder.abort('nospeech'); }
 });
 
@@ -370,6 +406,32 @@ ipcMain.handle('files:save', async (event, payload) => {
 ipcMain.handle('clipboard:write', (_event, text) => { paste.copy(String(text || '')); return true; });
 
 ipcMain.handle('updates:check', () => updates.check());
+
+// ---------- история надиктованного ----------
+
+ipcMain.handle('history:all', () => history.all());
+ipcMain.handle('history:remove', (_event, id) => { history.remove(id); return history.all(); });
+ipcMain.handle('history:clear', () => { history.clear(); return history.all(); });
+
+ipcMain.handle('history:copy', (_event, payload) => {
+  const entry = history.find(payload.id);
+  if (!entry) return false;
+  paste.copy(payload.improved && entry.improved ? entry.improved : entry.text);
+  return true;
+});
+
+/** Улучшить запись из истории и запомнить результат рядом с оригиналом. */
+ipcMain.handle('history:improve', async (_event, id) => {
+  const entry = history.find(id);
+  if (!entry) throw new Error('Запись не найдена');
+  if (!config.get('ai.enabled', false)) throw new Error('Улучшение выключено в настройках');
+
+  const improved = await llm.improve(entry.text);
+  history.setImproved(id, improved);
+  paste.copy(improved);
+  windows.send('settings', 'history:changed', history.all());
+  return improved;
+});
 
 // ---------- тема ----------
 

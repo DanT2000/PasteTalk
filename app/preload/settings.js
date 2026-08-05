@@ -69,6 +69,14 @@ contextBridge.exposeInMainWorld('pastetalk', {
   clipboard: {
     write: (text) => ipcRenderer.invoke('clipboard:write', text),
   },
+  history: {
+    all: () => ipcRenderer.invoke('history:all'),
+    copy: (id, improved) => ipcRenderer.invoke('history:copy', { id, improved }),
+    improve: (id) => ipcRenderer.invoke('history:improve', id),
+    remove: (id) => ipcRenderer.invoke('history:remove', id),
+    clear: () => ipcRenderer.invoke('history:clear'),
+    onChanged: on('history:changed'),
+  },
   window: {
     minimize: () => ipcRenderer.invoke('window:minimize'),
     maximize: () => ipcRenderer.invoke('window:maximize'),

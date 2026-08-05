@@ -68,6 +68,7 @@ function goto(name) {
     page.classList.toggle('is-active', page.dataset.page === name));
   document.querySelector('.content').scrollTop = 0;
   if (name === 'about') refreshLogs();
+  if (name === 'history') refreshHistory();
 }
 document.querySelectorAll('[data-goto]').forEach((button) =>
   button.addEventListener('click', () => goto(button.dataset.goto)));
@@ -766,6 +767,85 @@ $('file-save').addEventListener('click', async () => {
   });
   if (saved) say(`Сохранил: ${saved}`);
 });
+
+// ---------- история ----------
+
+function whenSaid(stamp) {
+  const minutes = Math.round((Date.now() - stamp) / 60000);
+  if (minutes < 1) return 'только что';
+  if (minutes < 60) return `${minutes} мин назад`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} ч назад`;
+  return new Date(stamp).toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
+}
+
+async function refreshHistory() {
+  renderHistory(await api.history.all());
+}
+
+function renderHistory(list) {
+  const card = $('history-list');
+  card.innerHTML = '';
+
+  if (!list.length) {
+    card.innerHTML = '<div class="row"><div class="row-text">'
+      + '<div class="row-title">Пока пусто</div>'
+      + '<div class="row-sub">Здесь будет всё, что вы надиктовали — по горячей клавише или через панель записи</div>'
+      + '</div></div>';
+    return;
+  }
+
+  for (const item of list) {
+    const row = document.createElement('div');
+    row.className = 'row row-stack';
+    const shown = item.improved || item.text;
+    row.innerHTML = `
+      <div class="row-sub">${whenSaid(item.at)}${item.seconds ? ` · ${item.seconds} с речи` : ''}`
+      + `${item.improved ? ' · <span class="pill">причёсано</span>' : ''}</div>
+      <div class="history-text">${escapeHtml(shown)}</div>
+      <div class="under-card" style="margin-bottom:0;"></div>`;
+
+    const buttons = row.querySelector('.under-card');
+    buttons.appendChild(button('Копировать', 'btn', async () => {
+      await api.history.copy(item.id, Boolean(item.improved));
+      say('Скопировано');
+    }));
+
+    if (item.improved) {
+      buttons.appendChild(button('Копировать оригинал', 'btn', async () => {
+        await api.history.copy(item.id, false);
+        say('Скопирован оригинал');
+      }));
+    } else {
+      const improve = button('Причесать', 'btn btn-accent', async () => {
+        improve.disabled = true;
+        improve.textContent = 'Думает…';
+        try {
+          await api.history.improve(item.id);
+          say('Готово, текст в буфере обмена');
+        } catch (error) {
+          say(error.message.replace(/^Error invoking remote method '[^']+': Error: /, ''));
+          improve.disabled = false;
+          improve.textContent = 'Причесать';
+        }
+      });
+      buttons.appendChild(improve);
+    }
+
+    buttons.appendChild(button('Убрать', 'btn btn-quiet', async () => {
+      renderHistory(await api.history.remove(item.id));
+    }));
+
+    card.appendChild(row);
+  }
+}
+
+$('history-refresh').addEventListener('click', refreshHistory);
+$('history-clear').addEventListener('click', async () => {
+  renderHistory(await api.history.clear());
+  say('История очищена');
+});
+api.history.onChanged(renderHistory);
 
 // ---------- о программе ----------
 

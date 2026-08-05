@@ -169,7 +169,7 @@ class Recorder extends EventEmitter {
     const autoPaste = config.get('text.autoPaste', true);
     await paste.deliver(text, autoPaste);
     log.info(`распознано ${text.length} символов за ${Math.round(result.durationS)} с звука`);
-    this.emit('text', { text, improved: false });
+    this.emit('text', { text, improved: false, seconds: result.durationS });
 
     const wantsAi = this.mode === 'improve' && config.get('ai.enabled', false);
     if (wantsAi) await this.improve(text, autoPaste);

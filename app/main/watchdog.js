@@ -111,13 +111,27 @@ function stop() {
  * чтобы при входе в систему не разворачивалось окно настроек, и не
  * трогать реестр в режиме разработки, где exe временный.
  */
+// Под этим именем программа видна в списке автозагрузки Windows.
+// Без него Electron подписывает запись идентификатором приложения —
+// в диспетчере задач это выглядело как «ru.appswire.pastetalk».
+const LOGIN_ITEM_NAME = 'PasteTalk';
+const LEGACY_LOGIN_ITEM = 'ru.appswire.pastetalk';
+
 function applyAutoLaunch(enabled) {
   if (!app.isPackaged) {
     log.info(`автозапуск: в разработке не трогаем (просили ${enabled ? 'включить' : 'выключить'})`);
     return;
   }
+
+  // Убираем запись, оставшуюся от прежних версий, иначе в автозагрузке
+  // окажутся две строки, ведущие в одно место.
+  try {
+    app.setLoginItemSettings({ openAtLogin: false, name: LEGACY_LOGIN_ITEM });
+  } catch { /* её могло и не быть */ }
+
   app.setLoginItemSettings({
     openAtLogin: Boolean(enabled),
+    name: LOGIN_ITEM_NAME,
     path: process.execPath,
     args: ['--tray'],
   });
@@ -128,7 +142,11 @@ function applyAutoLaunch(enabled) {
 function syncAutoLaunch() {
   const wanted = config.get('startup.autoLaunch', true);
   if (!app.isPackaged) return;
-  const actual = app.getLoginItemSettings({ path: process.execPath, args: ['--tray'] }).openAtLogin;
+  const actual = app.getLoginItemSettings({
+    name: LOGIN_ITEM_NAME,
+    path: process.execPath,
+    args: ['--tray'],
+  }).openAtLogin;
   if (actual !== wanted) applyAutoLaunch(wanted);
 }
 

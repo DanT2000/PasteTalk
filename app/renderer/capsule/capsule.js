@@ -145,6 +145,19 @@ window.capsule.onLevel((payload) => {
 });
 document.getElementById('mic').addEventListener('click', () => window.capsule.action('toggle'));
 document.getElementById('gear').addEventListener('click', () => window.capsule.action('settings'));
+// Короткое нажатие — причесать прошлую диктовку, долгое — открыть всю историю.
+const lastBtn = document.getElementById('last');
+let holdTimer = null;
+lastBtn.addEventListener('mousedown', () => {
+  holdTimer = setTimeout(() => { holdTimer = null; window.capsule.action('history'); }, 600);
+});
+lastBtn.addEventListener('mouseup', () => {
+  if (!holdTimer) return;
+  clearTimeout(holdTimer);
+  holdTimer = null;
+  window.capsule.action('improveLast');
+});
+lastBtn.addEventListener('mouseleave', () => { clearTimeout(holdTimer); holdTimer = null; });
 let hintTimer = null;
 aiBtn.addEventListener('click', () => {
   if (aiBtn.classList.contains('is-off')) {

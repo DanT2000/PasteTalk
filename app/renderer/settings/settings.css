@@ -292,6 +292,15 @@ kbd {
    и снизу — чтобы следующий раздел не начинался вплотную. */
 .under-card { display: flex; gap: .5rem; flex-wrap: wrap; margin: .75rem 0 1.75rem; }
 
+/* ---------------- история ---------------- */
+/* Текст показываем целиком до четырёх строк: по одной строке не понять,
+   та ли это диктовка, а разворачивать каждую — лишний клик. */
+.history-text {
+  font-size: .875rem; line-height: 1.55; margin: .375rem 0 .25rem;
+  display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical;
+  overflow: hidden; white-space: pre-wrap; overflow-wrap: anywhere;
+}
+
 /* ---------------- журнал ---------------- */
 .logs { background: var(--bg); border: 1px solid var(--stroke); border-radius: .4375rem;
   padding: .875rem; max-height: 24rem; overflow: auto;
