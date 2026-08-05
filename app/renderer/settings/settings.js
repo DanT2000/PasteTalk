@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 
 /**
  * Окно настроек. Держит одну копию настроек в памяти, любое изменение
@@ -573,7 +573,21 @@ $('provider').addEventListener('change', async () => {
   syncProvider();
 });
 
-$('ai-mode').addEventListener('change', syncProvider);
+/** Каждый режим объясняем словами: из двух слов в списке непонятно. */
+const MODE_HINTS = {
+  clean: 'Убирает слова-паразиты, повторы и оговорки, исправляет грамматику и знаки препинания. '
+    + 'Ваши формулировки и порядок мыслей остаются нетронутыми',
+  both: 'То же, что «Почистить», плюс переписывает: меняет формулировки на более ясные, '
+    + 'собирает разбросанные куски одной мысли вместе, выстраивает порядок от главного к подробностям, '
+    + 'делит на абзацы и оформляет перечисления списком. Факты не теряются и не выдумываются',
+  custom: 'Модель получит ваши указания и текст следующим сообщением',
+};
+
+function syncModeHint() {
+  $('ai-mode-sub').textContent = MODE_HINTS[$('ai-mode').value] || '';
+}
+
+$('ai-mode').addEventListener('change', () => { syncProvider(); syncModeHint(); });
 
 $('apikey').addEventListener('input', () => {
   clearTimeout($('apikey').timer);
@@ -747,119 +761,6 @@ $('file-save').addEventListener('click', async () => {
   if (saved) say(`Сохранил: ${saved}`);
 });
 
-// ---------- изображения ----------
-
-let lastImageText = '';
-
-function showImageResult(name, note, text) {
-  $('img-drop').classList.add('is-hidden');
-  $('img-result').classList.remove('is-hidden');
-  $('img-name').textContent = name;
-  $('img-info').textContent = note;
-  $('img-text').textContent = text;
-  lastImageText = text;
-  const has = Boolean(text);
-  $('img-copy').disabled = !has;
-  $('img-translate').disabled = !has;
-}
-
-async function recognizeImage(source, name) {
-  $('img-drop').classList.add('is-hidden');
-  $('img-result').classList.remove('is-hidden');
-  $('img-name').textContent = name;
-  $('img-info').textContent = 'Читаю…';
-  $('img-text').textContent = '';
-
-  const started = Date.now();
-  try {
-    const language = settings.images?.ocrLanguage || '';
-    const text = source === 'clipboard'
-      ? await api.images.fromClipboard(language)
-      : await api.images.fromFile(source, language);
-    showImageResult(name, text
-      ? `${text.length} символов за ${Date.now() - started} мс`
-      : 'Текста на картинке не нашлось', text);
-  } catch (error) {
-    showImageResult(name, error.message === 'EMPTY_CLIPBOARD' ? 'В буфере обмена нет картинки' : error.message, '');
-  }
-}
-
-$('img-pick').addEventListener('click', async () => {
-  const path = await api.images.pick();
-  if (path) recognizeImage(path, path.split(/[\\/]/).pop());
-});
-$('img-paste').addEventListener('click', () => recognizeImage('clipboard', 'Из буфера обмена'));
-$('img-another').addEventListener('click', () => {
-  $('img-result').classList.add('is-hidden');
-  $('img-drop').classList.remove('is-hidden');
-});
-$('img-copy').addEventListener('click', async () => {
-  await api.clipboard.write($('img-text').textContent);
-  say('Текст скопирован');
-});
-$('img-translate').addEventListener('click', async () => {
-  const source = $('img-text').textContent.trim();
-  if (!source) return;
-  if (!settings.ai?.enabled) { say('Включите улучшение текста — перевод идёт через ту же модель'); return; }
-
-  $('img-translate').disabled = true;
-  $('img-info').textContent = 'Перевожу…';
-  try {
-    const translated = await api.images.translate(source, settings.images?.translateTo || 'ru');
-    $('img-text').textContent = translated;
-    $('img-info').textContent = 'Переведено';
-    await api.clipboard.write(translated);
-    say('Перевод готов и скопирован');
-  } catch (error) {
-    $('img-info').textContent = `Перевести не вышло: ${error.message}`;
-  }
-  $('img-translate').disabled = false;
-});
-
-// Вставка снимка экрана прямо в окно — самый короткий путь: сняли
-// Win+Shift+S, перешли сюда, нажали Ctrl+V.
-window.addEventListener('paste', async () => {
-  if (!document.querySelector('.page[data-page="images"]').classList.contains('is-active')) return;
-  if (await api.images.hasImage()) recognizeImage('clipboard', 'Из буфера обмена');
-});
-
-const imgDrop = $('img-drop');
-['dragenter', 'dragover'].forEach((name) => imgDrop.addEventListener(name, (event) => {
-  event.preventDefault();
-  imgDrop.classList.add('is-over');
-}));
-['dragleave', 'drop'].forEach((name) => imgDrop.addEventListener(name, () => imgDrop.classList.remove('is-over')));
-imgDrop.addEventListener('drop', (event) => {
-  event.preventDefault();
-  const file = event.dataTransfer.files[0];
-  if (!file) return;
-  const path = api.files.pathOf(file);
-  if (path) recognizeImage(path, file.name);
-  else say('Не удалось получить путь к файлу — выберите его кнопкой');
-});
-
-/** Языки, которые Windows умеет читать на этой машине. */
-async function loadOcrLanguages() {
-  const list = await api.images.languages();
-  const select = $('ocr-lang');
-  const chosen = settings.images?.ocrLanguage || '';
-  select.innerHTML = '<option value="">Как в Windows</option>';
-  list.forEach((item) => {
-    const option = document.createElement('option');
-    option.value = item.tag;
-    option.textContent = item.title;
-    select.appendChild(option);
-  });
-  select.value = [...select.options].some((o) => o.value === chosen) ? chosen : '';
-  $('ocr-lang-sub').textContent = list.length
-    ? `Windows умеет читать: ${list.map((item) => item.title).join(', ')}`
-    : 'Windows не сообщил ни одного языка распознавания';
-}
-
-api.images.onResult(({ text, translated }) => {
-  showImageResult('Из буфера обмена', translated ? 'Переведено' : 'Распознано по горячей клавише', text);
-});
-
 // ---------- о программе ----------
 
 async function refreshLogs() {
@@ -978,6 +879,14 @@ $('welcome-clip').addEventListener('click', () => api.app.openExternal('ms-setti
 $('ffmpeg-how').addEventListener('click', () =>
   api.app.openExternal('https://github.com/DanT2000/PasteTalk#ffmpeg'));
 
+// Порт меняется только вместе с перезапуском движка — иначе настройка
+// сохранится, а работать всё будет по-старому до следующего запуска.
+$('engine-port-apply').addEventListener('click', async () => {
+  say('Перезапускаю движок на новом порту');
+  await api.engine.restart();
+  setTimeout(refreshHealth, 2000);
+});
+
 $('paused').addEventListener('change', () => api.app.setPaused($('paused').checked));
 api.app.onPaused(({ paused }) => { $('paused').checked = paused; });
 
@@ -1042,6 +951,7 @@ async function start() {
   bindAll();
   renderHotkeys();
   renderProviders();
+  syncModeHint();
   await loadMicrophones();
 
   $('version').textContent = `PasteTalk ${state.version}`;
@@ -1051,7 +961,6 @@ async function start() {
 
   if (settings.firstRun) goto('welcome');
   showClipboardHistory();
-  loadOcrLanguages();
   await refreshHealth();
 
   api.config.onChanged((fresh) => {

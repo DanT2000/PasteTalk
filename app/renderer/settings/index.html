@@ -58,10 +58,6 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 14h6M9 17h4"/></svg>
         <span class="nav-label">Файлы</span>
       </button>
-      <button class="nav-item" data-goto="images">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m6 16 4-5 3 3.5 2-2.5 3 4"/><circle cx="8.5" cy="9" r="1.2"/></svg>
-        <span class="nav-label">Изображения</span>
-      </button>
       <button class="nav-item" data-goto="about">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
         <span class="nav-label">О программе</span>
@@ -231,6 +227,22 @@
               <div class="row-sub">Горячие клавиши перестанут работать, программа останется в трее</div>
             </div>
             <div class="row-control"><input class="switch" type="checkbox" id="paused"></div>
+          </div>
+        </div>
+
+        <div class="group-title">Для тех, кто знает, зачем</div>
+        <div class="card">
+          <div class="row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 12h.01M11 12h.01M15 12h2"/></svg>
+            <div class="row-text">
+              <div class="row-title">Порт движка распознавания</div>
+              <div class="row-sub">Ноль — занять любой свободный, так не бывает конфликтов. Число нужно, только если вы прописываете правила брандмауэра или лезете к движку своими средствами. Он слушает лишь этот компьютер и требует токен, снаружи к нему не подключиться</div>
+            </div>
+            <div class="row-control">
+              <input class="field" type="number" min="0" max="65535" style="width:7rem;"
+                     data-cfg="engine.port" data-number>
+              <button class="btn" id="engine-port-apply">Применить</button>
+            </div>
           </div>
         </div>
       </section>
@@ -430,12 +442,11 @@
             <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h10M4 17h13"/></svg>
             <div class="row-text">
               <div class="row-title">Что делать с текстом</div>
-              <div class="row-sub">«Переписать» — это не только абзацы: модель меняет формулировки и порядок, собирает разбросанные мысли вместе. Факты при этом не теряются и не выдумываются</div>
+              <div class="row-sub" id="ai-mode-sub">—</div>
             </div>
             <div class="row-control">
               <select id="ai-mode" data-cfg="ai.mode">
-                <option value="clean">Только убрать слова-паразиты</option>
-                <option value="structure">Переписать по-человечески</option>
+                <option value="clean">Почистить</option>
                 <option value="both">Почистить и переписать</option>
                 <option value="custom">Свои указания</option>
               </select>
@@ -616,75 +627,6 @@
         </div>
       </section>
 
-      <!-- ===== ИЗОБРАЖЕНИЯ ===== -->
-      <section class="page" data-page="images">
-        <h2>Изображения</h2>
-        <p class="lede">Текст с картинки или снимка экрана. Распознаёт сам Windows — быстро и без интернета.</p>
-
-        <div class="drop" id="img-drop">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m6 16 4-5 3 3.5 2-2.5 3 4"/><circle cx="8.5" cy="9" r="1.2"/></svg>
-          <h3>Перетащите картинку сюда</h3>
-          <p>Или вставьте снимок экрана — <kbd>Ctrl</kbd>+<kbd>V</kbd> прямо в этом окне. PNG, JPG, BMP, GIF, TIFF, WEBP.</p>
-          <div style="display:flex; gap:.5rem; justify-content:center; flex-wrap:wrap;">
-            <button class="btn btn-accent" id="img-pick">Выбрать файл</button>
-            <button class="btn" id="img-paste">Вставить из буфера</button>
-          </div>
-        </div>
-
-        <div class="result is-hidden" id="img-result">
-          <div class="result-head">
-            <div class="result-file">
-              <div class="row-title" id="img-name">Картинка не выбрана</div>
-              <div class="row-sub" id="img-info">—</div>
-            </div>
-            <div class="result-actions">
-              <button class="btn" id="img-another">Другая картинка</button>
-              <button class="btn" id="img-translate">Перевести</button>
-              <button class="btn btn-accent" id="img-copy">Копировать</button>
-            </div>
-          </div>
-          <div class="result-body" id="img-text"></div>
-        </div>
-
-        <div class="group-title">Настройки распознавания</div>
-        <div class="card">
-          <div class="row">
-            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h10M4 17h13"/></svg>
-            <div class="row-text">
-              <div class="row-title">Язык на картинке</div>
-              <div class="row-sub" id="ocr-lang-sub">Список берётся из языков, установленных в Windows</div>
-            </div>
-            <div class="row-control"><select id="ocr-lang" data-cfg="images.ocrLanguage"></select></div>
-          </div>
-          <div class="row">
-            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m5 8 6 6M4 14l6-6 2-3"/><path d="M2 5h12M7 2h1"/><path d="m22 22-5-10-5 10M14 18h6"/></svg>
-            <div class="row-text">
-              <div class="row-title">Переводить на</div>
-              <div class="row-sub">Язык оригинала модель определяет сама</div>
-            </div>
-            <div class="row-control">
-              <select data-cfg="images.translateTo">
-                <option value="ru">Русский</option>
-                <option value="en">English</option>
-                <option value="uk">Українська</option>
-                <option value="de">Deutsch</option>
-                <option value="fr">Français</option>
-                <option value="es">Español</option>
-                <option value="zh">中文</option>
-              </select>
-            </div>
-          </div>
-          <div class="row">
-            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 3v18l14-9z"/></svg>
-            <div class="row-text">
-              <div class="row-title">Переводить сразу</div>
-              <div class="row-sub" id="img-auto-sub">По горячей клавише текст с картинки сразу приходит переведённым. Нужна включённая языковая модель</div>
-            </div>
-            <div class="row-control"><input class="switch" type="checkbox" data-cfg="images.autoTranslate"></div>
-          </div>
-        </div>
-      </section>
-
       <!-- ===== О ПРОГРАММЕ ===== -->
       <section class="page" data-page="about">
         <h2>О программе</h2>
@@ -728,14 +670,14 @@
 
         <div class="group-title">Ошибки за последние сутки</div>
         <div class="card" id="errors"></div>
-        <div style="margin-top:.75rem; display:flex; gap:.5rem; flex-wrap:wrap;">
+        <div class="under-card">
           <button class="btn" id="errors-refresh">Обновить</button>
           <button class="btn" id="errors-open">Открыть файл ошибок</button>
         </div>
 
         <div class="group-title">Журнал работы</div>
         <div class="logs" id="logs">Загружаю…</div>
-        <div style="margin-top:.75rem; display:flex; gap:.5rem; flex-wrap:wrap;">
+        <div class="under-card">
           <button class="btn" id="logs-refresh">Обновить</button>
           <button class="btn" id="logs-open">Открыть файл журнала</button>
         </div>

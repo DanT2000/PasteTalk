@@ -69,15 +69,6 @@ contextBridge.exposeInMainWorld('pastetalk', {
   clipboard: {
     write: (text) => ipcRenderer.invoke('clipboard:write', text),
   },
-  images: {
-    pick: () => ipcRenderer.invoke('images:pick'),
-    languages: () => ipcRenderer.invoke('ocr:languages'),
-    hasImage: () => ipcRenderer.invoke('ocr:hasImage'),
-    fromClipboard: (language) => ipcRenderer.invoke('ocr:fromClipboard', language),
-    fromFile: (path, language) => ipcRenderer.invoke('ocr:fromFile', { path, language }),
-    translate: (text, target) => ipcRenderer.invoke('ocr:translate', { text, target }),
-    onResult: on('ocr:result'),
-  },
   window: {
     minimize: () => ipcRenderer.invoke('window:minimize'),
     maximize: () => ipcRenderer.invoke('window:maximize'),

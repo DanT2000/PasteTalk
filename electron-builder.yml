@@ -37,6 +37,8 @@ win:
 nsis:
   oneClick: false
   perMachine: false
+  # Имя программы к выбранной папке electron-builder дописывает сам:
+  # выберете D:\Programs — окажется D:\Programs\PasteTalk.
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true

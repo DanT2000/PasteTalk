@@ -88,4 +88,34 @@ async function check() {
   }
 }
 
-module.exports = { check, compare };
+/**
+ * Тихая проверка при запуске.
+ *
+ * Ничего не скачивает и не ставит — только показывает уведомление, если
+ * вышла версия новее. Программа висит в трее и слушает клавиатуру;
+ * такому лучше не обновляться самому за спиной у человека.
+ *
+ * Спрашиваем не чаще раза в сутки и не на первой секунде после старта:
+ * сразу после входа в Windows компьютеру есть чем заняться и без нас.
+ */
+const ASK_EVERY_MS = 24 * 60 * 60 * 1000;
+const DELAY_AFTER_START_MS = 45000;
+
+function scheduleStartupCheck(onFound) {
+  const config = require('./config');
+
+  setTimeout(async () => {
+    const lastAsked = Number(config.get('updates.lastCheckedAt', 0)) || 0;
+    if (Date.now() - lastAsked < ASK_EVERY_MS) return;
+
+    const answer = await check();
+    if (!answer.ok) return;
+    config.set({ updates: { lastCheckedAt: Date.now() } });
+
+    if (answer.newer && answer.latest !== config.get('updates.skipVersion', '')) {
+      onFound(answer);
+    }
+  }, DELAY_AFTER_START_MS);
+}
+
+module.exports = { check, compare, scheduleStartupCheck };

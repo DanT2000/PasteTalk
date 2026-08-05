@@ -71,10 +71,11 @@ class Engine {
 
     this.setState('starting');
     const model = config.get('model', {});
+    const wanted = Number(config.get('engine.port', 0)) || 0;
     const args = [
       ...found.args,
       '--host', '127.0.0.1',
-      '--port', '0',
+      '--port', String(wanted),
       '--cache-dir', this.modelsDir(),
       '--parent-pid', String(process.pid),
       '--model', model.name || 'large-v3',

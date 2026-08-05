@@ -8,7 +8,6 @@ const engine = require('./engine');
 const hotkeys = require('./hotkeys');
 const llm = require('./llm');
 const logger = require('./logger');
-const ocr = require('./ocr');
 const paste = require('./paste');
 const recorder = require('./recorder');
 const tray = require('./tray');
@@ -64,9 +63,31 @@ app.whenReady().then(async () => {
 
   if (config.get('firstRun', true)) windows.showSettings('welcome');
 
+  updates.scheduleStartupCheck(announceUpdate);
+
   // Снимки окон нужны только при разработке и только с этим флагом.
   if (process.argv.includes('--dev')) require('./devserver').start();
 });
+
+/** Вышла версия новее — сказать об этом, но ничего не делать без спроса. */
+async function announceUpdate(release) {
+  log.info(`доступна версия ${release.latest}`);
+  const { response } = await dialog.showMessageBox({
+    type: 'info',
+    title: 'PasteTalk',
+    message: `Вышла версия ${release.latest}`,
+    detail: `У вас ${release.current}. Установщик ставится поверх — настройки, модели и горячие клавиши останутся на месте.`
+      + (release.sizeMb ? `\n\nРазмер: ${release.sizeMb} МБ.` : ''),
+    buttons: ['Скачать', 'Что нового', 'Потом', 'Больше не напоминать'],
+    defaultId: 0,
+    cancelId: 2,
+    noLink: true,
+  });
+
+  if (response === 0) shell.openExternal(release.download);
+  else if (response === 1) shell.openExternal(release.url);
+  else if (response === 3) config.set({ updates: { skipVersion: release.latest } });
+}
 
 app.on('window-all-closed', (event) => {
   // Программа живёт в трее и после закрытия всех окон.
@@ -160,69 +181,10 @@ function registerHotkeys() {
       else startRecording('improve');
     },
     improveClipboard: () => improveClipboard(),
-    recognizeImage: () => recognizeClipboardImage(),
     quickPanel: (visible) => windows.send('capsule', 'capsule:quick', { visible }),
   });
   if (failed.length) {
     windows.send('settings', 'hotkeys:conflict', failed);
-  }
-}
-
-/**
- * Снимок экрана → текст в буфере, по одной клавише.
- *
- * Сделали снимок штатным Win+Shift+S — картинка уже в буфере обмена.
- * Нажали нашу клавишу — на её месте оказался текст. Если в настройках
- * включён перевод, он же и переведённый.
- */
-async function recognizeClipboardImage() {
-  if (tray.isPaused()) return;
-  const settings = config.get('images', {});
-
-  recorder.cancelHide();
-  windows.showCapsule();
-  windows.send('capsule', 'capsule:state', { state: 'ocr' });
-
-  let text;
-  try {
-    text = await ocr.fromClipboard(settings.ocrLanguage);
-  } catch (error) {
-    const empty = error.message === 'EMPTY_CLIPBOARD';
-    log.warn(`картинка не распозналась: ${error.message}`);
-    windows.send('capsule', 'capsule:state', {
-      state: 'ocrfail',
-      hint: empty ? 'В буфере нет картинки' : error.message,
-    });
-    recorder.scheduleHide(3200);
-    return;
-  }
-
-  if (!text) {
-    windows.send('capsule', 'capsule:state', { state: 'ocrfail', hint: 'Текста на картинке нет' });
-    recorder.scheduleHide(2600);
-    return;
-  }
-
-  await paste.deliver(text, config.get('text.autoPaste', true));
-  windows.send('settings', 'ocr:result', { text, translated: false });
-
-  if (!settings.autoTranslate || !config.get('ai.enabled', false)) {
-    windows.send('capsule', 'capsule:state', { state: 'ocrdone' });
-    recorder.scheduleHide(2400);
-    return;
-  }
-
-  windows.send('capsule', 'capsule:state', { state: 'translating' });
-  try {
-    const translated = await llm.translate(text, settings.translateTo);
-    await paste.deliver(translated, config.get('text.autoPaste', true));
-    windows.send('settings', 'ocr:result', { text: translated, translated: true });
-    windows.send('capsule', 'capsule:state', { state: 'ocrdone', hint: 'Переведено' });
-    recorder.scheduleHide(2400);
-  } catch (error) {
-    log.warn(`перевод не удался: ${error.message}`);
-    windows.send('capsule', 'capsule:state', { state: 'aierror', hint: 'Текст без перевода в буфере' });
-    recorder.scheduleHide(3200);
   }
 }
 
@@ -436,28 +398,7 @@ ipcMain.handle('files:save', async (event, payload) => {
 
 ipcMain.handle('clipboard:write', (_event, text) => { paste.copy(String(text || '')); return true; });
 
-// ---------- картинки ----------
-
 ipcMain.handle('updates:check', () => updates.check());
-
-ipcMain.handle('ocr:languages', () => ocr.languages());
-ipcMain.handle('ocr:hasImage', () => ocr.hasClipboardImage());
-ipcMain.handle('ocr:fromClipboard', (_event, language) => ocr.fromClipboard(language));
-ipcMain.handle('ocr:fromFile', (_event, payload) => ocr.fromFile(payload.path, payload.language));
-ipcMain.handle('ocr:translate', (_event, payload) => llm.translate(payload.text, payload.target));
-
-ipcMain.handle('images:pick', async (event) => {
-  const win = event.sender.getOwnerBrowserWindow();
-  const result = await dialog.showOpenDialog(win, {
-    title: 'Выберите изображение',
-    properties: ['openFile'],
-    filters: [
-      { name: 'Изображения', extensions: ['png', 'jpg', 'jpeg', 'bmp', 'gif', 'tif', 'tiff', 'webp'] },
-      { name: 'Все файлы', extensions: ['*'] },
-    ],
-  });
-  return result.canceled ? null : result.filePaths[0];
-});
 
 // ---------- тема ----------
 

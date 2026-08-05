@@ -66,6 +66,10 @@ html[data-size="compact"] .cap-hint { display: none; }
 .cap-btn svg { width: 1.0625rem; height: 1.0625rem; }
 .cap-btn:disabled { opacity: .3; cursor: default; }
 .cap-btn:disabled:hover { background: transparent; color: var(--dim); }
+/* Выключено в настройках: видно, что кнопка неживая, но нажать можно —
+   на нажатие она объясняет, почему не работает. */
+.cap-btn.is-off { opacity: .35; cursor: default; }
+.cap-btn.is-off:hover { background: transparent; color: var(--dim); }
 
 .cap-mic {
   width: 2.75rem; height: 2.75rem; flex: none; border-radius: 50%; border: 0; cursor: pointer;

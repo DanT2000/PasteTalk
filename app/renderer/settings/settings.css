@@ -288,6 +288,10 @@ kbd {
   font-size: .875rem; line-height: 1.6; background: var(--bg); white-space: pre-wrap; }
 .result-body:empty::before { content: "Пока пусто — выберите файл выше."; color: var(--dim); }
 
+/* Кнопки под карточкой: отступ сверху нужен, чтобы они не липли к ней,
+   и снизу — чтобы следующий раздел не начинался вплотную. */
+.under-card { display: flex; gap: .5rem; flex-wrap: wrap; margin: .75rem 0 1.75rem; }
+
 /* ---------------- журнал ---------------- */
 .logs { background: var(--bg); border: 1px solid var(--stroke); border-radius: .4375rem;
   padding: .875rem; max-height: 24rem; overflow: auto;

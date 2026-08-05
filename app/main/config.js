@@ -44,9 +44,6 @@ const DEFAULTS = {
     recordAndImprove: 'Control+Alt+Return',
     improveClipboard: 'Control+Alt+I',
     quickPanel: 'Control+Alt+Q',
-    // Распознать картинку, лежащую в буфере обмена: сделали снимок
-    // экрана — и текст с него сразу в буфере.
-    recognizeImage: 'Control+Alt+T',
   },
 
   appearance: {
@@ -71,16 +68,21 @@ const DEFAULTS = {
 
   files: { timestamps: false },
 
-  images: {
-    // Пусто — Windows берёт языки, установленные в системе. Так почти
-    // всегда правильнее, чем угадывать за человека.
-    ocrLanguage: '',
-    translateTo: 'ru',
-    // Переводить сразу после распознавания, не дожидаясь нажатия.
-    autoTranslate: false,
+  startup: { autoLaunch: true, restartOnCrash: true },
+
+  updates: {
+    lastCheckedAt: 0,
+    // Версия, о которой человек попросил больше не напоминать.
+    skipVersion: '',
   },
 
-  startup: { autoLaunch: true, restartOnCrash: true },
+  engine: {
+    // Движок слушает только localhost и требует одноразовый токен.
+    // Ноль — занять любой свободный порт: так не бывает конфликтов ни с
+    // чем. Число ставят те, кому нужен предсказуемый порт (правила
+    // брандмауэра, свои проверки) — и делают это осознанно.
+    port: 0,
+  },
 };
 
 let cache = null;
@@ -113,6 +115,10 @@ const RENAMED_SOUNDS = { click: 'wood', double: 'chime', blip: 'soft', beep: 'so
 function migrate(settings) {
   const preset = settings.sound?.preset;
   if (preset && RENAMED_SOUNDS[preset]) settings.sound.preset = RENAMED_SOUNDS[preset];
+
+  // Режим «только переписать, не чистя» оказался никому не нужен и
+  // сбивал с толку: у выбравших его подставляем полный вариант.
+  if (settings.ai?.mode === 'structure') settings.ai.mode = 'both';
   return settings;
 }
 

@@ -33,7 +33,6 @@ function register(actions) {
     ['record', () => actions.record()],
     ['recordAndImprove', () => actions.recordAndImprove()],
     ['improveClipboard', () => actions.improveClipboard()],
-    ['recognizeImage', () => actions.recognizeImage()],
     ['quickPanel', () => toggleQuickPanel(actions)],
   ];
 

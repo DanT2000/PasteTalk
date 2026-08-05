@@ -206,15 +206,6 @@ class Handler(BaseHTTPRequestHandler):
         elif method == "POST" and head == "benchmark":
             self._send(200, engine.benchmark())
 
-        elif method == "GET" and head == "ocr" and len(parts) == 2 and parts[1] == "languages":
-            from . import ocr
-            self._send(200, {"languages": ocr.languages()})
-
-        elif method == "POST" and head == "ocr":
-            from . import ocr
-            payload = self._json()
-            self._send(200, {"text": ocr.recognize(payload.get("path", ""), payload.get("language", ""))})
-
         elif method == "POST" and head == "session" and len(parts) == 1:
             if not engine.models.is_ready():
                 self._reject(409, "MODEL_NOT_READY")
