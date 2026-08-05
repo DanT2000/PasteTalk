@@ -124,6 +124,35 @@ const MODES = {
 
 const TAIL = 'Верни только готовый текст, без пояснений, заголовков и кавычек.';
 
+/**
+ * Текущий запрос к модели — чтобы его можно было прервать.
+ *
+ * Модель думает секунды, а иногда и минуту. За это время человек успевает
+ * передумать, и оставлять его смотреть на крутящийся кружок без выхода
+ * нельзя. Здесь лежит способ оборвать то, что идёт прямо сейчас.
+ */
+let stopCurrent = null;
+const CANCELLED = 'PT_CANCELLED';
+
+function cancel() {
+  if (!stopCurrent) return false;
+  const stop = stopCurrent;
+  stopCurrent = null;
+  try {
+    stop();
+  } catch { /* уже завершился сам */ }
+  log.info('запрос к модели прерван');
+  return true;
+}
+
+function isCancelled(error) {
+  return Boolean(error) && String(error.message).includes(CANCELLED);
+}
+
+function busy() {
+  return stopCurrent !== null;
+}
+
 // ---------- настройки провайдера ----------
 
 function resolve(overrides = {}) {
@@ -214,8 +243,16 @@ function httpJson(method, url, { body, apiKey, timeoutMs }) {
       });
     });
 
+    // Прервать можно только то, что ещё идёт: как только ответ получен,
+    // отменять нечего, и ссылку надо убрать, иначе следующая отмена
+    // ударит по уже закрытому соединению.
+    stopCurrent = () => request.destroy(new Error(CANCELLED));
+    const done = () => { if (stopCurrent) stopCurrent = null; };
+    request.on('close', done);
+
     request.setTimeout(timeoutMs, () => request.destroy(new Error('Модель не ответила вовремя')));
-    request.on('error', (error) => reject(new Error(friendly(error))));
+    request.on('error', (error) => reject(
+      error.message === CANCELLED ? error : new Error(friendly(error))));
     if (payload) request.write(payload);
     request.end();
   });
@@ -347,6 +384,11 @@ function runCli(settings, text, timeoutMs) {
 
     let out = '';
     let err = '';
+    let cancelled = false;
+
+    // Агента прерываем убийством процесса: другого способа он не знает.
+    stopCurrent = () => { cancelled = true; child.kill(); };
+
     const timer = setTimeout(() => {
       child.kill();
       reject(new Error(`${preset.title} не ответил вовремя`));
@@ -366,6 +408,8 @@ function runCli(settings, text, timeoutMs) {
 
     child.on('close', (code) => {
       clearTimeout(timer);
+      if (stopCurrent) stopCurrent = null;
+      if (cancelled) { reject(new Error(CANCELLED)); return; }
       const answer = stripThinking(out);
       if (code !== 0 && !answer) {
         reject(new Error(`${preset.title} завершился с ошибкой: ${err.trim().slice(0, 200) || `код ${code}`}`));
@@ -470,4 +514,4 @@ function hasCommand(command) {
   });
 }
 
-module.exports = { improve, models, check, detect, PROVIDERS, MODES };
+module.exports = { improve, models, check, detect, cancel, isCancelled, busy, PROVIDERS, MODES };

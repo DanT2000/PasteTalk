@@ -10,27 +10,42 @@
 
 <div class="capsule" id="cap" data-tone="live" data-wave="live">
   <div class="cap-row">
-    <button class="cap-btn" id="gear" title="Настройки">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-    </button>
+    <!-- Боковые группы одной ширины: только так микрофон стоит ровно
+         посередине панели, а не съезжает к краю. -->
+    <div class="cap-side">
+      <!-- Прошлая диктовка: вернуться к сказанному, когда буфер обмена
+           уже занят другим. Настройки отсюда убраны — их открывают
+           редко, и для этого есть меню значка в трее. -->
+      <button class="cap-btn" id="last" title="Взять прошлый текст и причесать">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 8v4l3 2"/></svg>
+      </button>
+    </div>
 
     <div class="wave left" data-bars></div>
 
     <button class="cap-mic" id="mic" title="Начать или закончить запись">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" id="mic-icon"></svg>
+      <!-- Пока идёт работа, наведение превращает кнопку в отмену. -->
+      <svg class="cap-mic-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
+        <path d="M6 6l12 12M18 6L6 18"/>
+      </svg>
     </button>
 
     <div class="wave right" data-bars></div>
 
-    <!-- Прошлая диктовка: вернуться к сказанному, когда буфер обмена
-         уже занят чем-то другим. -->
-    <button class="cap-btn" id="last" title="Взять прошлый текст и причесать">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 8v4l3 2"/></svg>
-    </button>
+    <div class="cap-side">
+      <button class="cap-btn" id="ai" title="Улучшить текст">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M18.5 15.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg>
+      </button>
 
-    <button class="cap-btn" id="ai" title="Улучшить текст">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M18.5 15.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg>
-    </button>
+      <!-- Один выход из любого состояния: идёт запись — бросит, думает
+           модель — оборвёт, всё готово — просто закроет панель. -->
+      <button class="cap-btn cap-x" id="close" title="Отменить и закрыть">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
+          <path d="M6 6l12 12M18 6L6 18"/>
+        </svg>
+      </button>
+    </div>
   </div>
 
   <div class="cap-bar"></div>

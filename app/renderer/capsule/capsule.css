@@ -51,11 +51,21 @@ body { display: grid; place-items: center; padding: .5rem; }
   box-shadow: var(--shadow); padding: .75rem .875rem .625rem;
   display: flex; flex-direction: column; gap: .5rem;
 }
-html[data-size="compact"] .capsule { width: min(100%, 13.5rem); }
+/* Компактный вид: остаётся только необходимое — микрофон, уровень,
+   улучшение и выход. Возврат к прошлому тексту доступен из настроек. */
+html[data-size="compact"] .capsule { width: min(100%, 15rem); }
 html[data-size="compact"] .wave.left { display: none; }
 html[data-size="compact"] .cap-hint { display: none; }
+html[data-size="compact"] .cap-side:first-child { display: none; }
 
 .cap-row { display: flex; align-items: center; gap: .5rem; }
+
+/* Обе группы кнопок одной ширины: микрофон обязан стоять по центру,
+   иначе панель выглядит перекошенной. Слева одна кнопка, справа две —
+   разницу добирает пустое место. */
+.cap-side { flex: 0 0 4.375rem; display: flex; align-items: center; gap: .125rem; }
+.cap-side:first-child { justify-content: flex-start; }
+.cap-side:last-of-type { justify-content: flex-end; }
 
 .cap-btn {
   width: 2.125rem; height: 2.125rem; flex: none; display: grid; place-items: center;
@@ -71,12 +81,26 @@ html[data-size="compact"] .cap-hint { display: none; }
 .cap-btn.is-off { opacity: .35; cursor: default; }
 .cap-btn.is-off:hover { background: transparent; color: var(--dim); }
 
+/* Крестик мельче остальных: он всегда доступен, но не должен спорить с
+   микрофоном за внимание. Красным становится только под курсором. */
+.cap-x { width: 1.75rem; height: 1.75rem; opacity: .7; }
+.cap-x svg { width: .8125rem; height: .8125rem; }
+.cap-x:hover { opacity: 1; background: transparent; color: var(--live); }
+
 .cap-mic {
   width: 2.75rem; height: 2.75rem; flex: none; border-radius: 50%; border: 0; cursor: pointer;
   display: grid; place-items: center; position: relative;
   background: var(--accent); color: var(--on-accent);
 }
 .cap-mic svg { width: 1.25rem; height: 1.25rem; }
+
+/* Пока идёт работа, наведение на микрофон превращает его в отмену:
+   не надо целиться в мелкий крестик, чтобы бросить начатое. */
+.cap-mic-x { display: none; }
+.capsule[data-busy="1"] .cap-mic { cursor: pointer; }
+.capsule[data-busy="1"] .cap-mic:hover #mic-icon { display: none; }
+.capsule[data-busy="1"] .cap-mic:hover .cap-mic-x { display: block; }
+.capsule[data-busy="1"] .cap-mic:hover { background: var(--live); color: #fff; box-shadow: none; }
 .capsule[data-tone="live"] .cap-mic { background: var(--live); color: #fff; }
 .capsule[data-tone="ok"]   .cap-mic { background: var(--ok);   color: #fff; }
 .capsule[data-tone="warn"] .cap-mic { background: transparent; color: var(--warn);

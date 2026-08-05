@@ -33,6 +33,7 @@ const STATES = {
   aidone:     { tone: 'ok',     wave: 'flat', mic: 'check', status: 'Текст улучшен',   hint: 'Обычный — в Win+V',  ai: true },
   aierror:    { tone: 'warn',   wave: 'flat', mic: 'warn',  status: 'ИИ не ответил',   hint: 'Обычный текст на месте', ai: true },
   countdown:  { tone: 'accent', wave: 'flat', mic: 'mic',   status: 'Приготовьтесь',   hint: 'Ещё раз — отменю',   ai: false },
+  cancelled:  { tone: 'mute',   wave: 'flat', mic: 'mute',  status: 'Отменено',        hint: '',                   ai: false },
   nospeech:   { tone: 'mute',   wave: 'flat', mic: 'mute',  status: 'Тишина',          hint: 'Запись отменил',     ai: false },
   micdead:    { tone: 'warn',   wave: 'flat', mic: 'warn',  status: 'Микрофон молчит', hint: 'Проверьте устройство', ai: false },
   engineDown: { tone: 'warn',   wave: 'flat', mic: 'warn',  status: 'Движок не готов', hint: '',                   ai: false },
@@ -107,6 +108,8 @@ function apply(payload) {
   timerEl.textContent = payload.elapsedMs ? format(payload.elapsedMs) : '';
   micIcon.innerHTML = ICONS[state.mic];
   micIcon.style.animation = state.mic === 'spin' ? 'spin 1s linear infinite' : '';
+  // Прерываемые состояния: наведение на микрофон превращает его в отмену.
+  cap.dataset.busy = ['listening', 'thinking', 'ai', 'limit'].includes(payload.state) ? '1' : '0';
   syncAiButton(state);
   if (state.wave !== 'live') flatten(state.wave === 'busy' ? 0.12 : 0.02);
 }
@@ -143,8 +146,18 @@ window.capsule.onCountdown(({ ms }) => {
 window.capsule.onLevel((payload) => {
   if (cap.dataset.wave === 'live') pushLevel(payload.level);
 });
-document.getElementById('mic').addEventListener('click', () => window.capsule.action('toggle'));
-document.getElementById('gear').addEventListener('click', () => window.capsule.action('settings'));
+/** Идёт ли сейчас работа, которую можно прервать. */
+function isBusy() {
+  return cap.dataset.busy === '1';
+}
+
+// Микрофон: пока идёт работа — отменяет её, иначе начинает или
+// заканчивает запись. Так не надо целиться в мелкий крестик.
+document.getElementById('mic').addEventListener('click', () =>
+  window.capsule.action(isBusy() ? 'cancel' : 'toggle'));
+
+document.getElementById('close').addEventListener('click', () => window.capsule.action('cancel'));
+
 // Короткое нажатие — причесать прошлую диктовку, долгое — открыть всю историю.
 const lastBtn = document.getElementById('last');
 let holdTimer = null;
@@ -160,6 +173,8 @@ lastBtn.addEventListener('mouseup', () => {
 lastBtn.addEventListener('mouseleave', () => { clearTimeout(holdTimer); holdTimer = null; });
 let hintTimer = null;
 aiBtn.addEventListener('click', () => {
+  // Модель уже думает — второе нажатие её останавливает.
+  if (cap.dataset.state === 'ai') { window.capsule.action('cancel'); return; }
   if (aiBtn.classList.contains('is-off')) {
     // Панель к этому моменту уже могла показывать «Текст в буфере» и
     // вот-вот погаснуть. Перехватываем и подписью, и цветом: короткая

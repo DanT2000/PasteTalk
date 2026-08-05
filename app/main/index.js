@@ -357,7 +357,13 @@ ipcMain.on('capsule:action', (_event, action) => {
   else if (action === 'settings') windows.showSettings();
   else if (action === 'history') windows.showSettings('history');
   else if (action === 'improveLast') improveLast();
-  else if (action === 'cancel') { windows.send('audio', 'audio:stop', {}); recorder.abort('nospeech'); }
+  else if (action === 'cancel') {
+    // Отсчёт перед записью тоже отменяем — иначе она начнётся уже после
+    // того, как человек передумал.
+    if (startTimer) { clearTimeout(startTimer); startTimer = null; windows.hideCapsule(); return; }
+    windows.send('audio', 'audio:stop', {});
+    recorder.cancelCurrent();
+  }
 });
 
 ipcMain.on('audio:chunk', (_event, payload) => {

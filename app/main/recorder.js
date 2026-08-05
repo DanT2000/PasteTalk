@@ -204,10 +204,42 @@ class Recorder extends EventEmitter {
       this.emitState('aidone');
       this.scheduleHide(HIDE_AFTER_MS);
     } catch (error) {
+      if (llm.isCancelled(error)) {
+        log.info('улучшение отменено человеком');
+        this.emitState('cancelled', { hint: 'Обычный текст остался в буфере' });
+        this.scheduleHide(2400);
+        return;
+      }
       log.warn(`ИИ не справился: ${error.message}`);
       this.emitState('aierror', { hint: error.message });
       this.scheduleHide(3600);
     }
+  }
+
+  /**
+   * Отменить то, что идёт прямо сейчас.
+   *
+   * Одна кнопка на все случаи: идёт запись — бросаем её, думает модель —
+   * обрываем запрос, ничего не происходит — просто прячем панель.
+   * Человеку не надо помнить, в каком она состоянии.
+   */
+  cancelCurrent() {
+    if (this.state === 'listening') {
+      this.abort('cancelled', 'Запись отменена');
+      return 'recording';
+    }
+    if (this.state === 'ai' && llm.cancel()) return 'ai';
+    if (this.state === 'thinking') {
+      // Распознавание уже идёт в движке; ждать его смысла нет.
+      this.emitState('cancelled', { hint: 'Распознавание брошено' });
+      this.scheduleHide(2000);
+      return 'thinking';
+    }
+    this.emit('hide');
+    const keep = this.lastText;
+    this.reset();
+    this.lastText = keep;
+    return 'hidden';
   }
 
   /** Бросить запись, ничего не подкладывая в буфер. */
