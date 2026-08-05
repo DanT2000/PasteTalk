@@ -83,15 +83,49 @@ const ADDED = [
   { table: 'keys', column: 'code_until', ddl: 'INTEGER' },
 ];
 
+/**
+ * Пересобрать keys, если код в ней объявлен обязательным.
+ *
+ * Раньше код был многоразовый и всегда присутствовал; теперь он гасится
+ * при первом же использовании, то есть должен уметь быть пустым. Снять
+ * NOT NULL через ALTER в SQLite нельзя — только переливом в новую таблицу.
+ */
+function relaxKeysCode(database) {
+  const column = database.prepare('PRAGMA table_info(keys)').all()
+    .find((row) => row.name === 'code');
+  if (!column || column.notnull === 0) return;
+
+  process.stdout.write('База: снимаю обязательность с keys.code\n');
+  database.exec(`
+    PRAGMA foreign_keys = OFF;
+    BEGIN;
+    CREATE TABLE keys_new (
+      id            INTEGER PRIMARY KEY,
+      name          TEXT NOT NULL,
+      code          TEXT,
+      code_until    INTEGER,
+      created_at    INTEGER NOT NULL,
+      first_used_at INTEGER,
+      revoked_at    INTEGER
+    );
+    INSERT INTO keys_new (id, name, code, code_until, created_at, first_used_at, revoked_at)
+      SELECT id, name, code, code_until, created_at, first_used_at, revoked_at FROM keys;
+    DROP TABLE keys;
+    ALTER TABLE keys_new RENAME TO keys;
+    COMMIT;
+    PRAGMA foreign_keys = ON;
+  `);
+}
+
 function migrate(database) {
   for (const { table, column, ddl } of ADDED) {
     const exists = database.prepare(`PRAGMA table_info(${table})`).all()
       .some((row) => row.name === column);
     if (exists) continue;
     database.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
-    process.stdout.write(`База: добавлен столбец ${table}.${column}
-`);
+    process.stdout.write(`База: добавлен столбец ${table}.${column}\n`);
   }
+  relaxKeysCode(database);
 }
 
 let current = null;

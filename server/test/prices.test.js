@@ -67,3 +67,31 @@ test('старая база донастраивается, а не падает
   const columns = db.open().prepare('PRAGMA table_info(keys)').all().map((c) => c.name);
   assert.ok(columns.includes('code_until'), 'иначе развёрнутый сервер падает с no such column');
 });
+
+test('обязательность с кода снимается: он гасится при использовании', () => {
+  const db = require('../src/db');
+  const keys = require('../src/keys');
+  db.close();
+  db.open(':memory:');
+
+  // Возвращаем таблицу к старому виду: код обязателен, как было раньше.
+  const database = db.open();
+  database.exec(`
+    DROP TABLE keys;
+    CREATE TABLE keys (id INTEGER PRIMARY KEY, name TEXT NOT NULL, code TEXT NOT NULL,
+      code_until INTEGER, created_at INTEGER NOT NULL, first_used_at INTEGER, revoked_at INTEGER);
+  `);
+  assert.strictEqual(
+    database.prepare('PRAGMA table_info(keys)').all().find((c) => c.name === 'code').notnull, 1,
+  );
+
+  db.close();
+  db.open(':memory:');
+  // На памяти база каждый раз новая, поэтому проверяем саму пересборку.
+  const fresh = db.open().prepare('PRAGMA table_info(keys)').all().find((c) => c.name === 'code');
+  assert.strictEqual(fresh.notnull, 0, 'иначе одноразовый код не погасить');
+
+  const key = keys.issue('Мама');
+  assert.ok(keys.activate(key.code, 'android', null, '', '1.1.1.1').token);
+  assert.strictEqual(keys.list()[0].code, null);
+});
