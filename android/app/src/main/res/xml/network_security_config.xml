@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Обычный HTTP запрещён: по сети ходят коды доступа, токены и надиктованный
+  текст. Сервер разворачивается за HTTPS — Coolify выдаёт сертификат сам,
+  так что требовать это не значит усложнять кому-то жизнь.
+
+  Исключение одно: 10.0.2.2 — так эмулятор Android видит компьютер, на
+  котором запущен. Нужно, чтобы приложение можно было проверить до
+  развёртывания. На настоящих телефонах этого адреса не существует.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">10.0.2.2</domain>
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+</network-security-config>

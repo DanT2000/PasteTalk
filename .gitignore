@@ -28,6 +28,14 @@ build/engine/
 # а не в репозитории.
 server/data/
 
+# Android: сборка и путь к SDK у каждого свой.
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+*.apk
+
 # Локальное
 .env
 .env.*

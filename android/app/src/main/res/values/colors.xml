@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Тот же оранжевый, что у значка в трее на компьютере. -->
+    <color name="ic_launcher_background">#E9A72C</color>
+</resources>
