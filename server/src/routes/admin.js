@@ -116,7 +116,11 @@ function register(app) {
 
   app.get('/admin/api/settings', async (request, reply) => {
     if (!guard(request, reply)) return undefined;
-    return { settings: settings.all(), prices: prices.table() };
+    return {
+      settings: settings.all(),
+      prices: prices.table(),
+      botRunning: require('../bot/telegram').running(),
+    };
   });
 
   app.post('/admin/api/settings', async (request, reply) => {
@@ -129,7 +133,10 @@ function register(app) {
       settings.set(key, value);
     }
     if (body.prices) prices.setTable(body.prices);
-    return { ok: true };
+    // Токен бота мог измениться — поднимаем или гасим опрос сразу, чтобы
+    // не заставлять владельца перезапускать сервер ради одного поля.
+    const botRunning = require('../bot/telegram').sync();
+    return { ok: true, botRunning };
   });
 
   app.get('/admin/', async (request, reply) => {

@@ -224,6 +224,8 @@ async function drawSettings() {
   $('settings').innerHTML = '<h2>Настройки</h2>'
     + '<p class="note">Введённые ключи обратно не показываются — вместо них звёздочки. '
     + 'Звёздочки при сохранении означают «не трогали».</p>'
+    + field('Токен Telegram-бота', 'bot.token', get('bot.token', ''),
+      data.botRunning ? '— бот опрашивает' : '— бот выключен')
     + field('Ключ AITunnel', 'key.aitunnel', get('key.aitunnel', ''))
     + field('Ключ OpenAI', 'key.openai', get('key.openai', ''))
     + field('Ключ DeepSeek', 'key.deepseek', get('key.deepseek', ''))

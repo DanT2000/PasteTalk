@@ -31,6 +31,11 @@ async function start() {
   const port = Number(process.env.PORT || 3000);
   await app.listen({ port, host: '0.0.0.0' });
   process.stdout.write(`PasteTalk Server слушает порт ${port}\n`);
+
+  // Бот поднимается, только если в админке задан токен. Пустой токен —
+  // просто тишина, а не ошибка: боту тут быть необязательно.
+  const bot = require('./bot/telegram');
+  process.stdout.write(bot.sync() ? 'Telegram-бот опрашивает\n' : 'Telegram-бот выключен: токен не задан\n');
 }
 
 if (require.main === module) start();
