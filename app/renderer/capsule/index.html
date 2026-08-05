@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="ru" data-theme="dark" data-scale="100" data-size="full">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; script-src 'self'; font-src 'self'">
+<title>PasteTalk</title>
+<link rel="stylesheet" href="capsule.css">
+</head>
+<body>
+
+<div class="capsule" id="cap" data-tone="live" data-wave="live">
+  <div class="quick" id="quick">
+    <div class="quick-row"><span>Микрофон</span><select id="q-mic"></select></div>
+    <div class="quick-row"><span>Язык</span><select id="q-lang">
+      <option value="auto">Определять сам</option>
+      <option value="ru">Русский</option>
+      <option value="en">English</option>
+      <option value="uk">Українська</option>
+    </select></div>
+    <div class="quick-row"><span>Модель</span><select id="q-model">
+      <option value="large-v3">Large-v3</option>
+      <option value="medium">Medium</option>
+      <option value="small">Small</option>
+    </select></div>
+  </div>
+
+  <div class="cap-row">
+    <button class="cap-btn" id="gear" title="Настройки">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </button>
+
+    <div class="wave left" data-bars></div>
+
+    <button class="cap-mic" id="mic" title="Начать или закончить запись">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" id="mic-icon"></svg>
+    </button>
+
+    <div class="wave right" data-bars></div>
+
+    <button class="cap-btn" id="ai" title="Улучшить текст">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M18.5 15.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg>
+    </button>
+  </div>
+
+  <div class="cap-bar"></div>
+
+  <div class="cap-foot">
+    <span class="cap-status" id="status">Говорите</span>
+    <span class="cap-hint" id="hint"></span>
+    <span class="cap-timer" id="timer"></span>
+  </div>
+</div>
+
+<script src="../shared/sounds.js"></script>
+<script src="capsule.js"></script>
+</body>
+</html>

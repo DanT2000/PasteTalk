@@ -1,0 +1,438 @@
+<!doctype html>
+<html lang="ru" data-theme="dark" data-scale="100" data-size="full">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PasteTalk — панель записи</title>
+<style>
+/* ============================================================
+   PasteTalk · панель записи (аналог Win+H)
+   Живёт поверх всех окон, внизу по центру.
+   Слева — настройки, в центре — микрофон, справа — ИИ.
+   Ширина фиксированная: подписи подогнаны так, чтобы влезать
+   целиком, а не обрезаться многоточием.
+   ============================================================ */
+
+*, *::before, *::after { box-sizing:border-box; }
+
+html { font-size:16px; }
+html[data-scale="125"] { font-size:20px; }
+html[data-scale="150"] { font-size:24px; }
+
+html[data-theme="dark"] {
+  --bg:#1B1B1F; --panel:#232329; --card:#2A2A31; --card-hover:#32323A;
+  --stroke:rgba(255,255,255,.075); --stroke-strong:rgba(255,255,255,.16);
+  --text:#F4F4F7; --dim:#A6A6B2;
+  --accent:#E9A72C; --accent-soft:rgba(233,167,44,.14); --on-accent:#1B1B1F;
+  --live:#E5484D; --ok:#3FB950; --warn:#E9A72C;
+  --glass:rgba(35,35,41,.86);
+  --desk:linear-gradient(135deg,#2E3140 0%,#1A1C24 45%,#101116 100%);
+  --shadow:0 1.25rem 2.5rem rgba(0,0,0,.55), 0 .125rem .5rem rgba(0,0,0,.4);
+}
+html[data-theme="light"] {
+  --bg:#EDEDF1; --panel:#F6F6F9; --card:#FFFFFF; --card-hover:#F0F0F4;
+  --stroke:rgba(0,0,0,.08); --stroke-strong:rgba(0,0,0,.18);
+  --text:#16161A; --dim:#5A5A66;
+  --accent:#B87400; --accent-soft:rgba(184,116,0,.10); --on-accent:#FFFFFF;
+  --live:#C62B30; --ok:#237A32; --warn:#8A5A00;
+  --glass:rgba(250,250,252,.9);
+  --desk:linear-gradient(135deg,#DCE0EC 0%,#C3C8D8 45%,#AAB0C4 100%);
+  --shadow:0 1.25rem 2.5rem rgba(30,34,48,.3), 0 .125rem .5rem rgba(30,34,48,.16);
+}
+
+body {
+  margin:0; padding:1.5rem; background:var(--bg); color:var(--text);
+  font-family:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;
+}
+
+/* ---------------- макетный «рабочий стол» ---------------- */
+.stage {
+  position:relative; height:25rem; border-radius:.625rem; overflow:hidden;
+  background:var(--desk); border:1px solid var(--stroke-strong);
+  display:flex; align-items:flex-start; justify-content:center; padding:1.5rem 1.5rem 0;
+}
+.win {
+  width:min(100%, 32rem); background:var(--card); border:1px solid var(--stroke-strong);
+  border-radius:.5rem; overflow:hidden; box-shadow:var(--shadow);
+}
+.win-bar {
+  display:flex; align-items:center; gap:.5rem; padding:0 .75rem; min-height:2rem;
+  background:var(--panel); border-bottom:1px solid var(--stroke); font-size:.75rem; color:var(--dim);
+}
+.win-bar .fake { margin-left:auto; letter-spacing:.15em; }
+.win-body { padding:.875rem; }
+.win-body textarea {
+  width:100%; height:7.5rem; resize:none; border:0; outline:0; background:transparent;
+  color:var(--text); font:inherit; font-size:.875rem; line-height:1.55;
+}
+.win-body textarea::placeholder { color:var(--dim); }
+.caret-note { font-size:.6875rem; color:var(--dim); padding:0 .875rem .75rem; }
+
+/* ---------------- панель ---------------- */
+.capsule {
+  position:absolute; left:50%; bottom:1.5rem; transform:translateX(-50%);
+  width:min(calc(100% - 3rem), 26rem);
+  background:var(--glass); backdrop-filter:blur(1.25rem);
+  border:1px solid var(--stroke-strong); border-radius:.875rem;
+  box-shadow:var(--shadow); padding:.75rem .875rem .625rem;
+  display:flex; flex-direction:column; gap:.5rem;
+}
+.capsule.is-static { position:static; transform:none; }
+
+/* Компактный вид — примерно вдвое уже. Уходит левая дорожка и подсказка,
+   остаётся то, без чего нельзя: чем занят и сколько идёт запись. */
+html[data-size="compact"] .capsule { width:min(calc(100% - 3rem), 13.5rem); }
+html[data-size="compact"] .wave.left { display:none; }
+html[data-size="compact"] .cap-hint { display:none; }
+
+.cap-row { display:flex; align-items:center; gap:.5rem; }
+
+.cap-btn {
+  width:2.125rem; height:2.125rem; flex:none; display:grid; place-items:center;
+  border:1px solid transparent; border-radius:.5rem; background:transparent;
+  color:var(--dim); cursor:pointer;
+}
+.cap-btn:hover { background:var(--card-hover); color:var(--text); }
+.cap-btn svg { width:1.0625rem; height:1.0625rem; }
+.cap-btn:disabled { opacity:.3; cursor:default; }
+.cap-btn:disabled:hover { background:transparent; color:var(--dim); }
+
+.cap-mic {
+  width:2.75rem; height:2.75rem; flex:none; border-radius:50%; border:0; cursor:pointer;
+  display:grid; place-items:center; position:relative;
+  background:var(--accent); color:var(--on-accent);
+}
+.cap-mic svg { width:1.25rem; height:1.25rem; }
+.capsule[data-tone="live"] .cap-mic { background:var(--live); color:#fff; }
+.capsule[data-tone="ok"]   .cap-mic { background:var(--ok);   color:#fff; }
+.capsule[data-tone="warn"] .cap-mic { background:transparent; color:var(--warn);
+  box-shadow:inset 0 0 0 .125rem var(--warn); }
+.capsule[data-tone="mute"] .cap-mic { background:transparent; color:var(--dim);
+  box-shadow:inset 0 0 0 .125rem var(--stroke-strong); }
+
+.capsule[data-wave="live"] .cap-mic::after {
+  content:""; position:absolute; inset:-.25rem; border-radius:50%;
+  border:.125rem solid var(--live); animation:pulse 1.6s ease-out infinite;
+}
+@keyframes pulse { 0% { transform:scale(.92); opacity:.7; } 100% { transform:scale(1.25); opacity:0; } }
+
+/* ---- дорожка уровня ----
+   Полоски показывают реальную громкость микрофона: молчите — ниточка,
+   говорите — столбики. Это единственный способ увидеть, что запись
+   действительно идёт, не глядя на текст. */
+.wave { flex:1; display:flex; align-items:center; gap:.1875rem; height:1.875rem; min-width:0; overflow:hidden; }
+.wave.left  { justify-content:flex-end; }
+.wave.right { justify-content:flex-start; }
+.wave i {
+  display:block; width:.1875rem; min-height:.1875rem; border-radius:.125rem;
+  background:var(--dim); opacity:.45;
+  transition:height .09s linear, opacity .12s linear;
+}
+.capsule[data-wave="live"] .wave i { background:var(--live); opacity:1; }
+.capsule[data-wave="busy"] .wave i { background:var(--accent); opacity:.9; }
+
+.cap-foot { display:flex; align-items:baseline; gap:.5rem; padding:0 .125rem; min-width:0; }
+.cap-status { font-size:.8125rem; font-weight:600; white-space:nowrap; }
+.cap-hint { font-size:.75rem; color:var(--dim); white-space:nowrap; min-width:0;
+  overflow:hidden; text-overflow:ellipsis; }
+.cap-timer {
+  margin-left:auto; flex:none; font-family:"Cascadia Mono",Consolas,ui-monospace,monospace;
+  font-size:.75rem; color:var(--dim); font-variant-numeric:tabular-nums;
+}
+.capsule[data-tone="live"] .cap-status { color:var(--live); }
+.capsule[data-tone="ok"]   .cap-status { color:var(--ok); }
+.capsule[data-tone="warn"] .cap-status { color:var(--warn); }
+.capsule[data-tone="mute"] .cap-status { color:var(--dim); }
+
+.cap-bar { height:.125rem; border-radius:.125rem; background:transparent; overflow:hidden; }
+.capsule[data-wave="busy"] .cap-bar { background:var(--stroke-strong); }
+.cap-bar::after { content:""; display:block; width:40%; height:100%; background:transparent; }
+.capsule[data-wave="busy"] .cap-bar::after {
+  background:var(--accent); animation:slide 1.2s ease-in-out infinite;
+}
+@keyframes slide { 0% { transform:translateX(-100%); } 100% { transform:translateX(350%); } }
+
+/* ---------------- быстрые параметры ---------------- */
+.quick {
+  position:absolute; left:50%; bottom:calc(100% + .5rem); transform:translateX(-50%);
+  width:100%; min-width:15rem; background:var(--glass); backdrop-filter:blur(1.25rem);
+  border:1px solid var(--stroke-strong); border-radius:.75rem; box-shadow:var(--shadow);
+  padding:.75rem; display:none; gap:.5rem; flex-direction:column;
+}
+.capsule.has-quick .quick { display:flex; }
+.quick-row { display:flex; align-items:center; gap:.625rem; }
+.quick-row > span { font-size:.75rem; color:var(--dim); flex:0 0 5.5rem; }
+.quick select {
+  flex:1; min-width:0; appearance:none; font:inherit; font-size:.75rem; color:var(--text);
+  background:var(--bg); border:1px solid var(--stroke-strong); border-radius:.25rem;
+  padding:.3125rem 1.75rem .3125rem .5rem; cursor:pointer;
+  background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),
+                   linear-gradient(135deg,currentColor 50%,transparent 50%);
+  background-position:calc(100% - .9375rem) 50%, calc(100% - .625rem) 50%;
+  background-size:.3125rem .3125rem,.3125rem .3125rem; background-repeat:no-repeat;
+}
+.quick-note { font-size:.6875rem; color:var(--dim); }
+
+/* ---------------- панель управления макетом ---------------- */
+.tools { display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; margin:1.25rem 0 .5rem; }
+.tools h2 { font-size:.8125rem; font-weight:600; color:var(--dim); margin:0 .5rem 0 0; }
+.btn {
+  font:inherit; font-size:.8125rem; color:var(--text); cursor:pointer;
+  background:var(--card); border:1px solid var(--stroke-strong); border-radius:.25rem;
+  padding:.375rem .75rem;
+}
+.btn:hover { background:var(--card-hover); }
+.btn[aria-pressed="true"] { border-color:var(--accent); color:var(--accent); background:var(--accent-soft); }
+
+/* ---------------- витрина состояний ---------------- */
+.gallery { margin-top:2rem; }
+.gallery > h2 {
+  font-family:"Segoe UI Variable Display","Segoe UI",inherit;
+  font-size:1.25rem; font-weight:600; margin:0 0 .25rem;
+}
+.gallery > p { color:var(--dim); font-size:.875rem; margin:0 0 1.25rem; max-width:44rem; line-height:1.5; }
+.grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(23rem, 1fr)); gap:1.25rem; }
+.case > h3 { font-size:.8125rem; font-weight:600; margin:0 0 .5rem; }
+.case > h3 em { font-style:normal; color:var(--dim); font-weight:400; }
+.case-frame { background:var(--desk); border:1px solid var(--stroke-strong); border-radius:.625rem;
+  padding:1rem; display:flex; justify-content:center; }
+
+kbd {
+  font-family:"Cascadia Mono",Consolas,ui-monospace,monospace; font-size:.6875rem;
+  background:var(--bg); border:1px solid var(--stroke-strong); border-bottom-width:.125rem;
+  border-radius:.1875rem; padding:.0625rem .3125rem;
+}
+
+:focus-visible { outline:.125rem solid var(--accent); outline-offset:.125rem; border-radius:.25rem; }
+
+@media (prefers-reduced-motion: reduce) { *, *::after { animation:none !important; transition:none !important; } }
+</style>
+</head>
+<body>
+
+<div class="stage">
+  <div class="win">
+    <div class="win-bar"><span>Письмо — Черновик</span><span class="fake">— □ ✕</span></div>
+    <div class="win-body">
+      <textarea id="field" placeholder="Курсор стоит здесь. Готовый текст приедет прямо сюда."></textarea>
+    </div>
+    <div class="caret-note">Панель держится поверх всех окон и не забирает фокус — курсор остаётся в поле.</div>
+  </div>
+
+  <div class="capsule" id="cap" data-tone="live" data-wave="live">
+    <div class="quick">
+      <div class="quick-row"><span>Микрофон</span><select><option>Realtek Audio</option><option>Logitech H390</option></select></div>
+      <div class="quick-row"><span>Язык</span><select><option>Русский</option><option>Определять сам</option><option>English</option></select></div>
+      <div class="quick-row"><span>Модель</span><select><option>Large-v3</option><option>Medium</option><option>Small</option></select></div>
+      <div class="quick-note">Видна, пока держите <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Q</kbd></div>
+    </div>
+
+    <div class="cap-row">
+      <button class="cap-btn" data-gear title="Настройки">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+
+      <div class="wave left" data-bars></div>
+
+      <button class="cap-mic" data-mic title="Начать или закончить запись">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v4"/></svg>
+      </button>
+
+      <div class="wave right" data-bars></div>
+
+      <button class="cap-btn" data-ai title="Улучшить текст через ИИ">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M18.5 15.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg>
+      </button>
+    </div>
+
+    <div class="cap-bar"></div>
+
+    <div class="cap-foot">
+      <span class="cap-status" data-status>Говорите</span>
+      <span class="cap-hint" data-hint></span>
+      <span class="cap-timer" data-timer></span>
+    </div>
+  </div>
+</div>
+
+<div class="tools">
+  <h2>Сценарий</h2>
+  <button class="btn" id="play">Проиграть целиком</button>
+  <button class="btn" data-jump="listening">Слушаю</button>
+  <button class="btn" data-jump="thinking">Распознаю</button>
+  <button class="btn" data-jump="done">Готово</button>
+  <button class="btn" data-jump="ai">Улучшаю</button>
+  <button class="btn" data-jump="aidone">Улучшено</button>
+  <button class="btn" data-jump="aierror">ИИ не ответил</button>
+  <button class="btn" data-jump="limit">Предел</button>
+  <button class="btn" data-jump="nospeech">Тишина</button>
+  <button class="btn" data-jump="micdead">Мик молчит</button>
+</div>
+<div class="tools">
+  <h2>Вид</h2>
+  <button class="btn" id="sizebtn" aria-pressed="false">Компактный</button>
+  <button class="btn" id="quicktoggle" aria-pressed="false">Быстрые параметры</button>
+  <button class="btn" id="themebtn">Светлая тема</button>
+</div>
+
+<section class="gallery">
+  <h2>Все состояния</h2>
+  <p>Панель всегда одной ширины и на одном месте — меняются цвет, значок и подпись. Подписи подобраны так, чтобы влезать целиком: если фраза не помещается, переписываем фразу, а не растягиваем панель.</p>
+  <div class="grid" id="grid"></div>
+</section>
+
+<script>
+const root = document.documentElement;
+const q = new URLSearchParams(location.search);
+if (q.get('scale')) root.dataset.scale = q.get('scale');
+if (q.get('theme')) root.dataset.theme = q.get('theme');
+if (q.get('size'))  root.dataset.size  = q.get('size');
+
+/* ---- состояния ---- */
+const STATES = {
+  listening: { tone:'live',   wave:'live', mic:'mic',   status:'Говорите',        hint:'Ещё раз — закончу', timer:'0:07', ai:true,
+    caption:'Идёт запись',      note:'Полоски живут по голосу: молчите — ниточка, говорите — столбики.' },
+  thinking:  { tone:'accent', wave:'busy', mic:'spin',  status:'Распознаю',       hint:'Large-v3 · русский', timer:'0:23', ai:false,
+    caption:'Расшифровка',      note:'Кнопка ИИ погашена: улучшать пока нечего.' },
+  done:      { tone:'ok',     wave:'flat', mic:'check', status:'Текст в буфере',  hint:'Вставить — Ctrl+V',  timer:'', ai:true,
+    caption:'Готово',           note:'Гаснет через 2 секунды. ИИ ещё можно нажать.' },
+  ai:        { tone:'accent', wave:'busy', mic:'spark', status:'Улучшаю текст',   hint:'Обычный уже в буфере', timer:'', ai:false,
+    caption:'Работает ИИ',      note:'Сырой текст отдан сразу, ИИ догоняет.' },
+  aidone:    { tone:'ok',     wave:'flat', mic:'check', status:'Текст улучшен',   hint:'Обычный — в Win+V',  timer:'', ai:true,
+    caption:'ИИ ответил',       note:'Оба варианта на руках.' },
+  aierror:   { tone:'warn',   wave:'flat', mic:'warn',  status:'ИИ не ответил',   hint:'Обычный текст на месте', timer:'', ai:true,
+    caption:'ИИ недоступен',    note:'Не потеря: текст уже вставлен.' },
+  limit:     { tone:'accent', wave:'busy', mic:'spin',  status:'20 минут — предел', hint:'Отправил в работу', timer:'', ai:false,
+    caption:'Предел по времени', note:'Не ошибка: запись просто ушла в работу.' },
+  nospeech:  { tone:'mute',   wave:'flat', mic:'mute',  status:'Тишина',          hint:'Запись отменил',     timer:'', ai:false,
+    caption:'Никто не говорил',  note:'Защита от случайного нажатия: пусто — значит нечего вставлять.' },
+  micdead:   { tone:'warn',   wave:'flat', mic:'warn',  status:'Микрофон молчит', hint:'Проверьте устройство', timer:'', ai:false,
+    caption:'Микрофон не даёт звук', note:'Отличаем от «человек молчит»: сигнала нет вообще.' }
+};
+
+const ICONS = {
+  mic:'<rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v4"/>',
+  mute:'<rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v4"/><path d="m3 3 18 18"/>',
+  check:'<path d="M20 6 9 17l-5-5"/>',
+  warn:'<path d="M12 8v5M12 17h.01"/><path d="M12 3 2 20h20z"/>',
+  spin:'<path d="M12 3a9 9 0 1 0 9 9"/>',
+  spark:'<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/>'
+};
+
+document.head.insertAdjacentHTML('beforeend',
+  '<style>@keyframes spin { to { transform:rotate(360deg); } }</style>');
+
+const BARS = 13;
+
+function makeBars(el) {
+  el.innerHTML = '';
+  for (let i = 0; i < BARS; i++) el.appendChild(document.createElement('i'));
+}
+document.querySelectorAll('[data-bars]').forEach(makeBars);
+
+/** Уровень 0..1 → высота полоски. Тонкая ниточка в тишине, столбик в голосе. */
+function paint(capsule, history) {
+  const left = capsule.querySelector('.wave.left');
+  const right = capsule.querySelector('.wave.right');
+  history.forEach((level, i) => {
+    const height = (6 + level * 94).toFixed(1) + '%';
+    // Свежий отсчёт — у самого микрофона, старые расходятся к краям.
+    if (left) left.children[i].style.height = height;
+    if (right) right.children[BARS - 1 - i].style.height = height;
+  });
+}
+
+function apply(capsule, key) {
+  const s = STATES[key];
+  capsule.dataset.tone = s.tone;
+  capsule.dataset.wave = s.wave;
+  capsule.dataset.state = key;
+  capsule.querySelector('[data-status]').textContent = s.status;
+  capsule.querySelector('[data-hint]').textContent = s.hint;
+  capsule.querySelector('[data-timer]').textContent = s.timer;
+  const svg = capsule.querySelector('.cap-mic svg');
+  svg.innerHTML = ICONS[s.mic];
+  svg.style.animation = s.mic === 'spin' ? 'spin 1s linear infinite' : '';
+  capsule.querySelector('[data-ai]').disabled = !s.ai;
+  if (s.wave !== 'live') paint(capsule, new Array(BARS).fill(s.wave === 'busy' ? 0.12 : 0.02));
+}
+
+/* ---- живой уровень ----
+   В приложении сюда приходит громкость микрофона. В макете её изображает
+   генератор: пачки речи вперемешку с паузами. */
+const cap = document.getElementById('cap');
+const history = new Array(BARS).fill(0.02);
+let speaking = true, hold = 0;
+
+function tick() {
+  if (cap.dataset.wave === 'live') {
+    if (hold-- <= 0) { speaking = !speaking; hold = speaking ? 8 + Math.random() * 20 : 3 + Math.random() * 8; }
+    const level = speaking
+      ? 0.35 + Math.random() * 0.6
+      : 0.01 + Math.random() * 0.05;
+    history.push(level);
+    history.shift();
+    paint(cap, history);
+  }
+  setTimeout(tick, 85);
+}
+tick();
+
+/* ---- сценарий ---- */
+const field = document.getElementById('field');
+const RAW = 'Слушай, ну короче надо бы завтра созвониться по проекту, ну там обсудить сроки и вот это вот всё, потому что как бы дедлайн уже близко.';
+const NICE = 'Предлагаю созвониться завтра по проекту: обсудить сроки — дедлайн уже близко.';
+
+let chain = [];
+const stop = () => { chain.forEach(clearTimeout); chain = []; };
+const at = (ms, fn) => chain.push(setTimeout(fn, ms));
+
+function play() {
+  stop();
+  field.value = '';
+  apply(cap, 'listening');
+  at(2600, () => apply(cap, 'thinking'));
+  at(4400, () => { apply(cap, 'done'); field.value = RAW; });
+  at(6000, () => apply(cap, 'ai'));
+  at(8400, () => { apply(cap, 'aidone'); field.value = NICE; });
+}
+document.getElementById('play').addEventListener('click', play);
+cap.querySelector('[data-mic]').addEventListener('click', play);
+document.querySelectorAll('[data-jump]').forEach(b =>
+  b.addEventListener('click', () => { stop(); apply(cap, b.dataset.jump); }));
+
+document.getElementById('quicktoggle').addEventListener('click', e => {
+  e.currentTarget.setAttribute('aria-pressed', String(cap.classList.toggle('has-quick')));
+});
+document.getElementById('sizebtn').addEventListener('click', e => {
+  const compact = root.dataset.size !== 'compact';
+  root.dataset.size = compact ? 'compact' : 'full';
+  e.currentTarget.setAttribute('aria-pressed', String(compact));
+  e.currentTarget.textContent = compact ? 'Полный' : 'Компактный';
+});
+document.getElementById('themebtn').addEventListener('click', e => {
+  const light = root.dataset.theme === 'dark';
+  root.dataset.theme = light ? 'light' : 'dark';
+  e.currentTarget.textContent = light ? 'Тёмная тема' : 'Светлая тема';
+});
+apply(cap, 'listening');
+
+/* ---- витрина ---- */
+const grid = document.getElementById('grid');
+Object.entries(STATES).forEach(([key, s]) => {
+  const wrap = document.createElement('div');
+  wrap.className = 'case';
+  wrap.innerHTML = '<h3>' + s.caption + (s.note ? ' <em>— ' + s.note + '</em>' : '') + '</h3><div class="case-frame"></div>';
+  const clone = cap.cloneNode(true);
+  clone.classList.add('is-static');
+  clone.classList.remove('has-quick');
+  clone.querySelector('.quick').remove();
+  clone.querySelectorAll('[data-bars]').forEach(makeBars);
+  wrap.querySelector('.case-frame').appendChild(clone);
+  grid.appendChild(wrap);
+  apply(clone, key);
+  if (key === 'listening') paint(clone, [.05,.3,.75,.45,.9,.6,.25,.8,.5,.95,.4,.7,.35]);
+});
+</script>
+</body>
+</html>

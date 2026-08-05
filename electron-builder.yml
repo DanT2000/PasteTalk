@@ -1,0 +1,52 @@
+appId: ru.appswire.pastetalk
+productName: PasteTalk
+copyright: © 2026 DanT2000. MIT — с указанием авторства.
+
+directories:
+  output: release
+  buildResources: build
+
+# В сборку идёт только то, что нужно на чужом компьютере: макеты,
+# скрипты сборки и окружение движка остаются в репозитории.
+files:
+  - app/**/*
+  - package.json
+  - '!**/*.map'
+
+extraResources:
+  # Собранный движок ложится рядом с приложением. Приложение ищет его
+  # по этому пути первым, а venv из репозитория — только в разработке.
+  - from: build/engine
+    to: engine
+    filter: ['**/*']
+
+win:
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch: [x64]
+  # Подписи нет: сертификат стоит денег, а без него SmartScreen всё равно
+  # ругается один раз. В README написано, что нажать.
+  signAndEditExecutable: true
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: PasteTalk
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  installerHeaderIcon: build/icon.ico
+  deleteAppDataOnUninstall: false
+  runAfterFinish: true
+  artifactName: PasteTalk-${version}-Setup.${ext}
+  # Оставляем русский первым: программа русскоязычная.
+  installerLanguages: [ru_RU, en_US]
+  language: '1049'
+
+publish:
+  provider: github
+  owner: DanT2000
+  repo: PasteTalk

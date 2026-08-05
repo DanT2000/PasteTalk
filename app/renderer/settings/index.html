@@ -1,0 +1,653 @@
+<!doctype html>
+<html lang="ru" data-theme="dark" data-scale="100">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; script-src 'self'; img-src 'self' data:">
+<title>PasteTalk — Настройки</title>
+<link rel="stylesheet" href="settings.css">
+</head>
+<body>
+<div class="app">
+
+  <div class="titlebar">
+    <svg class="mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+      <rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v4"/>
+    </svg>
+    <h1>PasteTalk — Настройки</h1>
+    <div class="state"><i class="dot" id="dot"></i><span id="state-text">Проверяю движок…</span></div>
+    <div class="wincontrols">
+      <button id="win-close" class="close" title="Свернуть в область уведомлений — программа продолжит работать">&#xE8BB;</button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 6 9 17l-5-5"/></svg>
+    <span id="toast-text"></span>
+  </div>
+
+  <div class="shell">
+    <nav class="nav">
+      <button class="nav-item is-active" data-goto="general">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>
+        <span class="nav-label">Основное</span>
+      </button>
+      <button class="nav-item" data-goto="model">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12h2M7 8v8M11 5v14M15 9v6M19 11v2M21 12h0"/></svg>
+        <span class="nav-label">Распознавание</span>
+      </button>
+      <button class="nav-item" data-goto="keys">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8"/></svg>
+        <span class="nav-label">Горячие клавиши</span>
+      </button>
+      <button class="nav-item" data-goto="ai">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M18.5 15.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg>
+        <span class="nav-label">Улучшение текста</span>
+      </button>
+      <button class="nav-item" data-goto="look">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 18 9 6l5 12M5.8 14h6.4M15 18l3-7 3 7M15.9 15.5h4.2"/></svg>
+        <span class="nav-label">Вид и размер</span>
+      </button>
+      <div class="nav-sep"></div>
+      <button class="nav-item" data-goto="files">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 14h6M9 17h4"/></svg>
+        <span class="nav-label">Файлы</span>
+      </button>
+      <button class="nav-item" data-goto="about">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
+        <span class="nav-label">О программе</span>
+      </button>
+    </nav>
+
+    <main class="content">
+
+      <!-- ===== ПЕРВЫЙ ЗАПУСК ===== -->
+      <section class="page" data-page="welcome">
+        <h2>Здравствуйте</h2>
+        <p class="lede">Три вещи, и можно диктовать. Всё остальное потом, в настройках.</p>
+
+        <div class="group-title">1. Модель распознавания</div>
+        <div class="card">
+          <div class="row">
+            <div class="row-text">
+              <div class="row-title">Какую скачать</div>
+              <div class="row-sub" id="welcome-model-sub">Large-v3 точнее всех и рекомендуется, если есть видеокарта</div>
+            </div>
+            <div class="row-control"><select id="welcome-model"></select></div>
+          </div>
+          <div class="row">
+            <div class="row-text">
+              <div class="row-title">Где считать</div>
+              <div class="row-sub" id="welcome-device-sub">Проверяю…</div>
+            </div>
+            <div class="row-control"><select id="welcome-device"></select></div>
+          </div>
+        </div>
+
+        <div class="group-title">2. Микрофон</div>
+        <div class="card">
+          <div class="row">
+            <div class="row-text">
+              <div class="row-title">С какого устройства писать</div>
+              <div class="row-sub">Можно поменять на лету, не заходя сюда</div>
+            </div>
+            <div class="row-control"><select id="welcome-mic" data-cfg="microphoneId"></select></div>
+          </div>
+        </div>
+
+        <div class="group-title">3. Совет напоследок</div>
+        <div class="card">
+          <div class="row">
+            <div class="row-text">
+              <div class="row-title">Включите журнал буфера обмена</div>
+              <div class="row-sub">Нажмите Win+V и включите его. Тогда обычный и улучшенный текст будут лежать рядом, и вы выберете любой</div>
+            </div>
+            <div class="row-control"><button class="btn" id="welcome-clip">Как включить</button></div>
+          </div>
+        </div>
+
+        <div class="note" style="margin-top:1.5rem;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
+          <div>Горячая клавиша по умолчанию — <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Space</kbd>. Нажали, сказали, нажали ещё раз — текст в буфере обмена.</div>
+        </div>
+
+        <div style="margin-top:1.5rem; display:flex; gap:.5rem; flex-wrap:wrap;">
+          <button class="btn btn-accent" id="welcome-done">Скачать и начать</button>
+          <button class="btn" id="welcome-skip">Пропустить</button>
+        </div>
+      </section>
+
+      <!-- ===== ОСНОВНОЕ ===== -->
+      <section class="page is-active" data-page="general">
+        <h2>Основное</h2>
+        <p class="lede">Как PasteTalk слушает и куда отдаёт текст.</p>
+
+        <div class="group-title">Звук</div>
+        <div class="card">
+          <div class="row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v4"/></svg>
+            <div class="row-text">
+              <div class="row-title">Микрофон</div>
+              <div class="row-sub">Устройство, с которого идёт запись</div>
+            </div>
+            <div class="row-control">
+              <select id="mic" data-cfg="microphoneId"></select>
+              <button class="btn" id="mic-test">Проверить</button>
+            </div>
+          </div>
+          <div class="row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/></svg>
+            <div class="row-text">
+              <div class="row-title">Сигнал начала и конца записи</div>
+              <div class="row-sub">Короткий звук, чтобы не смотреть на экран</div>
+            </div>
+            <div class="row-control">
+              <select id="sound" data-cfg="sound.preset">
+                <option value="bell">Колокольчик</option>
+                <option value="marimba">Маримба</option>
+                <option value="soft">Мягкий</option>
+                <option value="glass">Стекло</option>
+                <option value="drop">Капля</option>
+                <option value="wood">Деревяшка</option>
+                <option value="chime">Перезвон</option>
+                <option value="tick">Тик</option>
+                <option value="none">Без звука</option>
+              </select>
+              <button class="btn" id="sound-test">Послушать</button>
+            </div>
+          </div>
+          <div class="row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>
+            <div class="row-text">
+              <div class="row-title">Громкость сигнала</div>
+              <div class="row-sub">Отдельно от общей громкости Windows</div>
+            </div>
+            <div class="row-control">
+              <input class="slider" type="range" min="0" max="100" id="vol" data-cfg="sound.volume">
+              <span class="value" id="vol-val">60 %</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="group-title">Текст</div>
+        <div class="card">
+          <div class="row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+            <div class="row-text">
+              <div class="row-title">Вставлять текст сразу</div>
+              <div class="row-sub">Нажмём Ctrl+V за вас. Если вставлять некуда — текст просто останется в буфере обмена</div>
+            </div>
+            <div class="row-control"><input class="switch" type="checkbox" data-cfg="text.autoPaste"></div>
+          </div>
+          <div class="row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7V5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2"/><path d="M9 20h6M12 4v16"/></svg>
+            <div class="row-text">
+              <div class="row-title">Оставлять знаки препинания</div>
+              <div class="row-sub">Whisper ставит их сам. Выключите, если нужен голый текст без точек и запятых</div>
+            </div>
+            <div class="row-control"><input class="switch" type="checkbox" data-cfg="text.keepPunctuation"></div>
+          </div>
+          <div class="row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="7" width="12" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2"/></svg>
+            <div class="row-text">
+              <div class="row-title">Журнал буфера обмена Windows</div>
+              <div class="row-sub">Рекомендуем включить: хранит несколько последних текстов, вызывается по Win+V. Без него улучшенный текст затрёт обычный</div>
+            </div>
+            <div class="row-control"><button class="btn" id="clip-how">Как включить</button></div>
+          </div>
+        </div>
+
+        <div class="group-title">Запуск</div>
+        <div class="card">
+          <div class="row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v9M7.5 6.5a7 7 0 1 0 9 0"/></svg>
+            <div class="row-text">
+              <div class="row-title">Запускать вместе с Windows</div>
+              <div class="row-sub">Значок появится рядом с часами</div>
+            </div>
+            <div class="row-control"><input class="switch" type="checkbox" data-cfg="startup.autoLaunch"></div>
+          </div>
+          <div class="row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+            <div class="row-text">
+              <div class="row-title">Перезапускать после сбоя</div>
+              <div class="row-sub">До трёх попыток, потом покажем, что пошло не так</div>
+            </div>
+            <div class="row-control"><input class="switch" type="checkbox" data-cfg="startup.restartOnCrash"></div>
+          </div>
+          <div class="row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+            <div class="row-text">
+              <div class="row-title">Пауза</div>
+              <div class="row-sub">Горячие клавиши перестанут работать, программа останется в трее</div>
+            </div>
+            <div class="row-control"><input class="switch" type="checkbox" id="paused"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== РАСПОЗНАВАНИЕ ===== -->
+      <section class="page" data-page="model">
+        <h2>Распознавание</h2>
+        <p class="lede">Речь превращается в текст на вашем компьютере. Интернет нужен один раз — чтобы скачать модель.</p>
+
+        <div class="group-title">Модель</div>
+        <div class="card" id="model-list"></div>
+
+        <div class="group-title">Вычисления</div>
+        <div class="card">
+          <div class="row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 18v2M17 18v2M8 10h4M8 13h6"/></svg>
+            <div class="row-text">
+              <div class="row-title">Считать на</div>
+              <div class="row-sub" id="device-sub">Проверяю…</div>
+            </div>
+            <div class="row-control"><select id="device" data-cfg="model.device"></select></div>
+          </div>
+          <div class="row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v6M12 21a8 8 0 1 0-6-13.3"/><path d="m14.5 13.5-2.5-2.5"/></svg>
+            <div class="row-text">
+              <div class="row-title">Скорость на этой машине</div>
+              <div class="row-sub" id="bench-sub">Ещё не мерили. Числа будут ваши, а не из таблицы</div>
+            </div>
+            <div class="row-control"><button class="btn" id="bench">Измерить</button></div>
+          </div>
+          <div class="row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m5 8 4-4 4 4"/><path d="M9 4v9a3 3 0 0 0 3 3h7"/><path d="m16 13 3 3-3 3"/></svg>
+            <div class="row-text">
+              <div class="row-title">Язык речи</div>
+              <div class="row-sub">Whisper определяет язык сам по первым секундам</div>
+            </div>
+            <div class="row-control">
+              <select id="language" data-cfg="language">
+                <option value="auto">Определять автоматически</option>
+                <option value="ru">Русский</option>
+                <option value="en">English</option>
+                <option value="uk">Українська</option>
+                <option value="de">Deutsch</option>
+                <option value="fr">Français</option>
+                <option value="es">Español</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="group-title">Границы записи</div>
+        <div class="card">
+          <div class="row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3 3 7v6c0 4.5 3.6 7.7 9 8.9 5.4-1.2 9-4.4 9-8.9V7z"/><path d="M9.5 12.5 11 14l3.5-3.5"/></svg>
+            <div class="row-text">
+              <div class="row-title">Отменять, если так ничего и не сказали</div>
+              <div class="row-sub">Защита от случайного нажатия. Запас берите с головой: пока вы обдумываете формулировку, запись просто идёт и ничего не портит</div>
+            </div>
+            <div class="row-control">
+              <select data-cfg="limits.noSpeechCancelMs" data-number>
+                <option value="30000">Через 30 секунд</option>
+                <option value="60000">Через 1 минуту</option>
+                <option value="300000">Через 5 минут</option>
+                <option value="900000">Через 15 минут</option>
+                <option value="1800000">Через 30 минут</option>
+                <option value="0">Не отменять</option>
+              </select>
+            </div>
+          </div>
+          <div class="row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+            <div class="row-text">
+              <div class="row-title">Останавливать после тишины</div>
+              <div class="row-sub">Вы замолчали и молчите — запись закончится сама</div>
+            </div>
+            <div class="row-control">
+              <select data-cfg="limits.silenceStopMs" data-number>
+                <option value="30000">Через 30 секунд</option>
+                <option value="60000">Через 1 минуту</option>
+                <option value="120000">Через 2 минуты</option>
+                <option value="0">Никогда</option>
+              </select>
+            </div>
+          </div>
+          <div class="row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3a9 9 0 1 1-9 9"/><path d="M3 3v6h6"/><path d="M12 8v4l3 2"/></svg>
+            <div class="row-text">
+              <div class="row-title">Максимальная длина записи</div>
+              <div class="row-sub">Дойдя до предела, PasteTalk остановится и отправит записанное в работу</div>
+            </div>
+            <div class="row-control">
+              <select data-cfg="limits.maxDurationMs" data-number>
+                <option value="300000">5 минут</option>
+                <option value="600000">10 минут</option>
+                <option value="1200000">20 минут</option>
+                <option value="3600000">60 минут</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== ГОРЯЧИЕ КЛАВИШИ ===== -->
+      <section class="page" data-page="keys">
+        <h2>Горячие клавиши</h2>
+        <p class="lede">Нажмите «Изменить», затем нужное сочетание — и Enter, чтобы сохранить.</p>
+        <div class="card" id="hotkeys"></div>
+        <div class="group-title">Поведение</div>
+        <div class="card">
+          <div class="row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 3v18l14-9z"/></svg>
+            <div class="row-text">
+              <div class="row-title">Когда начинать запись</div>
+              <div class="row-sub">«Сразу» ничего не теряет: распознавание идёт по ходу речи. Отсчёт нужен, если хочется сначала увидеть панель и только потом заговорить</div>
+            </div>
+            <div class="row-control">
+              <select data-cfg="limits.startDelayMs" data-number>
+                <option value="0">Сразу по нажатию</option>
+                <option value="1000">Через 1 секунду</option>
+                <option value="2000">Через 2 секунды</option>
+                <option value="3000">Через 3 секунды</option>
+                <option value="5000">Через 5 секунд</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== УЛУЧШЕНИЕ ТЕКСТА ===== -->
+      <section class="page" data-page="ai">
+        <h2>Улучшение текста</h2>
+        <p class="lede">Языковая модель убирает слова-паразиты и приводит сказанное в порядок. Работает поверх готового текста, отдельно от Whisper.</p>
+
+        <div class="note">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
+          <div>Обычный текст попадает в буфер обмена сразу, не дожидаясь модели. Улучшенный приходит следом и заменяет его. Не ответила — у вас на руках остаётся обычный.</div>
+        </div>
+
+        <div class="group-title">Откуда брать модель</div>
+        <div class="card">
+          <div class="row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/></svg>
+            <div class="row-text">
+              <div class="row-title">Улучшать текст</div>
+              <div class="row-sub">Пока выключено, кнопка ИИ на панели записи не работает</div>
+            </div>
+            <div class="row-control"><input class="switch" type="checkbox" data-cfg="ai.enabled"></div>
+          </div>
+          <div class="row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h10M7 13h6"/></svg>
+            <div class="row-text">
+              <div class="row-title">Провайдер</div>
+              <div class="row-sub" id="provider-sub">LM Studio: запустите его и включите локальный сервер</div>
+            </div>
+            <div class="row-control"><select id="provider" data-cfg="ai.provider"></select></div>
+          </div>
+          <div class="row" id="row-baseurl">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1.5 1.5"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1.5-1.5"/></svg>
+            <div class="row-text">
+              <div class="row-title">Адрес сервера</div>
+              <div class="row-sub">Любой сервер с OpenAI-совместимым API</div>
+            </div>
+            <div class="row-control"><input class="field" type="text" id="baseurl" data-cfg="ai.baseUrl" spellcheck="false" placeholder="http://localhost:1234/v1"></div>
+          </div>
+          <div class="row" id="row-key">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="8" cy="15" r="4"/><path d="m10.8 12.2 8-8 2.2 2.2-1.6 1.6 1.6 1.6-2.4 2.4-1.6-1.6-1.8 1.8"/></svg>
+            <div class="row-text">
+              <div class="row-title">Ключ доступа</div>
+              <div class="row-sub">Хранится только на этом компьютере, в файле настроек</div>
+            </div>
+            <div class="row-control"><input class="field" type="password" id="apikey" placeholder="не задан"></div>
+          </div>
+          <div class="row" id="row-model">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M10 3v4M14 3v4M10 17v4M14 17v4M3 10h4M3 14h4M17 10h4M17 14h4"/></svg>
+            <div class="row-text">
+              <div class="row-title">Модель</div>
+              <div class="row-sub" id="model-sub">Нажмите «Обновить», чтобы получить список с сервера</div>
+            </div>
+            <div class="row-control">
+              <select id="ai-model" data-cfg="ai.model"></select>
+              <button class="btn" id="ai-refresh">Обновить</button>
+            </div>
+          </div>
+          <div class="row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 6 9 17l-5-5"/></svg>
+            <div class="row-text">
+              <div class="row-title">Проверка связи</div>
+              <div class="row-sub" id="ai-check-sub">Прогоним короткую фразу целиком — и увидим ответ</div>
+            </div>
+            <div class="row-control"><span class="pill pill-muted" id="ai-status">не проверено</span><button class="btn" id="ai-check">Проверить</button></div>
+          </div>
+        </div>
+
+        <div class="group-title">Что делать с текстом</div>
+        <div class="card">
+          <div class="row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h10M4 17h13"/></svg>
+            <div class="row-text">
+              <div class="row-title">Что делать с текстом</div>
+              <div class="row-sub">Модель ничего не досочиняет — только правит то, что вы сказали</div>
+            </div>
+            <div class="row-control">
+              <select id="ai-mode" data-cfg="ai.mode">
+                <option value="clean">Убрать слова-паразиты</option>
+                <option value="structure">Разбить на абзацы и списки</option>
+                <option value="both">И то, и другое</option>
+                <option value="custom">Свои указания</option>
+              </select>
+            </div>
+          </div>
+          <div class="row row-stack is-hidden" id="row-prompt">
+            <div class="row-title">Свои указания модели</div>
+            <div class="row-sub">Текст пойдёт следующим сообщением после этих указаний</div>
+            <textarea class="field area" id="ai-prompt" data-cfg="ai.prompt" spellcheck="false"></textarea>
+          </div>
+          <div class="row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+            <div class="row-text">
+              <div class="row-title">Сколько ждать модель</div>
+              <div class="row-sub">«По длине текста» даёт 15 секунд на короткую фразу и до трёх минут на длинную расшифровку. Не дождались — остаётся обычный текст</div>
+            </div>
+            <div class="row-control">
+              <select data-cfg="ai.timeoutMs" data-number>
+                <option value="0">По длине текста</option>
+                <option value="15000">15 секунд</option>
+                <option value="30000">30 секунд</option>
+                <option value="60000">1 минута</option>
+                <option value="180000">3 минуты</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== ВИД И РАЗМЕР ===== -->
+      <section class="page" data-page="look">
+        <h2>Вид и размер</h2>
+        <p class="lede">Размер меняет всё окно целиком: настройки, подсказки и панель записи.</p>
+
+        <div class="group-title">Размер интерфейса</div>
+        <div class="card">
+          <div class="row row-stack">
+            <div class="row-title">Выберите размер, который вам удобно читать</div>
+            <div class="row-sub">Образец в каждом варианте показан в его настоящем размере.</div>
+            <div class="scale-pick" role="radiogroup" aria-label="Размер интерфейса">
+              <button class="scale-opt" data-v="100" role="radio" aria-checked="true">
+                <div class="sample"><span class="aa">Аа</span><span class="pct">100 %</span></div>
+                <div class="name">Обычный<span>Как в Windows</span></div>
+              </button>
+              <button class="scale-opt" data-v="125" role="radio" aria-checked="false">
+                <div class="sample"><span class="aa">Аа</span><span class="pct">125 %</span></div>
+                <div class="name">Крупный<span>Читать легче</span></div>
+              </button>
+              <button class="scale-opt" data-v="150" role="radio" aria-checked="false">
+                <div class="sample"><span class="aa">Аа</span><span class="pct">150 %</span></div>
+                <div class="name">Очень крупный<span>Если зрение слабое</span></div>
+              </button>
+            </div>
+            <div class="preview">
+              <p>Так будет выглядеть текст в приложении.</p>
+              <p>А так — пояснения под настройками.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="group-title">Оформление</div>
+        <div class="card">
+          <div class="row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor" stroke="none"/></svg>
+            <div class="row-text">
+              <div class="row-title">Тема</div>
+              <div class="row-sub">«Как в Windows» переключается вместе с системной</div>
+            </div>
+            <div class="row-control">
+              <select data-cfg="appearance.theme">
+                <option value="system">Как в Windows</option>
+                <option value="dark">Тёмная</option>
+                <option value="light">Светлая</option>
+              </select>
+            </div>
+          </div>
+          <div class="row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M9 12h6"/></svg>
+            <div class="row-text">
+              <div class="row-title">Где показывать панель записи</div>
+              <div class="row-sub">Небольшое окно поверх остальных, как у голосового ввода Windows</div>
+            </div>
+            <div class="row-control">
+              <select data-cfg="appearance.capsulePosition">
+                <option value="bottom">Внизу по центру</option>
+                <option value="top">Вверху по центру</option>
+                <option value="cursor">Рядом с курсором</option>
+              </select>
+            </div>
+          </div>
+          <div class="row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 9 4 12l4 3M16 9l4 3-4 3"/></svg>
+            <div class="row-text">
+              <div class="row-title">Размер панели записи</div>
+              <div class="row-sub">Компактная вдвое уже: только микрофон, уровень и что сейчас происходит</div>
+            </div>
+            <div class="row-control">
+              <select data-cfg="appearance.capsuleSize">
+                <option value="full">Полная</option>
+                <option value="compact">Компактная</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== ФАЙЛЫ ===== -->
+      <section class="page" data-page="files">
+        <h2>Файлы</h2>
+        <p class="lede">Расшифровка готовых записей той же моделью, что и живая диктовка.</p>
+
+        <div class="drop" id="drop">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
+          <h3>Перетащите файл сюда</h3>
+          <p>Видео и аудио: MP4, MKV, MOV, WEBM, MP3, WAV, M4A, OGG, FLAC.</p>
+          <button class="btn btn-accent" id="file-pick">Выбрать файл</button>
+        </div>
+
+        <!-- Как только файл взят в работу, зона перетаскивания уступает место
+             результату: смотреть на «перетащите файл» уже незачем. -->
+        <div class="result is-hidden" id="file-result">
+          <div class="result-head">
+            <div class="result-file">
+              <div class="row-title" id="file-name">Файл не выбран</div>
+              <div class="row-sub" id="file-info">—</div>
+            </div>
+            <div class="result-actions">
+              <button class="btn" id="file-another">Другой файл</button>
+              <button class="btn" id="file-save" disabled>Сохранить как…</button>
+              <button class="btn btn-accent" id="file-copy" disabled>Копировать всё</button>
+            </div>
+          </div>
+          <div class="progress" id="file-progress" style="display:none;"><i></i></div>
+          <div class="result-body" id="file-text"></div>
+        </div>
+
+        <div class="group-title">Как расшифровывать</div>
+        <div class="card">
+          <div class="row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M10 3v4M14 3v4M10 17v4M14 17v4M3 10h4M3 14h4M17 10h4M17 14h4"/></svg>
+            <div class="row-text">
+              <div class="row-title">Модель</div>
+              <div class="row-sub" id="file-model-sub">Для длинных записей Medium справляется заметно быстрее</div>
+            </div>
+            <div class="row-control"><select id="file-model"></select></div>
+          </div>
+          <div class="row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m5 8 4-4 4 4"/><path d="M9 4v9a3 3 0 0 0 3 3h7"/><path d="m16 13 3 3-3 3"/></svg>
+            <div class="row-text">
+              <div class="row-title">Язык речи</div>
+              <div class="row-sub">Может отличаться от языка для горячей клавиши</div>
+            </div>
+            <div class="row-control">
+              <select id="file-lang">
+                <option value="">Определять автоматически</option>
+                <option value="ru">Русский</option>
+                <option value="en">English</option>
+                <option value="uk">Українська</option>
+              </select>
+            </div>
+          </div>
+          <div class="row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+            <div class="row-text">
+              <div class="row-title">Метки времени</div>
+              <div class="row-sub">Перед каждым куском текста — минута и секунда, на которой он звучит</div>
+            </div>
+            <div class="row-control"><input class="switch" type="checkbox" id="file-stamps" data-cfg="files.timestamps"></div>
+          </div>
+          <div class="row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m10 8 6 4-6 4z"/><rect x="3" y="4" width="18" height="16" rx="2"/></svg>
+            <div class="row-text">
+              <div class="row-title">FFmpeg</div>
+              <div class="row-sub" id="ffmpeg-sub">Достаёт звук из видео. Проверяю…</div>
+            </div>
+            <div class="row-control"><span class="pill pill-muted" id="ffmpeg-pill">проверяю</span><button class="btn" id="ffmpeg-how">Как поставить</button></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== О ПРОГРАММЕ ===== -->
+      <section class="page" data-page="about">
+        <h2>О программе</h2>
+        <p class="lede">PasteTalk превращает речь в текст, ничего не отправляя в интернет.</p>
+
+        <div class="card">
+          <div class="row">
+            <div class="row-text">
+              <div class="row-title" id="version">PasteTalk</div>
+              <div class="row-sub" id="engine-line">Движок: проверяю…</div>
+            </div>
+            <div class="row-control"><button class="btn" id="engine-restart">Перезапустить движок</button></div>
+          </div>
+          <div class="row">
+            <div class="row-text">
+              <div class="row-title">Файл настроек</div>
+              <div class="row-sub" id="settings-path">—</div>
+            </div>
+            <div class="row-control"><button class="btn" id="open-settings-file">Открыть папку</button></div>
+          </div>
+          <div class="row">
+            <div class="row-text">
+              <div class="row-title">Исходный код</div>
+              <div class="row-sub">github.com/DanT2000/PasteTalk</div>
+            </div>
+            <div class="row-control"><button class="btn" id="open-github">Открыть</button></div>
+          </div>
+        </div>
+
+        <div class="group-title">Журнал работы</div>
+        <div class="logs" id="logs">Загружаю…</div>
+        <div style="margin-top:.75rem; display:flex; gap:.5rem;">
+          <button class="btn" id="logs-refresh">Обновить</button>
+          <button class="btn" id="logs-open">Открыть файл журнала</button>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<script src="../shared/sounds.js"></script>
+<script src="settings.js"></script>
+</body>
+</html>

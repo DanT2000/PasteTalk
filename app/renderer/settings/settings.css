@@ -1,0 +1,324 @@
+/* ============================================================
+   Окно настроек PasteTalk.
+   Всё внутри — в rem, масштаб меняется через font-size у :root.
+   Пиксели только для волосяных линий: они не должны толстеть.
+   ============================================================ */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { font-size: 16px; transition: font-size .16s cubic-bezier(.2,.7,.3,1); }
+html[data-scale="125"] { font-size: 20px; }
+html[data-scale="150"] { font-size: 24px; }
+
+html[data-theme="dark"] {
+  --bg:#1B1B1F; --panel:#232329; --card:#2A2A31; --card-hover:#32323A;
+  --stroke:rgba(255,255,255,.075); --stroke-strong:rgba(255,255,255,.16);
+  --text:#F4F4F7; --dim:#A6A6B2;
+  --accent:#E9A72C; --accent-soft:rgba(233,167,44,.13); --on-accent:#1B1B1F;
+  --live:#F2686C; --ok:#3FB950;
+}
+html[data-theme="light"] {
+  --bg:#EDEDF1; --panel:#F6F6F9; --card:#FFFFFF; --card-hover:#F7F7FA;
+  --stroke:rgba(0,0,0,.08); --stroke-strong:rgba(0,0,0,.18);
+  --text:#16161A; --dim:#5A5A66;
+  --accent:#B87400; --accent-soft:rgba(184,116,0,.10); --on-accent:#FFFFFF;
+  --live:#C0272D; --ok:#237A32;
+}
+
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--bg); color: var(--text);
+  font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  overflow: hidden;
+}
+
+/* Полосы прокрутки — одни и те же во всём окне: в списке разделов, в
+   содержимом, в журнале и в готовом тексте. Системные здесь выглядели
+   заплаткой из чужого приложения. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--stroke-strong) transparent;
+}
+*::-webkit-scrollbar { width: .625rem; height: .625rem; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: var(--stroke-strong); border-radius: 1rem;
+  border: .1875rem solid transparent; background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover { background: var(--dim); background-clip: content-box; }
+*::-webkit-scrollbar-corner { background: transparent; }
+
+.app {
+  height: 100%; display: flex; flex-direction: column; position: relative;
+  container-type: inline-size; container-name: app;
+}
+
+/* ---------------- заголовок окна ---------------- */
+.titlebar {
+  display: flex; align-items: center; gap: .625rem;
+  padding: 0 0 0 .875rem; min-height: 2.375rem; flex: none;
+  background: var(--panel); border-bottom: 1px solid var(--stroke);
+  -webkit-app-region: drag;
+}
+.titlebar button { -webkit-app-region: no-drag; }
+.mark { width: 1.125rem; height: 1.125rem; flex: none; color: var(--accent); }
+.titlebar h1 { font-size: .75rem; font-weight: 600; margin: 0; letter-spacing: .01em; white-space: nowrap; }
+.titlebar .state { margin-left: .5rem; font-size: .6875rem; color: var(--dim);
+  display: flex; align-items: center; gap: .375rem; min-width: 0; }
+.titlebar .state span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dot { width: .4375rem; height: .4375rem; border-radius: 50%; background: var(--dim); flex: none; }
+.dot.is-ok { background: var(--ok); }
+.dot.is-busy { background: var(--accent); }
+.dot.is-bad { background: var(--live); }
+
+.wincontrols { margin-left: auto; display: flex; flex: none; }
+.wincontrols button {
+  width: 2.875rem; min-height: 2.375rem; border: 0; background: transparent;
+  color: var(--dim); font-size: .6875rem; cursor: default;
+  font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets", inherit;
+}
+.wincontrols button:hover { background: var(--card-hover); color: var(--text); }
+.wincontrols button.close:hover { background: #C42B1C; color: #fff; }
+
+/* ---------------- каркас ---------------- */
+.shell { flex: 1; display: grid; grid-template-columns: 14.25rem 1fr; min-height: 0; }
+
+.nav { background: var(--panel); border-right: 1px solid var(--stroke);
+  padding: .75rem .5rem; display: flex; flex-direction: column; gap: .125rem; overflow-y: auto; }
+.nav-item {
+  display: flex; align-items: center; gap: .75rem; width: 100%;
+  padding: .5rem .625rem; min-height: 2.5rem;
+  border: 0; border-radius: .3125rem; background: transparent; color: var(--text);
+  font: inherit; font-size: .875rem; text-align: left; cursor: pointer; position: relative;
+}
+.nav-item:hover { background: var(--card-hover); }
+.nav-item svg { width: 1.125rem; height: 1.125rem; flex: none; color: var(--dim); }
+.nav-item.is-active { background: var(--card); }
+.nav-item.is-active svg { color: var(--accent); }
+.nav-item.is-active::before {
+  content: ""; position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+  width: .1875rem; height: 1rem; border-radius: .125rem; background: var(--accent);
+}
+.nav-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-sep { height: 1px; background: var(--stroke); margin: .5rem .625rem; }
+
+/* Содержимое центрируем: при ограниченной ширине страницы левый отступ
+   оставался равен padding, а справа набегал весь остаток окна — колонка
+   выглядела сдвинутой влево. */
+.content { overflow-y: auto; padding: 1.75rem 2rem 3rem; }
+.page { display: none; max-width: 46rem; margin-inline: auto; }
+.page.is-active { display: block; }
+.page > h2 { font-family: "Segoe UI Variable Display", "Segoe UI", inherit;
+  font-size: 1.5rem; font-weight: 600; letter-spacing: -.01em; margin: 0 0 .25rem; }
+.page > .lede { color: var(--dim); font-size: .875rem; margin: 0 0 1.5rem; line-height: 1.45; }
+
+.group-title { font-size: .8125rem; font-weight: 600; color: var(--dim);
+  margin: 1.75rem 0 .5rem; letter-spacing: .02em; }
+.group-title:first-of-type { margin-top: 0; }
+
+/* ---------------- карточка со строками ---------------- */
+.card { background: var(--card); border: 1px solid var(--stroke); border-radius: .4375rem;
+  container-type: inline-size; container-name: card; overflow: hidden; }
+.row { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+  padding: .8125rem 1rem; min-height: 3.25rem; }
+.row + .row { border-top: 1px solid var(--stroke); }
+.is-hidden { display: none !important; }
+/* Строка, где управление идёт под заголовком во всю ширину. */
+.row-stack { display: block; }
+.row-icon { width: 1.25rem; height: 1.25rem; flex: none; color: var(--dim); }
+.row-text { flex: 1 1 13em; min-width: 0; }
+.row-title { font-size: .875rem; line-height: 1.35; }
+.row-sub { font-size: .75rem; color: var(--dim); line-height: 1.4; margin-top: .125rem; }
+.row-control { margin-left: auto; flex: none; display: flex; align-items: center; gap: .5rem; }
+
+/* Тесно — широкие контролы уходят под свой заголовок, а не в правый угол.
+   Порог в em, поэтому растёт вместе с масштабом. */
+@container card (max-width: 42em) {
+  .row:has(select, .btn, .field, .slider) .row-control {
+    margin-left: 2.25rem; flex: 1 1 100%; min-width: 0;
+    justify-content: flex-start; margin-top: .125rem; gap: .75rem;
+  }
+  .row:has(select, .btn, .field, .slider) select,
+  .row:has(.field) .field { flex: 1 1 auto; max-width: 100%; width: auto; }
+  .row:has(.slider) .slider { flex: 1 1 auto; width: auto; }
+}
+
+/* ---------------- контролы ---------------- */
+select {
+  appearance: none; font: inherit; font-size: .8125rem; color: var(--text);
+  background: var(--bg); border: 1px solid var(--stroke-strong); border-radius: .25rem;
+  padding: .4375rem 2rem .4375rem .625rem; min-height: 2rem; cursor: pointer;
+  max-width: 21em; text-overflow: ellipsis;
+  background-image: linear-gradient(45deg,transparent 50%,currentColor 50%),
+                    linear-gradient(135deg,currentColor 50%,transparent 50%);
+  background-position: calc(100% - 1.0625rem) calc(50% + .0625rem),
+                       calc(100% - .75rem) calc(50% + .0625rem);
+  background-size: .3125rem .3125rem,.3125rem .3125rem; background-repeat: no-repeat;
+}
+select:hover { background-color: var(--card-hover); }
+select:disabled { opacity: .5; cursor: default; }
+
+.btn {
+  font: inherit; font-size: .8125rem; color: var(--text); cursor: pointer;
+  background: var(--bg); border: 1px solid var(--stroke-strong); border-radius: .25rem;
+  padding: .4375rem .875rem; min-height: 2rem; white-space: nowrap;
+}
+.btn:hover { background: var(--card-hover); }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn-accent { background: var(--accent); border-color: transparent; color: var(--on-accent); font-weight: 600; }
+.btn-accent:hover { filter: brightness(1.08); background: var(--accent); }
+.btn-quiet { background: transparent; border-color: transparent; color: var(--dim); }
+.btn-quiet:hover { background: transparent; color: var(--live); text-decoration: underline; }
+
+.field {
+  font: inherit; font-size: .8125rem; color: var(--text);
+  background: var(--bg); border: 1px solid var(--stroke-strong); border-radius: .25rem;
+  padding: .4375rem .625rem; min-height: 2rem; width: 16rem; max-width: 100%; min-width: 0;
+}
+.field::placeholder { color: var(--dim); }
+.field:focus { border-color: var(--accent); outline: none; }
+.area { display: block; width: 100%; margin-top: .625rem; height: 5rem; resize: vertical;
+  line-height: 1.5; font-family: "Cascadia Mono", Consolas, ui-monospace, monospace; font-size: .75rem; }
+
+.slider { accent-color: var(--accent); width: 9rem; max-width: 100%; }
+.value { font-family: "Cascadia Mono", Consolas, ui-monospace, monospace; font-size: .75rem;
+  color: var(--dim); min-width: 3rem; text-align: right; }
+
+.switch {
+  appearance: none; width: 2.5rem; height: 1.25rem; border-radius: 1rem; flex: none;
+  border: 1px solid var(--stroke-strong); background: transparent; cursor: pointer;
+  position: relative; transition: background .15s, border-color .15s;
+}
+.switch::after {
+  content: ""; position: absolute; top: 50%; left: .25rem; transform: translateY(-50%);
+  width: .75rem; height: .75rem; border-radius: 50%; background: var(--dim);
+  transition: left .15s cubic-bezier(.2,.7,.3,1), background .15s;
+}
+.switch:checked { background: var(--accent); border-color: var(--accent); }
+.switch:checked::after { left: 1.375rem; background: var(--on-accent); }
+
+kbd {
+  font-family: "Cascadia Mono", Consolas, ui-monospace, monospace; font-size: .75rem;
+  background: var(--bg); border: 1px solid var(--stroke-strong);
+  border-bottom-width: .125rem; border-radius: .25rem;
+  padding: .25rem .5rem; min-width: 1.75rem; display: inline-block; text-align: center;
+}
+.combo { display: flex; align-items: center; gap: .25rem; flex-wrap: wrap; }
+.combo .plus { color: var(--dim); font-size: .75rem; }
+.combo.is-capturing kbd { border-color: var(--accent); color: var(--accent); }
+.capture-hint { font-size: .75rem; color: var(--accent); }
+.cap-none { font-size: .75rem; color: var(--dim); font-style: italic; }
+.combo.is-clash kbd { border-color: var(--live); color: var(--live); }
+
+.pill { font-size: .6875rem; font-weight: 600; letter-spacing: .02em;
+  padding: .1875rem .4375rem; border-radius: .1875rem;
+  background: var(--accent-soft); color: var(--accent); white-space: nowrap; }
+.pill-muted { background: transparent; border: 1px solid var(--stroke-strong); color: var(--dim); }
+.pill-ok { background: transparent; border: 1px solid var(--ok); color: var(--ok); }
+.pill-bad { background: transparent; border: 1px solid var(--live); color: var(--live); }
+
+.note {
+  display: flex; gap: .75rem; align-items: flex-start; margin-bottom: 1.5rem;
+  padding: .875rem 1rem; border-radius: .4375rem;
+  background: var(--accent-soft); border: 1px solid var(--accent-soft);
+  font-size: .8125rem; line-height: 1.5;
+}
+.note svg { width: 1.125rem; height: 1.125rem; flex: none; color: var(--accent); margin-top: .125rem; }
+
+/* ---------------- масштаб интерфейса ---------------- */
+.scale-pick { display: grid; grid-template-columns: repeat(3,1fr); gap: .625rem; margin-top: .625rem; }
+@container card (max-width: 34em) { .scale-pick { grid-template-columns: 1fr; } }
+.scale-opt {
+  /* Цвет задаём явно: у <button> он свой, системный, и в тёмной теме
+     текст уехал бы в чёрный по чёрному. */
+  font: inherit; color: var(--text); text-align: left; cursor: pointer; min-width: 0;
+  background: var(--bg); border: 1px solid var(--stroke-strong); border-radius: .375rem;
+  padding: .875rem; display: flex; flex-direction: column; gap: .5rem;
+  transition: border-color .15s, background .15s;
+}
+.scale-opt * { color: inherit; }
+.scale-opt .pct, .scale-opt .name span { color: var(--dim); }
+.scale-opt:hover { background: var(--card-hover); }
+/* Образец задан в px намеренно: он показывает настоящий размер, поэтому и
+   высота строки под него — в px, иначе карточки распухают на 150 %. */
+.scale-opt .sample { display: flex; align-items: baseline; gap: .5rem; min-height: 28px;
+  color: var(--text); font-family: "Segoe UI Variable Display", "Segoe UI", inherit; }
+.scale-opt[data-v="100"] .sample .aa { font-size: 17px; }
+.scale-opt[data-v="125"] .sample .aa { font-size: 21px; }
+.scale-opt[data-v="150"] .sample .aa { font-size: 26px; }
+.scale-opt .aa { font-weight: 600; line-height: 1; }
+.scale-opt .pct { font-size: .75rem; color: var(--dim); font-family: "Cascadia Mono", Consolas, monospace; }
+.scale-opt .name { font-size: .8125rem; }
+.scale-opt .name span { display: block; font-size: .75rem; color: var(--dim); margin-top: .125rem; }
+.scale-opt[aria-checked="true"] { border-color: var(--accent); background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent); }
+.scale-opt[aria-checked="true"] .pct { color: var(--accent); }
+
+.preview { margin-top: .75rem; padding: 1rem; border-radius: .375rem;
+  border: 1px dashed var(--stroke-strong); background: var(--bg); }
+.preview p { margin: 0; font-size: .875rem; line-height: 1.5; }
+.preview p + p { margin-top: .5rem; color: var(--dim); font-size: .75rem; }
+
+/* ---------------- модели ---------------- */
+.row.is-chosen .row-icon { color: var(--accent); }
+.row.is-model .row-title { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.progress { height: .25rem; border-radius: .125rem; background: var(--stroke-strong);
+  overflow: hidden; margin-top: .5rem; }
+.progress > i { display: block; height: 100%; background: var(--accent); width: 0;
+  transition: width .3s linear; }
+
+/* ---------------- файлы ---------------- */
+.drop { border: 1px dashed var(--stroke-strong); border-radius: .4375rem; background: var(--card);
+  padding: 2rem 1.25rem; text-align: center; }
+.drop.is-over { border-color: var(--accent); background: var(--accent-soft); }
+.drop svg { width: 2rem; height: 2rem; color: var(--dim); }
+.drop h3 { font-size: .9375rem; font-weight: 600; margin: .75rem 0 .25rem; }
+.drop p { font-size: .8125rem; color: var(--dim); margin: 0 0 1rem; line-height: 1.45; }
+
+.drop.is-hidden { display: none; }
+.result { background: var(--card); border: 1px solid var(--stroke); border-radius: .4375rem;
+  overflow: hidden; container-type: inline-size; container-name: card; }
+.result.is-hidden { display: none; }
+.result-head { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+  padding: .8125rem 1rem; border-bottom: 1px solid var(--stroke); }
+.result-file { flex: 1 1 12em; min-width: 0; }
+.result-actions { margin-left: auto; display: flex; gap: .5rem; flex-wrap: wrap; }
+@container card (max-width: 30em) { .result-actions { margin-left: 0; width: 100%; } }
+.result-body { padding: 1rem; max-height: 16rem; overflow-y: auto;
+  font-size: .875rem; line-height: 1.6; background: var(--bg); white-space: pre-wrap; }
+.result-body:empty::before { content: "Пока пусто — выберите файл выше."; color: var(--dim); }
+
+/* ---------------- журнал ---------------- */
+.logs { background: var(--bg); border: 1px solid var(--stroke); border-radius: .4375rem;
+  padding: .875rem; max-height: 24rem; overflow: auto;
+  font-family: "Cascadia Mono", Consolas, ui-monospace, monospace; font-size: .75rem;
+  line-height: 1.6; white-space: pre; }
+
+/* ---------------- уведомление ---------------- */
+.toast {
+  position: absolute; left: 50%; bottom: 1.25rem; transform: translate(-50%,.75rem);
+  display: flex; align-items: center; gap: .625rem; max-width: calc(100% - 4rem);
+  padding: .625rem .875rem; border-radius: .4375rem;
+  background: var(--panel); border: 1px solid var(--stroke-strong);
+  box-shadow: 0 .75rem 1.75rem rgba(0,0,0,.35);
+  font-size: .8125rem; opacity: 0; pointer-events: none;
+  transition: opacity .18s, transform .18s cubic-bezier(.2,.7,.3,1);
+}
+.toast.is-on { opacity: 1; transform: translate(-50%,0); }
+.toast svg { width: 1.125rem; height: 1.125rem; flex: none; color: var(--accent); }
+.toast span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+a { color: var(--accent); }
+
+/* Узкое окно: боковое меню в иконки. Порог в em растёт вместе с масштабом,
+   поэтому на 150 % место освобождается само. */
+@container app (max-width: 48em) {
+  .shell { grid-template-columns: 3.25rem 1fr; }
+  .nav-label { display: none; }
+  .nav-item { justify-content: center; padding: .5rem; }
+  .content { padding: 1.5rem 1.25rem 3rem; }
+}
+
+:focus-visible { outline: .125rem solid var(--accent); outline-offset: .125rem; border-radius: .25rem; }
+
+@media (prefers-reduced-motion: reduce) { *, html { transition: none !important; animation: none !important; } }
