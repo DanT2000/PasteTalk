@@ -78,7 +78,17 @@ function defaultFile() {
 
 function open(file = defaultFile()) {
   if (current) return current;
-  if (file !== ':memory:') fs.mkdirSync(path.dirname(file), { recursive: true });
+  if (file !== ':memory:') {
+    // Говорим вслух, нашли базу или заводим новую. Молчание тут дорого
+    // стоит: если том подключён неправильно, база тихо пересоздаётся при
+    // каждом развёртывании, и пропажа ключей замечается только тогда,
+    // когда человек не может войти.
+    const existed = fs.existsSync(file);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    process.stdout.write(existed
+      ? `База найдена: ${file}\n`
+      : `База не найдена, завожу новую: ${file}. Если это не первый запуск — том подключён неправильно\n`);
+  }
   current = new Database(file);
   current.pragma('journal_mode = WAL');
   current.pragma('foreign_keys = ON');
