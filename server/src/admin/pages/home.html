@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PasteTalk — голос в текст, локально</title>
+<meta name="description" content="Диктовка по горячей клавише. Речь распознаётся на вашем компьютере и не уходит в интернет.">
+<style>
+/* Цвета взяты из самого приложения, чтобы сайт не выглядел чужим.
+   Всё в rem: страницу читают в том числе с увеличенным шрифтом. */
+:root {
+  --bg: #FFFFFF; --fg: #1B1B1F; --muted: #5B5B66; --line: #EDEDF1;
+  --card: #F7F7FA; --accent: #B87400; --on-accent: #FFFFFF;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1B1B1F; --fg: #F4F4F7; --muted: #A0A0AC; --line: #2C2C33;
+    --card: #232329; --accent: #E9A72C; --on-accent: #1B1B1F;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--fg);
+  font: 1rem/1.6 system-ui, -apple-system, Segoe UI, sans-serif;
+}
+.wrap { max-width: 52rem; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+
+header { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 3rem; }
+header svg { width: 2rem; height: 2rem; color: var(--accent); flex: none; }
+header b { font-size: 1.25rem; }
+header nav { margin-left: auto; display: flex; gap: 1rem; flex-wrap: wrap; }
+header nav a { color: var(--muted); text-decoration: none; }
+header nav a:hover { color: var(--fg); }
+
+h1 { font-size: clamp(1.75rem, 5vw, 2.75rem); line-height: 1.15; margin: 0 0 1rem; }
+.lede { font-size: 1.125rem; color: var(--muted); margin: 0 0 2rem; max-width: 34rem; }
+
+.buttons { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.btn {
+  display: inline-block; padding: 0.7rem 1.4rem; border-radius: 0.6rem;
+  text-decoration: none; font-weight: 600; border: 1px solid var(--accent);
+}
+.btn-main { background: var(--accent); color: var(--on-accent); }
+.btn-side { color: var(--fg); border-color: var(--line); }
+.small { font-size: 0.875rem; color: var(--muted); }
+
+/* minmax подобран так, чтобы четыре карточки легли 2×2, а не 3+1:
+   одинокая карточка в нижнем ряду выглядит недоделкой. */
+.grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr)); margin: 3rem 0; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 0.9rem; padding: 1.25rem; }
+.card h3 { margin: 0 0 0.5rem; font-size: 1rem; }
+.card p { margin: 0; color: var(--muted); font-size: 0.9375rem; }
+
+h2 { font-size: 1.375rem; margin: 3rem 0 1rem; }
+ol { padding-left: 1.25rem; color: var(--muted); }
+ol strong { color: var(--fg); }
+li { margin-bottom: 0.5rem; }
+
+footer {
+  margin-top: 4rem; padding-top: 1.5rem; border-top: 1px solid var(--line);
+  color: var(--muted); font-size: 0.875rem;
+  display: flex; gap: 1rem; flex-wrap: wrap; align-items: center;
+}
+footer a { color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+    <rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v4"/>
+  </svg>
+  <b>PasteTalk</b>
+  <nav>
+    <a href="https://github.com/DanT2000/PasteTalk">GitHub</a>
+    <a href="/admin/">Админка</a>
+  </nav>
+</header>
+
+<h1>Говорите — получайте текст</h1>
+<p class="lede">
+  Нажали горячую клавишу, сказали вслух, отпустили — текст уже в буфере обмена.
+  Речь распознаётся прямо на вашем компьютере и никуда не отправляется.
+</p>
+
+<div class="buttons">
+  <a class="btn btn-main" href="https://github.com/DanT2000/PasteTalk/releases/latest">Скачать для Windows</a>
+  <a class="btn btn-side" href="https://github.com/DanT2000/PasteTalk">Исходный код</a>
+</div>
+<p class="small">Бесплатно, с открытым кодом, лицензия MIT.</p>
+
+<div class="grid">
+  <div class="card">
+    <h3>Ничего не уходит в интернет</h3>
+    <p>Whisper работает на вашей видеокарте. Ни записи, ни текста никто, кроме вас, не увидит.</p>
+  </div>
+  <div class="card">
+    <h3>Причёсывает сказанное</h3>
+    <p>Языковая модель убирает «эээ» и повторы. Обычный текст попадает в буфер сразу, не дожидаясь её.</p>
+  </div>
+  <div class="card">
+    <h3>Крупнее, если нужно</h3>
+    <p>Масштаб интерфейса 100, 125 или 150 %. Программа задумывалась для человека со слабым зрением.</p>
+  </div>
+  <div class="card">
+    <h3>С телефона и из Telegram</h3>
+    <p>Этот сервер даёт диктовать откуда угодно, а считает всё тот же домашний компьютер.</p>
+  </div>
+</div>
+
+<h2>Как подключить телефон или Telegram</h2>
+<ol>
+  <li><strong>Возьмите код.</strong> Владелец выдаёт шестизначный код в админке.</li>
+  <li><strong>Введите его.</strong> В приложении на телефоне или прямо в Telegram-боте.</li>
+  <li><strong>Диктуйте.</strong> Один код работает и там, и там.</li>
+</ol>
+<p class="small">
+  Пока домашний компьютер на связи, всё считается на нём и не стоит ничего.
+  Когда он выключен, диктовка уходит в облако.
+</p>
+
+<footer>
+  <span>PasteTalk · MIT</span>
+  <a href="https://github.com/DanT2000/PasteTalk">Исходный код и сборка</a>
+  <a href="/admin/">Админка</a>
+</footer>
+
+</div>
+</body>
+</html>

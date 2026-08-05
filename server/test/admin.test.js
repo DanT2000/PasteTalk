@@ -206,3 +206,25 @@ test('страница админки отдаётся', async () => {
   assert.match(page.body, /PasteTalk/);
   await app.close();
 });
+
+test('витрина открыта всем и ведёт на GitHub и в админку', async () => {
+  const app = build();
+  const page = await app.inject({ method: 'GET', url: '/' });
+  assert.strictEqual(page.statusCode, 200);
+  assert.match(page.headers['content-type'], /text\/html/);
+  assert.match(page.body, /github\.com\/DanT2000\/PasteTalk/);
+  assert.match(page.body, /href="\/admin\/"/);
+  await app.close();
+});
+
+test('витрина не выдаёт посторонним, включён ли домашний компьютер', async () => {
+  const app = build();
+  const page = (await app.inject({ method: 'GET', url: '/' })).body;
+  // Страница открыта всему интернету. Знать, включён ли компьютер прямо
+  // сейчас, посторонним незачем — поэтому ни поля состояния, ни запроса
+  // за ним на витрине быть не должно.
+  assert.ok(!/agentOnline/.test(page), 'состояние агента не должно попадать на витрину');
+  assert.ok(!/v1\/state|api\/agent/.test(page), 'витрина не должна спрашивать состояние');
+  assert.ok(!/<script/i.test(page), 'витрине не нужен код: ей нечего показывать живого');
+  await app.close();
+});

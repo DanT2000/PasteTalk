@@ -139,9 +139,21 @@ function register(app) {
     return { ok: true, botRunning };
   });
 
+  const page = (name) => fs.readFileSync(
+    path.join(__dirname, '..', 'admin', 'pages', name), 'utf8',
+  );
+
   app.get('/admin/', async (request, reply) => {
     reply.type('text/html; charset=utf-8');
-    return fs.readFileSync(path.join(__dirname, '..', 'admin', 'pages', 'index.html'), 'utf8');
+    return page('index.html');
+  });
+
+  // Витрина. Про домашний компьютер здесь намеренно ни слова: страница
+  // открыта всему интернету, и знать, включён ли он сейчас, посторонним
+  // незачем.
+  app.get('/', async (request, reply) => {
+    reply.type('text/html; charset=utf-8');
+    return page('home.html');
   });
 }
 
