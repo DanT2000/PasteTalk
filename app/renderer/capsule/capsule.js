@@ -109,7 +109,11 @@ function apply(payload) {
   micIcon.innerHTML = ICONS[state.mic];
   micIcon.style.animation = state.mic === 'spin' ? 'spin 1s linear infinite' : '';
   // Прерываемые состояния: наведение на микрофон превращает его в отмену.
-  cap.dataset.busy = ['listening', 'thinking', 'ai', 'limit'].includes(payload.state) ? '1' : '0';
+  // Отменять нажатием на микрофон имеет смысл только там, где иначе
+  // прервать нечем: пока думает модель. Во время самой записи для этого
+  // есть горячая клавиша — второе нажатие и заканчивает её, — а крестик
+  // по центру там только мешает целиться.
+  cap.dataset.busy = ['thinking', 'ai', 'limit'].includes(payload.state) ? '1' : '0';
   syncAiButton(state);
   if (state.wave !== 'live') flatten(state.wave === 'busy' ? 0.12 : 0.02);
 }
@@ -151,8 +155,8 @@ function isBusy() {
   return cap.dataset.busy === '1';
 }
 
-// Микрофон: пока идёт работа — отменяет её, иначе начинает или
-// заканчивает запись. Так не надо целиться в мелкий крестик.
+// Микрофон: пока думает модель — отменяет, иначе начинает или заканчивает
+// запись. Во время записи это обычное «закончить», а не отмена.
 document.getElementById('mic').addEventListener('click', () =>
   window.capsule.action(isBusy() ? 'cancel' : 'toggle'));
 
