@@ -62,6 +62,10 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 14h6M9 17h4"/></svg>
         <span class="nav-label">Файлы</span>
       </button>
+      <button class="nav-item" data-goto="relay">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 20h.01"/><path d="M8.5 16.5a5 5 0 0 1 7 0"/><path d="M5 13a10 10 0 0 1 14 0"/><path d="M1.5 9.5a15 15 0 0 1 21 0"/></svg>
+        <span class="nav-label">Интеграция</span>
+      </button>
       <button class="nav-item" data-goto="about">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
         <span class="nav-label">О программе</span>
@@ -640,6 +644,67 @@
               <div class="row-sub" id="ffmpeg-sub">Достаёт звук из видео. Проверяю…</div>
             </div>
             <div class="row-control"><span class="pill pill-muted" id="ffmpeg-pill">проверяю</span><button class="btn" id="ffmpeg-how">Как поставить</button></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== ИНТЕГРАЦИЯ ===== -->
+      <section class="page" data-page="relay">
+        <h2>Интеграция</h2>
+        <p class="lede">Позволяет диктовать с телефона и из Telegram, пользуясь этим компьютером. Соединение устанавливает сам компьютер — пробрасывать порты на роутере не нужно.</p>
+
+        <div class="note">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
+          <div>Наружу ничего не открывается: компьютер сам звонит серверу и держит связь. Когда он выключен, телефон и бот работают через облако.</div>
+        </div>
+
+        <div class="group-title">Связь с сервером</div>
+        <div class="card">
+          <div class="row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 20h.01"/><path d="M8.5 16.5a5 5 0 0 1 7 0"/><path d="M5 13a10 10 0 0 1 14 0"/><path d="M1.5 9.5a15 15 0 0 1 21 0"/></svg>
+            <div class="row-text">
+              <div class="row-title">Работать как агент сервера</div>
+              <div class="row-sub">Пока выключено, телефон и бот пользуются облаком</div>
+            </div>
+            <div class="row-control"><input class="switch" type="checkbox" id="relay-enabled" data-cfg="relay.enabled"></div>
+          </div>
+          <div class="row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1.5 1.5"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1.5-1.5"/></svg>
+            <div class="row-text">
+              <div class="row-title">Адрес сервера</div>
+              <div class="row-sub">Например, wss://appswire.ru</div>
+            </div>
+            <div class="row-control"><input class="field" type="text" id="relay-url" data-cfg="relay.url" spellcheck="false" placeholder="wss://appswire.ru"></div>
+          </div>
+          <div class="row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+            <div class="row-text">
+              <div class="row-title">Код доступа</div>
+              <div class="row-sub">Шесть цифр из админки. Вводится один раз</div>
+            </div>
+            <div class="row-control">
+              <input class="field" type="text" id="relay-code" inputmode="numeric" maxlength="6" placeholder="000000" spellcheck="false">
+              <button class="btn" id="relay-pair">Привязать</button>
+            </div>
+          </div>
+          <div class="row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M9 12l2 2 4-4"/></svg>
+            <div class="row-text">
+              <div class="row-title">Состояние</div>
+              <div class="row-sub" id="relay-state">Выключено</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="group-title">Для своих программ</div>
+        <div class="card">
+          <div class="row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 9l-4 3 4 3M16 9l4 3-4 3M13 6l-2 12"/></svg>
+            <div class="row-text">
+              <div class="row-title">Локальный адрес движка</div>
+              <div class="row-sub">Другие программы на этом компьютере могут пользоваться распознаванием. Наружу порт не открыт</div>
+            </div>
+            <div class="row-control"><span id="relay-local">—</span></div>
           </div>
         </div>
       </section>

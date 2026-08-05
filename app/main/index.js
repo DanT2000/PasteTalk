@@ -11,6 +11,7 @@ const llm = require('./llm');
 const logger = require('./logger');
 const paste = require('./paste');
 const recorder = require('./recorder');
+const relay = require('./relay');
 const tray = require('./tray');
 const updates = require('./updates');
 const watchdog = require('./watchdog');
@@ -57,6 +58,11 @@ app.whenReady().then(async () => {
     windows.send('settings', 'engine:state', { ...info, ready: engine.isReady });
   };
   await engine.start();
+
+  relay.on('state', (state) => windows.send('settings', 'relay:state', state));
+  // Соединение поднимаем после движка: пока модель не загружена, отвечать
+  // на задачи с телефона всё равно нечем.
+  relay.refresh();
 
   registerHotkeys();
   watchdog.syncAutoLaunch();
@@ -297,6 +303,48 @@ ipcMain.handle('app:state', () => ({
   errorFile: logger.errorFile(),
   settingsFile: config.file(),
 }));
+ipcMain.handle('relay:state', () => ({
+  ...relay.state(),
+  // Порт движка человек настраивает в «Основных»; здесь его только
+  // показываем, чтобы было что вписать в свою программу.
+  enginePort: engine.port || 0,
+}));
+
+ipcMain.handle('relay:refresh', () => {
+  relay.refresh();
+  return relay.state();
+});
+
+ipcMain.handle('relay:pair', async (_event, code) => {
+  const url = String(config.get('relay.url', '')).trim().replace(/\/+$/, '');
+  if (!url) return { ok: false, error: 'Сначала укажите адрес сервера' };
+  // Привязка идёт обычным HTTP, а работа — по WebSocket. Адрес человек
+  // вводит один, поэтому схему подменяем сами.
+  const httpUrl = url.replace(/^wss:/i, 'https:').replace(/^ws:/i, 'http:');
+  try {
+    const response = await fetch(`${httpUrl}/v1/activate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        code: String(code || '').trim(),
+        kind: 'android',
+        title: require('node:os').hostname(),
+      }),
+      signal: AbortSignal.timeout(15000),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      return { ok: false, error: data.error || `Сервер ответил ${response.status}` };
+    }
+    // config.set сливает вглубь, поэтому адрес и имя останутся как были.
+    config.set({ relay: { token: data.token, enabled: true } });
+    relay.refresh();
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: `Не достучались до сервера: ${error.message}` };
+  }
+});
+
 ipcMain.handle('app:setPaused', (_event, value) => setPaused(Boolean(value)));
 ipcMain.handle('app:logs', () => logger.tail());
 ipcMain.handle('app:errors', (_event, limit) => logger.errors(limit || 20));

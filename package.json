@@ -15,7 +15,8 @@
     "pack": "electron-builder --win --dir"
   },
   "dependencies": {
-    "koffi": "^2.10.1"
+    "koffi": "^2.10.1",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "electron": "^33.2.1",

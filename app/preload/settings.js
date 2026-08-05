@@ -69,6 +69,12 @@ contextBridge.exposeInMainWorld('pastetalk', {
   clipboard: {
     write: (text) => ipcRenderer.invoke('clipboard:write', text),
   },
+  relay: {
+    state: () => ipcRenderer.invoke('relay:state'),
+    refresh: () => ipcRenderer.invoke('relay:refresh'),
+    pair: (code) => ipcRenderer.invoke('relay:pair', code),
+    onState: on('relay:state'),
+  },
   history: {
     all: () => ipcRenderer.invoke('history:all'),
     copy: (id, improved) => ipcRenderer.invoke('history:copy', { id, improved }),

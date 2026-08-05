@@ -269,6 +269,38 @@ class Engine {
   startFile(options) { return this.request('POST', '/file', options, 10000); }
   fileStatus(id) { return this.request('GET', `/file/${id}`, null, 10000); }
   cancelFile(id) { return this.request('DELETE', `/file/${id}`, null, 5000); }
+
+  /**
+   * Распознать звук, пришедший в памяти.
+   *
+   * Движок принимает только путь к файлу, поэтому буфер кладём во временный
+   * и сразу убираем: чужой звук на диске не залёживается — обещали не
+   * хранить, значит не храним, даже если распознавание сорвалось.
+   */
+  async transcribeBuffer(buffer, { filename = 'voice.ogg', language = null } = {}) {
+    const os = require('node:os');
+    const fsp = require('node:fs/promises');
+    const safe = String(filename).replace(/[^\w.-]/g, '_');
+    const temp = path.join(os.tmpdir(), `pastetalk-${Date.now()}-${safe}`);
+    await fsp.writeFile(temp, buffer);
+    try {
+      const job = await this.startFile({ path: temp, language, timestamps: false });
+      for (;;) {
+        const state = await this.fileStatus(job.id);
+        if (state.state === 'done') {
+          return {
+            text: state.text || '',
+            durationS: state.durationS || 0,
+            model: state.model || '',
+          };
+        }
+        if (state.state === 'error') throw new Error(state.error || 'Движок не справился');
+        await new Promise((wait) => setTimeout(wait, 500));
+      }
+    } finally {
+      await fsp.rm(temp, { force: true });
+    }
+  }
 }
 
 module.exports = new Engine();

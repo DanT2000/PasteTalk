@@ -145,7 +145,13 @@ api.engine.onState((info) => {
   // Движок поднимается дольше, чем открывается окно: когда он наконец
   // готов, список моделей и устройств надо построить заново — при первом
   // заходе строить было не из чего.
-  if (info.ready || info.state === 'ready') refreshHealth();
+  if (info.ready || info.state === 'ready') {
+    refreshHealth();
+    // Порт движка известен только после его запуска, а окно к этому
+    // моменту давно открыто. Без этой строки в «Интеграции» навсегда
+    // оставалось бы «движок ещё не запустился».
+    api.relay?.state().then(showRelay);
+  }
 });
 
 // ---------- микрофоны ----------
@@ -1057,7 +1063,62 @@ async function start() {
   });
 }
 
-start().catch((error) => say(`Не удалось открыть настройки: ${error.message}`));
+// ---------- Интеграция ----------
+
+const RELAY_WORDS = {
+  off: 'Выключено',
+  connecting: 'Подключаюсь…',
+  online: 'На связи с сервером',
+  error: 'Не подключилось',
+};
+
+function showRelay(state) {
+  const where = $('relay-state');
+  if (!where) return;
+  const word = RELAY_WORDS[state.status] || state.status;
+  where.textContent = state.hint ? `${word} — ${state.hint}` : word;
+
+  const local = $('relay-local');
+  if (local && state.enginePort !== undefined) {
+    local.textContent = state.enginePort
+      ? `localhost:${state.enginePort}`
+      : 'движок ещё не запустился';
+  }
+}
+
+// Обращения через ?. не для красоты: одна ошибка на уровне модуля убивает
+// весь скрипт настроек, и окно остаётся с виду рабочим, но мёртвым.
+$('relay-pair')?.addEventListener('click', async () => {
+  const field = $('relay-code');
+  const button = $('relay-pair');
+  const code = field.value.trim();
+  if (!/^\d{6}$/.test(code)) {
+    $('relay-state').textContent = 'Код — это ровно шесть цифр';
+    return;
+  }
+  button.disabled = true;
+  $('relay-state').textContent = 'Проверяю код…';
+  const result = await api.relay.pair(code);
+  button.disabled = false;
+  if (result.ok) {
+    field.value = '';
+    $('relay-enabled').checked = true;
+    $('relay-state').textContent = 'Код принят, подключаюсь…';
+  } else {
+    $('relay-state').textContent = result.error;
+  }
+});
+
+// Переключатель и адрес сохраняются сами через data-cfg, но связь надо
+// поднять или уронить сразу — иначе человек щёлкает и ничего не меняется.
+$('relay-enabled')?.addEventListener('change', () => setTimeout(() => api.relay.refresh(), 500));
+$('relay-url')?.addEventListener('change', () => setTimeout(() => api.relay.refresh(), 500));
+
+api.relay?.onState(showRelay);
+
+start()
+  .then(() => api.relay?.state().then(showRelay))
+  .catch((error) => say(`Не удалось открыть настройки: ${error.message}`));
 
 // Молчаливая смерть скрипта — худшее, что может случиться с окном: оно
 // выглядит рабочим, но ничего не делает. Пусть ошибка будет видна.
