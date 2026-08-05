@@ -372,6 +372,44 @@ async function drawSpend() {
 
 const DEVICE_WORDS = { telegram: 'Telegram', android: 'Телефон', desktop: 'Компьютер' };
 
+/**
+ * Показать выданный код так, чтобы его было чем поделиться.
+ *
+ * Человеку нужен не код сам по себе, а понятное сообщение: куда пойти и
+ * что сделать. Поэтому рядом две кнопки — скопировать цифры и
+ * скопировать готовую инструкцию целиком.
+ */
+function showCode(key) {
+  const bot = window.location.hostname === 'pastetalk.dev.appswire.ru'
+    ? 'https://t.me/PasteTalk_bot' : '';
+  const howto = 'Вот код доступа к PasteTalk: ' + key.code + '
+
+'
+    + (bot ? 'В Telegram: откройте ' + bot + ', нажмите «Начать» и пришлите этот код одним сообщением.
+
+' : '')
+    + 'В приложении на телефоне: адрес сервера ' + window.location.origin
+    + ', ниже этот код, кнопка «Подключиться».
+
+'
+    + 'Код одноразовый и действует ограниченное время — если не успеете, попросите новый.';
+
+  $('made').innerHTML = 'Код для «' + safe(key.name) + '»: <span class="code">' + safe(key.code)
+    + '</span> <button class="btn ghost tiny" id="copy-code">скопировать код</button>'
+    + '<button class="btn ghost tiny" id="copy-howto">скопировать инструкцию</button>'
+    + '<div class="muted" style="margin-top:0.5rem">Второй раз он не покажется — передайте сейчас.</div>';
+
+  const said = (button, text) => {
+    navigator.clipboard.writeText(text).then(() => {
+      const was = button.textContent;
+      button.textContent = 'скопировано';
+      setTimeout(() => { button.textContent = was; }, 2000);
+    });
+  };
+  $('copy-code').addEventListener('click', (event) => said(event.target, key.code));
+  $('copy-howto').addEventListener('click', (event) => said(event.target, howto));
+}
+
 function codeCell(person) {
   if (person.revoked) return '<span class="muted">—</span>';
   const alive = person.code && person.codeUntil > Date.now();
@@ -440,8 +478,7 @@ async function drawPeople() {
         body: JSON.stringify({ name: $('new-name').value, ttlMs: Number($('new-ttl').value) }),
       });
       await drawPeople();
-      $('made').textContent = 'Код для «' + key.name + '»: ' + key.code
-        + ' — передайте его до конца срока, второй раз он не покажется';
+      showCode(key);
     } catch (error) {
       $('app-err').textContent = error.message;
     }
@@ -454,7 +491,7 @@ async function drawPeople() {
           method: 'POST', body: JSON.stringify({ ttlMs: Number($('new-ttl').value) }),
         });
         await drawPeople();
-        $('made').textContent = 'Новый код для «' + key.name + '»: ' + key.code;
+        showCode(key);
       } catch (error) {
         $('app-err').textContent = error.message;
       }

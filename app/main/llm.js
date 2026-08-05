@@ -93,6 +93,9 @@ const PROVIDERS = {
     kind: 'openai',
     baseUrl: 'https://api.aitunnel.ru/v1',
     needsKey: true,
+    // Без этого в запрос уходила пустая модель, и шлюз отвечал 400 —
+    // человеку показывалось «AITunnel ответил 400» без единой подсказки.
+    defaultModel: 'deepseek-chat',
   },
   custom: {
     title: 'Своё, OpenAI-совместимое',
@@ -433,6 +436,10 @@ async function improve(text, overrides = {}) {
   const settings = resolve(overrides);
   const timeoutMs = timeoutFor(clean, settings);
   const started = Date.now();
+
+  if (settings.preset.kind !== 'cli' && !settings.model) {
+    throw new Error(`Не выбрана модель для ${settings.preset.title}`);
+  }
 
   const result = settings.preset.kind === 'cli'
     ? await runCli(settings, clean, timeoutMs)
