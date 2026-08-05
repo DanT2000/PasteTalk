@@ -139,9 +139,10 @@ label.field .why { display: block; margin-top: 0.3rem; font-size: 0.8125rem; }
   </div>
   <div class="card">
     <h2>Придумайте пароль</h2>
-    <p class="muted">Пока пароль не сменён, панель работает только из домашней сети. Она раздаёт коды доступа и хранит ключи провайдеров — пароля <b>admin</b> для этого мало.</p>
-    <label class="field">Новый пароль<input type="password" id="pass2" autocomplete="new-password"></label>
-    <button class="btn" id="save-pass">Сохранить и войти</button>
+    <p class="muted">Панель ещё никем не занята. Первый пароль, который вы здесь введёте, станет настоящим — запоминать заводской не нужно, его нет.</p>
+    <p class="muted">Сделайте это сейчас: панель раздаёт коды доступа и хранит ключи провайдеров, а занять её может любой, кто знает адрес.</p>
+    <label class="field">Ваш пароль<input type="password" id="pass2" autocomplete="new-password"></label>
+    <button class="btn" id="save-pass">Занять панель</button>
     <p class="err" id="change-err"></p>
   </div>
 </div>
@@ -259,7 +260,11 @@ $('pass').addEventListener('keydown', (event) => { if (event.key === 'Enter') en
 $('save-pass').addEventListener('click', async () => {
   $('change-err').textContent = '';
   try {
-    await api('/admin/password', { method: 'POST', body: JSON.stringify({ password: $('pass2').value }) });
+    const data = await api('/admin/setup', {
+      method: 'POST', body: JSON.stringify({ password: $('pass2').value }),
+    });
+    session = data.session;
+    sessionStorage.setItem('pastetalk-admin', session);
     $('change').hidden = true;
     $('app').hidden = false;
     refresh();
@@ -267,6 +272,14 @@ $('save-pass').addEventListener('click', async () => {
     $('change-err').textContent = error.message;
   }
 });
+
+// Свободную панель встречаем не формой входа, а формой «придумайте пароль»:
+// вводить нечего, пока пароля не существует.
+fetch('/admin/state').then((r) => r.json()).then((info) => {
+  if (info.claimed || session) return;
+  $('gate').hidden = true;
+  $('change').hidden = false;
+}).catch(() => { /* сервер ответит на входе */ });
 
 // ---------- вкладки ----------
 

@@ -7,42 +7,17 @@ const settings = require('../settings');
 /**
  * Вход в админку.
  *
- * Пароль по умолчанию admin — так попросил владелец. Но панель висит на
- * публичном адресе и держит токен бота, ключи провайдеров и выдачу
- * доступов, а зайти владелец может и через неделю после запуска.
- * Поэтому до первой смены пароль admin принимается только из домашней
- * сети: окно, в котором пароль знают все, закрыто снаружи.
- */
-
-const DEFAULT = 'admin';
-const MIN_LENGTH = 8;
-
-/**
- * Пароль для первого входа откуда угодно.
+ * Заводского пароля нет вовсе. Пока панель не занята, она показывает не
+ * форму входа, а форму «придумайте пароль» — и первый же введённый
+ * становится настоящим. Так человеку не надо ни искать пароль в
+ * документации, ни менять его потом.
  *
- * Заводской admin принимается только из домашней сети — но сервер часто
- * стоит на чужом VPS, и тогда своей сети у человека нет вовсе: войти
- * нечем, а сменить пароль без сессии нельзя. Поэтому при первом запуске
- * сочиняется разовый пароль и печатается в журнал контейнера. Увидеть
- * журнал может только тот, у кого есть доступ к серверу, — а значит он и
- * есть владелец.
+ * Плата за простоту: пока вы не заняли панель, занять её может любой, кто
+ * знает адрес. Поэтому сервер при запуске кричит об этом в журнал, а
+ * забрать её обратно можно переменной PASTETALK_RESET_PASSWORD=1.
  */
-function setupPassword() {
-  let saved = settings.get('admin.setup', null);
-  if (!saved) {
-    const words = ['ключ', 'ветер', 'камень', 'парус', 'берег', 'сокол', 'мост', 'зерно',
-      'лампа', 'корень', 'поле', 'снег', 'холм', 'река', 'кедр', 'якорь'];
-    saved = Array.from({ length: 3 }, () =>
-      words[crypto.randomInt(0, words.length)]).join('-');
-    settings.set('admin.setup', saved);
-    process.stdout.write(
-      `\n  Пароль для первого входа: ${saved}\n`
-      + '  Он действует, пока вы не назначите свой.'
-      + ' Из домашней сети работает и admin.\n\n',
-    );
-  }
-  return saved;
-}
+
+const MIN_LENGTH = 8;
 
 /**
  * scrypt намеренно медленный — в этом его смысл. Но синхронный вызов
@@ -65,20 +40,37 @@ function changed() {
 
 async function change(next) {
   const password = String(next || '').trim();
-  // Про admin говорим раньше, чем про длину: человек, вписавший его
-  // второй раз, должен услышать настоящую причину отказа, а не то, что
-  // слово короткое — иначе он допишет три знака и решит, что всё хорошо.
-  if (password === DEFAULT) throw new Error('Этот пароль и так знают все');
   if (password.length < MIN_LENGTH) throw new Error(`Пароль короче ${MIN_LENGTH} знаков`);
   const salt = crypto.randomBytes(16).toString('hex');
   settings.set('admin.password', `${salt}:${await hash(password, salt)}`);
-  // Разовый больше не нужен: своим паролем человек уже владеет.
-  settings.set('admin.setup', '');
+}
+
+/**
+ * Занять панель: первый пароль.
+ *
+ * Работает только пока панель свободна. Дальше — обычная смена пароля,
+ * и она уже требует войти.
+ */
+async function claim(password) {
+  if (changed()) throw new Error('Панель уже занята — войдите своим паролем');
+  await change(password);
+}
+
+/**
+ * Освободить панель. Нужно, когда пароль забыт или её занял кто-то
+ * раньше вас: PASTETALK_RESET_PASSWORD=1 у контейнера, один запуск.
+ */
+function resetIfAsked() {
+  if (process.env.PASTETALK_RESET_PASSWORD !== '1') return false;
+  settings.set('admin.password', '');
+  process.stdout.write('Пароль панели сброшен. Откройте /admin/ и придумайте новый.\n');
+  return true;
 }
 
 async function check(password) {
   const saved = settings.get('admin.password', null);
-  if (!saved) return String(password) === DEFAULT || String(password) === setupPassword();
+  // Панель свободна — входить ещё нечем, сначала её занимают.
+  if (!saved) return false;
   const [salt, digest] = String(saved).split(':');
   const given = Buffer.from(await hash(String(password), salt), 'hex');
   const known = Buffer.from(digest, 'hex');
@@ -151,25 +143,17 @@ async function allowed(password, address) {
     };
   }
 
+  if (!changed()) {
+    return { ok: false, mustChange: true, error: 'Панель ещё не занята — придумайте пароль' };
+  }
   if (!await check(password)) {
     return { ok: false, mustChange: false, error: 'Пароль не подходит' };
   }
   misses.delete(address);
-  if (changed()) return { ok: true, mustChange: false };
-  // Разовым паролем из журнала — откуда угодно: своей сети у человека на
-  // чужом VPS попросту нет.
-  if (String(password) === setupPassword()) return { ok: true, mustChange: true };
-  if (!isLocal(address)) {
-    return {
-      ok: false,
-      mustChange: true,
-      error: 'Пароль ещё не менялся — первый вход возможен только из локальной сети',
-    };
-  }
-  return { ok: true, mustChange: true };
+  return { ok: true, mustChange: false };
 }
 
 module.exports = {
-  check, changed, change, isLocal, allowed, forgetMisses,
-  DEFAULT, MIN_LENGTH, MAX_TRIES,
+  check, changed, change, claim, resetIfAsked, isLocal, allowed, forgetMisses,
+  MIN_LENGTH, MAX_TRIES,
 };

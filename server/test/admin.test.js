@@ -11,7 +11,9 @@ const { build } = require('../src/index');
 
 test.beforeEach(() => { db.close(); db.open(':memory:'); keys.forgetMisses(); });
 
-async function login(app, password = 'admin', address = '192.168.2.30') {
+const PASS = 'korabl-veter-kamen';
+
+async function login(app, password = PASS, address = '192.168.2.30') {
   return app.inject({
     method: 'POST', url: '/admin/login',
     headers: { 'x-forwarded-for': address },
@@ -19,8 +21,12 @@ async function login(app, password = 'admin', address = '192.168.2.30') {
   });
 }
 
+/** Занять панель и войти: заводского пароля больше нет. */
 async function session(app) {
-  return { 'x-admin-session': (await login(app)).json().session };
+  const setup = await app.inject({
+    method: 'POST', url: '/admin/setup', payload: { password: PASS },
+  });
+  return { 'x-admin-session': setup.json().session };
 }
 
 test('без входа списки не отдаются', async () => {
@@ -40,19 +46,29 @@ test('выдуманная сессия не пускает', async () => {
   await app.close();
 });
 
-test('первый вход из локальной сети требует сменить пароль', async () => {
+test('свободная панель встречает формой «придумайте пароль»', async () => {
   const app = build();
-  const reply = await login(app);
-  assert.strictEqual(reply.statusCode, 200);
-  assert.strictEqual(reply.json().mustChange, true);
+  assert.strictEqual((await app.inject({ method: 'GET', url: '/admin/state' })).json().claimed, false);
+  // Входить нечем, пока пароля нет.
+  assert.strictEqual((await login(app)).statusCode, 403);
+
+  const setup = await app.inject({
+    method: 'POST', url: '/admin/setup', payload: { password: PASS },
+  });
+  assert.strictEqual(setup.statusCode, 200);
+  assert.ok(setup.json().session);
+  assert.strictEqual((await app.inject({ method: 'GET', url: '/admin/state' })).json().claimed, true);
   await app.close();
 });
 
-test('снаружи с паролем по умолчанию не пускает', async () => {
+test('занятую панель чужой уже не займёт', async () => {
   const app = build();
-  const reply = await login(app, 'admin', '188.18.55.140');
-  assert.strictEqual(reply.statusCode, 403);
-  assert.match(reply.json().error, /локальной сети/i);
+  await session(app);
+  const again = await app.inject({
+    method: 'POST', url: '/admin/setup', payload: { password: 'chuzhoy-parol-tut' },
+  });
+  assert.strictEqual(again.statusCode, 400);
+  assert.match(again.json().error, /уже занята/i);
   await app.close();
 });
 
@@ -235,12 +251,12 @@ test('смена пароля закрывает вход по admin', async () 
 
   const changed = await app.inject({
     method: 'POST', url: '/admin/password', headers,
-    payload: { password: 'корабль-ветер-камень' },
+    payload: { password: 'novyy-dlinnyy-parol' },
   });
   assert.strictEqual(changed.statusCode, 200);
 
-  assert.strictEqual((await login(app, 'admin')).statusCode, 403);
-  assert.strictEqual((await login(app, 'корабль-ветер-камень', '188.18.55.140')).statusCode, 200);
+  assert.strictEqual((await login(app, PASS)).statusCode, 403);
+  assert.strictEqual((await login(app, 'novyy-dlinnyy-parol', '188.18.55.140')).statusCode, 200);
   await app.close();
 });
 

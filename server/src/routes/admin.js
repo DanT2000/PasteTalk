@@ -33,6 +33,22 @@ function guard(request, reply) {
 }
 
 function register(app) {
+  // Занята ли панель — знать нужно до входа, чтобы показать нужную форму.
+  // Без пароля, потому что это и есть единственное, что здесь можно узнать.
+  app.get('/admin/state', async () => ({ claimed: auth.changed() }));
+
+  // Первый пароль. Работает, только пока панель свободна.
+  app.post('/admin/setup', async (request, reply) => {
+    try {
+      await auth.claim((request.body || {}).password);
+    } catch (error) {
+      return reply.code(400).send({ error: error.message });
+    }
+    const id = crypto.randomBytes(24).toString('base64url');
+    sessions.set(id, { until: Date.now() + SESSION_MS });
+    return { session: id };
+  });
+
   app.post('/admin/login', async (request, reply) => {
     const verdict = await auth.allowed((request.body || {}).password, clientIp(request));
     if (!verdict.ok) return reply.code(403).send({ error: verdict.error });

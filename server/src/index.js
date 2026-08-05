@@ -34,6 +34,15 @@ async function start() {
   await app.listen({ port, host: '0.0.0.0' });
   process.stdout.write(`PasteTalk Server слушает порт ${port}\n`);
 
+  const auth = require('./admin/auth');
+  auth.resetIfAsked();
+  if (!auth.changed()) {
+    process.stdout.write(
+      '\n  ПАНЕЛЬ ЕЩЁ НЕ ЗАНЯТА. Откройте /admin/ и придумайте пароль —\n'
+      + '  пока этого не сделано, это может сделать любой, кто знает адрес.\n\n',
+    );
+  }
+
   // Бот поднимается, только если в админке задан токен. Пустой токен —
   // просто тишина, а не ошибка: боту тут быть необязательно.
   const bot = require('./bot/telegram');

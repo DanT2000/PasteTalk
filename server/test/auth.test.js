@@ -8,30 +8,24 @@ const auth = require('../src/admin/auth');
 
 test.beforeEach(() => { db.close(); db.open(':memory:'); auth.forgetMisses(); });
 
-test('пароль по умолчанию admin работает из локальной сети', async () => {
-  const result = await auth.allowed('admin', '192.168.2.30');
-  assert.strictEqual(result.ok, true);
-  assert.strictEqual(result.mustChange, true);
-});
-
-test('пароль по умолчанию снаружи не принимается', async () => {
-  const result = await auth.allowed('admin', '188.18.55.140');
-  assert.strictEqual(result.ok, false);
-  assert.match(result.error, /локальной сети/i);
-});
-
-test('после смены пароль работает откуда угодно, а admin — нет', async () => {
-  await auth.change('корабль-ветер-камень');
-
-  assert.strictEqual((await auth.allowed('корабль-ветер-камень', '188.18.55.140')).ok, true);
-  assert.strictEqual((await auth.allowed('корабль-ветер-камень', '188.18.55.140')).mustChange, false);
+test('свободная панель никого не пускает: пароля ещё нет', async () => {
+  assert.strictEqual(auth.changed(), false);
   assert.strictEqual((await auth.allowed('admin', '192.168.2.30')).ok, false);
+  assert.strictEqual((await auth.allowed('', '192.168.2.30')).ok, false);
+  assert.strictEqual(await auth.check('admin'), false);
 });
 
-test('неверный пароль не проходит и из локальной сети', async () => {
-  const result = await auth.allowed('не-admin', '192.168.2.30');
-  assert.strictEqual(result.ok, false);
-  assert.match(result.error, /не подходит/i);
+test('первый введённый пароль становится настоящим', async () => {
+  await auth.claim('korabl-veter-kamen');
+  assert.strictEqual(auth.changed(), true);
+  // Откуда угодно, а не только из домашней сети.
+  assert.strictEqual((await auth.allowed('korabl-veter-kamen', '188.18.55.140')).ok, true);
+});
+
+test('занятую панель второй раз не занять', async () => {
+  await auth.claim('korabl-veter-kamen');
+  await assert.rejects(() => auth.claim('chuzhoy-parol-drugoy'), /уже занята/i);
+  assert.strictEqual(await auth.check('chuzhoy-parol-drugoy'), false);
 });
 
 test('локальными считаются только частные диапазоны', () => {
@@ -48,9 +42,11 @@ test('локальными считаются только частные диа
   assert.strictEqual(auth.isLocal(''), false);
 });
 
-test('короткий пароль и повтор admin отвергаются', async () => {
+test('слишком короткий пароль не принимается', async () => {
   await assert.rejects(() => auth.change('корот'), new RegExp(`короче ${auth.MIN_LENGTH}`));
-  await assert.rejects(() => auth.change('admin'), /знают все/i);
+  await assert.rejects(() => auth.claim('коротк'), new RegExp(`короче ${auth.MIN_LENGTH}`));
+  // Панель после отказа осталась свободной.
+  assert.strictEqual(auth.changed(), false);
 });
 
 test('пароль в базе лежит хэшем, а не текстом', async () => {
