@@ -157,6 +157,13 @@ class Recorder extends EventEmitter {
       return;
     }
 
+    // Что движок счёл выдумкой — в журнал. Фильтр не должен работать
+    // молча: если он однажды съест настоящую фразу, узнать об этом
+    // можно будет только отсюда.
+    for (const item of result.dropped || []) {
+      log.info(`выброшено как выдумка модели: «${item.text}» — ${item.reason}`);
+    }
+
     let text = (result.text || '').trim();
     if (text && !config.get('text.keepPunctuation', true)) text = stripPunctuation(text);
     if (!text) {

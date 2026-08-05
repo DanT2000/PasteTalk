@@ -15,6 +15,7 @@ from typing import Any
 
 import numpy as np
 
+from . import cleanup
 from .audio import SAMPLE_RATE, SilenceTracker, pcm16_to_float32
 from .models import ModelManager
 
@@ -49,6 +50,9 @@ class Session:
 
         self._jobs: queue.Queue = queue.Queue()
         self._segments: list[dict[str, Any]] = []
+        # Что модель выдумала и мы выбросили — для журнала, чтобы фильтр
+        # не работал вслепую.
+        self.dropped: list[dict[str, str]] = []
         self._delivered = 0
         self._error = ""
         self._closed = False
@@ -122,6 +126,7 @@ class Session:
         return {
             "text": self.text(),
             "segments": list(self._segments),
+            "dropped": list(self.dropped),
             "durationS": round(len(self._buffer) / SAMPLE_RATE, 2),
             "savedTo": self.saved_path,
             "error": self._error,
@@ -173,6 +178,10 @@ class Session:
             language=self.language,
             vad_filter=True,
             vad_parameters={"min_silence_duration_ms": 400},
+            # Пороги, за которыми Whisper перестаёт достраивать текст в
+            # тишине. Со значениями по умолчанию он охотнее выдумывает.
+            no_speech_threshold=0.6,
+            log_prob_threshold=-1.0,
             beam_size=5,
             # Куски идут отдельно, и опора на предыдущий текст здесь скорее
             # вредит: модель начинает повторять уже сказанное.
@@ -183,6 +192,17 @@ class Session:
             text = segment.text.strip()
             if not text:
                 continue
+
+            reason = cleanup.looks_invented(
+                text,
+                getattr(segment, "no_speech_prob", 0.0) or 0.0,
+                getattr(segment, "avg_logprob", 0.0) or 0.0,
+            )
+            if reason:
+                # Пишем в отброшенное, чтобы это было видно, а не молча.
+                self.dropped.append({"text": text, "reason": reason})
+                continue
+
             self._segments.append({
                 "text": text,
                 "start": round(offset + segment.start, 2),

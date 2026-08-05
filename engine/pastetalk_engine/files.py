@@ -12,6 +12,7 @@ import time
 import uuid
 from typing import Any
 
+from . import cleanup
 from .audio import SAMPLE_RATE, decode_file
 from .models import ModelManager
 
@@ -95,6 +96,8 @@ class FileJob:
                 audio,
                 language=self.language,
                 vad_filter=True,
+                no_speech_threshold=0.6,
+                log_prob_threshold=-1.0,
                 beam_size=5,
                 condition_on_previous_text=True,
             )
@@ -103,7 +106,7 @@ class FileJob:
                     self.state = "error"
                     self.error = "Отменено"
                     return
-                text = segment.text.strip()
+                text = cleanup.keep(segment)
                 if text:
                     self.segments.append({
                         "text": text,
