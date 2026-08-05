@@ -11,7 +11,11 @@ const db = require('./db');
  * «ключ задан» от «ключа нет», а это как раз то, что надо видеть.
  */
 
-const SECRET_KEYS = ['key.openai', 'key.deepseek', 'key.aitunnel', 'key.custom', 'bot.token'];
+const SECRET_KEYS = [
+  'key.openai', 'key.deepseek', 'key.aitunnel', 'key.custom', 'bot.token',
+  // В адресе прокси лежит пароль — показывать его обратно нельзя.
+  'proxy.url',
+];
 
 function decode(raw) {
   try {

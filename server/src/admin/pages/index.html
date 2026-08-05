@@ -645,6 +645,20 @@ async function drawSettings() {
     + keyField('Токен бота', 'bot.token', get('bot.token', ''), 'Берётся у @BotFather. Чтобы выключить бота — впишите минус и сохраните')
     + '</div>'
 
+    + '<div class="card"><h2>Прокси</h2>'
+    + '<p class="muted">Нужен, если отсюда не достучаться до Telegram: без прокси опрос падает с «fetch failed», и бот молчит. Поддерживается HTTP-прокси; логин и пароль вписываются прямо в адрес.</p>'
+    + keyField('Адрес прокси', 'proxy.url', get('proxy.url', ''),
+      'Например, http://логин:пароль@1.vpn.appswire.ru:8080. Минус — выключить')
+    + '<label class="field">Что пускать через прокси'
+      + '<select data-set="proxy.scope">'
+        + '<option value="telegram"' + (get('proxy.scope', 'telegram') === 'all' ? '' : ' selected') + '>только Telegram</option>'
+        + '<option value="all"' + (get('proxy.scope', 'telegram') === 'all' ? ' selected' : '') + '>Telegram и облачных провайдеров</option>'
+      + '</select>'
+      + '<span class="why muted">Гонять через чужой канал звук людей без нужды не стоит: AITunnel и так доступен напрямую</span></label>'
+    + '<div class="row-actions"><button class="btn ghost tiny" id="check-proxy">Проверить прокси</button>'
+      + '<span id="proxy-res" class="muted"></span></div>'
+    + '</div>'
+
     + '<div class="card"><h2>Ключи провайдеров</h2>'
     + '<p class="muted">Нужны, когда домашний компьютер выключен. Введённый ключ обратно не показывается: пустое поле оставляет его как был.</p>'
     + keyField('AITunnel', 'key.aitunnel', get('key.aitunnel', ''), 'Умеет и речь, и текст. Ключ берётся на aitunnel.ru')
@@ -680,6 +694,24 @@ async function drawSettings() {
 
   bindPriceButtons();
 
+  $('check-proxy')?.addEventListener('click', async () => {
+    const out = $('proxy-res');
+    out.className = 'muted';
+    out.textContent = 'Проверяю…';
+    $('check-proxy').disabled = true;
+    try {
+      const result = await api('/admin/api/proxy/check', { method: 'POST' });
+      out.className = result.ok ? 'ok' : 'err';
+      out.textContent = result.ok
+        ? 'Telegram отвечает через прокси за ' + result.ms + ' мс'
+        : result.error;
+    } catch (error) {
+      out.className = 'err';
+      out.textContent = error.message;
+    }
+    $('check-proxy').disabled = false;
+  });
+
   $('save-settings').addEventListener('click', async () => {
     const note = $('settings-note');
     note.className = 'muted';
@@ -689,6 +721,8 @@ async function drawSettings() {
       const key = input.dataset.set;
       if (key.startsWith('chain.')) {
         body.settings[key] = input.value.split(',').map((part) => part.trim()).filter(Boolean);
+      } else if (key === 'proxy.scope') {
+        body.settings[key] = input.value;
       } else if (key === 'spillToCloud') {
         body.settings[key] = input.value === 'true';
       } else if (input.value.trim() === '-') {

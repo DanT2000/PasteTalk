@@ -95,3 +95,28 @@ test('обязательность с кода снимается: он гаси
   assert.ok(keys.activate(key.code, 'android', null, '', '1.1.1.1').token);
   assert.strictEqual(keys.list()[0].code, null);
 });
+
+test('адрес прокси наружу не показывается: в нём пароль', () => {
+  const settings = require('../src/settings');
+  settings.set('proxy.url', 'http://user:secret@1.vpn.example:8080');
+  assert.strictEqual(settings.all()['proxy.url'], '***');
+  assert.ok(settings.get('proxy.url').includes('secret'));
+});
+
+test('без адреса прокси не используется', () => {
+  const proxy = require('../src/proxy');
+  assert.strictEqual(proxy.usedFor('telegram'), false);
+  assert.strictEqual(proxy.usedFor('cloud'), false);
+});
+
+test('прокси по умолчанию только для Telegram', () => {
+  const settings = require('../src/settings');
+  const proxy = require('../src/proxy');
+  settings.set('proxy.url', 'http://1.vpn.example:8080');
+  assert.strictEqual(proxy.usedFor('telegram'), true);
+  // Звук людей через чужой канал без нужды не гоняем.
+  assert.strictEqual(proxy.usedFor('cloud'), false);
+
+  settings.set('proxy.scope', 'all');
+  assert.strictEqual(proxy.usedFor('cloud'), true);
+});

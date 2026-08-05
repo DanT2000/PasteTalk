@@ -139,6 +139,11 @@ function register(app) {
     return socket.state();
   });
 
+  app.post('/admin/api/proxy/check', async (request, reply) => {
+    if (!guard(request, reply)) return undefined;
+    return require('../proxy').check();
+  });
+
   app.post('/admin/api/agent/ping', async (request, reply) => {
     if (!guard(request, reply)) return undefined;
     return socket.ping();

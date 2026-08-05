@@ -2,6 +2,7 @@
 
 const { CLOUD } = require('../../../shared/providers');
 const settings = require('../settings');
+const proxy = require('../proxy');
 
 /**
  * Распознавание речи облаком: обычный OpenAI-совместимый
@@ -46,12 +47,12 @@ async function transcribe(providerId, { audio, filename, language, clientSeconds
   // verbose_json — ради длительности: по ней считается стоимость.
   form.set('response_format', 'verbose_json');
 
-  const response = await fetch(`${baseUrl}/audio/transcriptions`, {
+  const response = await fetch(`${baseUrl}/audio/transcriptions`, proxy.through('cloud', {
     method: 'POST',
     headers: key ? { Authorization: `Bearer ${key}` } : {},
     body: form,
     signal: AbortSignal.timeout(TIMEOUT_MS),
-  });
+  }));
   if (!response.ok) throw new Error(`${preset.title} ответил ${response.status}`);
 
   const data = await response.json();

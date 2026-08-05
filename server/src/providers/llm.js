@@ -3,6 +3,7 @@
 const { CLOUD } = require('../../../shared/providers');
 const { instruction } = require('../../../shared/modes');
 const settings = require('../settings');
+const proxy = require('../proxy');
 
 /**
  * Улучшение текста облаком.
@@ -16,7 +17,7 @@ const TIMEOUT_MS = 3 * 60 * 1000;
 const NO_THINKING = { chat_template_kwargs: { enable_thinking: false }, reasoning_effort: 'none' };
 
 function ask(url, key, body) {
-  return fetch(url, {
+  return fetch(url, proxy.through('cloud', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -24,7 +25,7 @@ function ask(url, key, body) {
     },
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(TIMEOUT_MS),
-  });
+  }));
 }
 
 async function improve(providerId, { text, mode }) {

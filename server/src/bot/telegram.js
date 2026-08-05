@@ -3,6 +3,7 @@
 const settings = require('../settings');
 const queue = require('../agent/queue');
 const handlers = require('./handlers');
+const proxy = require('../proxy');
 
 /**
  * Разговор с Telegram: длинные опросы вместо вебхука.
@@ -22,13 +23,13 @@ const API = 'https://api.telegram.org';
 let live = null;   // { token, offset, stop }
 
 function api(token, method, body) {
-  return fetch(`${API}/bot${token}/${method}`, {
+  return fetch(`${API}/bot${token}/${method}`, proxy.through('telegram', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body || {}),
     // Опрос висит до POLL_SECONDS, поэтому ждём с запасом.
     signal: AbortSignal.timeout((POLL_SECONDS + 15) * 1000),
-  }).then(async (response) => {
+  })).then(async (response) => {
     const data = await response.json();
     if (!data.ok) throw new Error(data.description || `Telegram ответил ${response.status}`);
     return data.result;
@@ -52,9 +53,8 @@ function makeTelegram(token) {
 
     download: async (fileId) => {
       const file = await api(token, 'getFile', { file_id: fileId });
-      const response = await fetch(`${API}/file/bot${token}/${file.file_path}`, {
-        signal: AbortSignal.timeout(120000),
-      });
+      const response = await fetch(`${API}/file/bot${token}/${file.file_path}`,
+        proxy.through('telegram', { signal: AbortSignal.timeout(120000) }));
       if (!response.ok) throw new Error(`не скачалось, ${response.status}`);
       return Buffer.from(await response.arrayBuffer());
     },
