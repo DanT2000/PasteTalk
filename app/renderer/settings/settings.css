@@ -74,9 +74,9 @@ body {
 .wincontrols { margin-left: auto; display: flex; flex: none; }
 .wincontrols button {
   width: 2.875rem; min-height: 2.375rem; border: 0; background: transparent;
-  color: var(--dim); font-size: .6875rem; cursor: default;
-  font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets", inherit;
+  color: var(--dim); cursor: default; display: grid; place-items: center;
 }
+.wincontrols button svg { width: .75rem; height: .75rem; }
 .wincontrols button:hover { background: var(--card-hover); color: var(--text); }
 .wincontrols button.close:hover { background: #C42B1C; color: #fff; }
 

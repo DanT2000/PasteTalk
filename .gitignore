@@ -29,3 +29,10 @@ build/engine/
 .env.*
 *.log
 scratch/
+
+# Записи для проверок — они личные и в репозиторий не идут.
+*.mp3
+*.wav
+*.m4a
+*.ogg
+samples/

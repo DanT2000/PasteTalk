@@ -134,6 +134,7 @@ html[data-size="compact"] .cap-hint { display: none; }
   padding: .3125rem .5rem; cursor: pointer;
 }
 html[data-theme="light"] .quick select { background: #fff; }
+.quick-note { font-size: .6875rem; color: var(--dim); }
 
 :focus-visible { outline: .125rem solid var(--accent); outline-offset: .125rem; border-radius: .25rem; }
 

@@ -19,17 +19,19 @@ let paused = false;
 let actions = {};
 
 /**
- * Значок в трее — силуэт микрофона без подложки, как у системных.
+ * Значок в трее — тот же микрофон и тем же фирменным цветом, что логотип,
+ * только без подложки. Оранжевый одинаково читается и на светлой панели
+ * задач, и на тёмной, так что подстраиваться под тему незачем.
  *
- * Windows не сообщает, светлая у панели задач тема или тёмная, поэтому
- * берём цвет из общей темы системы: на светлой панели нужен тёмный
- * значок и наоборот.
+ * В собранном приложении иконки лежат в ресурсах, в разработке — в build.
  */
 function iconPath() {
-  const dir = path.join(__dirname, '..', '..', 'build');
-  const file = nativeTheme.shouldUseDarkColors ? 'tray-light.ico' : 'tray-dark.ico';
-  const tray = path.join(dir, file);
-  return fs.existsSync(tray) ? tray : path.join(dir, 'icon.ico');
+  const places = [
+    path.join(process.resourcesPath || '', 'build', 'tray.ico'),
+    path.join(__dirname, '..', '..', 'build', 'tray.ico'),
+    path.join(__dirname, '..', '..', 'build', 'icon.ico'),
+  ];
+  return places.find((file) => file && fs.existsSync(file)) || places[1];
 }
 
 function stateLine() {

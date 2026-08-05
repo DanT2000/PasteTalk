@@ -8,9 +8,11 @@ const engine = require('./engine');
 const hotkeys = require('./hotkeys');
 const llm = require('./llm');
 const logger = require('./logger');
+const ocr = require('./ocr');
 const paste = require('./paste');
 const recorder = require('./recorder');
 const tray = require('./tray');
+const updates = require('./updates');
 const watchdog = require('./watchdog');
 const windows = require('./windows');
 
@@ -140,7 +142,13 @@ recorder.on('text', (payload) => {
   windows.send('settings', 'history:add', { ...payload, at: Date.now() });
 });
 
-recorder.on('hide', () => windows.hideCapsule());
+recorder.on('hide', () => {
+  windows.hideCapsule();
+  // Панель ушла — быстрые параметры ушли вместе с ней, и следующее
+  // нажатие сочетания должно открывать их, а не закрывать.
+  windows.send('capsule', 'capsule:quick', { visible: false });
+  hotkeys.quickPanelClosed();
+});
 
 // ---------- горячие клавиши ----------
 
@@ -152,10 +160,69 @@ function registerHotkeys() {
       else startRecording('improve');
     },
     improveClipboard: () => improveClipboard(),
+    recognizeImage: () => recognizeClipboardImage(),
     quickPanel: (visible) => windows.send('capsule', 'capsule:quick', { visible }),
   });
   if (failed.length) {
     windows.send('settings', 'hotkeys:conflict', failed);
+  }
+}
+
+/**
+ * Снимок экрана → текст в буфере, по одной клавише.
+ *
+ * Сделали снимок штатным Win+Shift+S — картинка уже в буфере обмена.
+ * Нажали нашу клавишу — на её месте оказался текст. Если в настройках
+ * включён перевод, он же и переведённый.
+ */
+async function recognizeClipboardImage() {
+  if (tray.isPaused()) return;
+  const settings = config.get('images', {});
+
+  recorder.cancelHide();
+  windows.showCapsule();
+  windows.send('capsule', 'capsule:state', { state: 'ocr' });
+
+  let text;
+  try {
+    text = await ocr.fromClipboard(settings.ocrLanguage);
+  } catch (error) {
+    const empty = error.message === 'EMPTY_CLIPBOARD';
+    log.warn(`картинка не распозналась: ${error.message}`);
+    windows.send('capsule', 'capsule:state', {
+      state: 'ocrfail',
+      hint: empty ? 'В буфере нет картинки' : error.message,
+    });
+    recorder.scheduleHide(3200);
+    return;
+  }
+
+  if (!text) {
+    windows.send('capsule', 'capsule:state', { state: 'ocrfail', hint: 'Текста на картинке нет' });
+    recorder.scheduleHide(2600);
+    return;
+  }
+
+  await paste.deliver(text, config.get('text.autoPaste', true));
+  windows.send('settings', 'ocr:result', { text, translated: false });
+
+  if (!settings.autoTranslate || !config.get('ai.enabled', false)) {
+    windows.send('capsule', 'capsule:state', { state: 'ocrdone' });
+    recorder.scheduleHide(2400);
+    return;
+  }
+
+  windows.send('capsule', 'capsule:state', { state: 'translating' });
+  try {
+    const translated = await llm.translate(text, settings.translateTo);
+    await paste.deliver(translated, config.get('text.autoPaste', true));
+    windows.send('settings', 'ocr:result', { text: translated, translated: true });
+    windows.send('capsule', 'capsule:state', { state: 'ocrdone', hint: 'Переведено' });
+    recorder.scheduleHide(2400);
+  } catch (error) {
+    log.warn(`перевод не удался: ${error.message}`);
+    windows.send('capsule', 'capsule:state', { state: 'aierror', hint: 'Текст без перевода в буфере' });
+    recorder.scheduleHide(3200);
   }
 }
 
@@ -238,10 +305,36 @@ ipcMain.handle('app:state', () => ({
   paused: tray.isPaused(),
   engine: { state: engine.state, error: engine.lastError, ready: engine.isReady },
   logFile: logger.logFile(),
+  errorFile: logger.errorFile(),
   settingsFile: config.file(),
 }));
 ipcMain.handle('app:setPaused', (_event, value) => setPaused(Boolean(value)));
 ipcMain.handle('app:logs', () => logger.tail());
+ipcMain.handle('app:errors', (_event, limit) => logger.errors(limit || 20));
+
+/**
+ * Включён ли журнал буфера обмена Windows (тот, что по Win+V).
+ *
+ * Читаем ровно тот ключ, который переключает сама Windows. Пока значения
+ * нет, журнал выключен — так его и заводят с завода.
+ */
+ipcMain.handle('app:clipboardHistory', async () => {
+  try {
+    const { spawn } = require('node:child_process');
+    const value = await new Promise((resolve) => {
+      const child = spawn('reg', ['query', 'HKCU\\Software\\Microsoft\\Clipboard', '/v', 'EnableClipboardHistory'],
+        { windowsHide: true });
+      let out = '';
+      child.stdout.on('data', (chunk) => { out += chunk; });
+      child.on('close', () => resolve(out));
+      child.on('error', () => resolve(''));
+    });
+    const found = /EnableClipboardHistory\s+REG_DWORD\s+0x([0-9a-f]+)/i.exec(value);
+    return { enabled: Boolean(found && parseInt(found[1], 16)) };
+  } catch {
+    return { enabled: false, unknown: true };
+  }
+});
 ipcMain.handle('app:openPath', (_event, target) => shell.openPath(target));
 ipcMain.handle('app:openExternal', (_event, url) => {
   if (/^https?:\/\//i.test(url)) shell.openExternal(url);
@@ -274,6 +367,28 @@ ipcMain.on('capsule:action', (_event, action) => {
   }
   else if (action === 'settings') windows.showSettings();
   else if (action === 'cancel') { windows.send('audio', 'audio:stop', {}); recorder.abort('nospeech'); }
+});
+
+/**
+ * Правки из панели быстрых параметров — на лету, посреди записи.
+ *
+ * Микрофон меняем сразу: перезапускаем захват, не прерывая сессию, — уже
+ * сказанное остаётся, дальше пишем с нового устройства. Модель на ходу
+ * менять нельзя: она грузится секунды, и запись бы оборвалась, поэтому
+ * новая берётся со следующей записи.
+ */
+ipcMain.on('capsule:set', (_event, patch) => {
+  const before = config.all();
+  const after = config.set(patch);
+  windows.broadcast('config:changed', after);
+
+  if (patch.microphoneId && patch.microphoneId !== before.microphoneId && recorder.active) {
+    windows.send('audio', 'audio:start', { deviceId: after.microphoneId });
+    log.info(`микрофон переключён на лету: ${after.microphoneId}`);
+  }
+  if (patch.model?.name && patch.model.name !== before.model.name) {
+    engine.loadModel(after.model).catch((error) => log.error(error));
+  }
 });
 
 ipcMain.on('audio:chunk', (_event, payload) => {
@@ -320,6 +435,29 @@ ipcMain.handle('files:save', async (event, payload) => {
 });
 
 ipcMain.handle('clipboard:write', (_event, text) => { paste.copy(String(text || '')); return true; });
+
+// ---------- картинки ----------
+
+ipcMain.handle('updates:check', () => updates.check());
+
+ipcMain.handle('ocr:languages', () => ocr.languages());
+ipcMain.handle('ocr:hasImage', () => ocr.hasClipboardImage());
+ipcMain.handle('ocr:fromClipboard', (_event, language) => ocr.fromClipboard(language));
+ipcMain.handle('ocr:fromFile', (_event, payload) => ocr.fromFile(payload.path, payload.language));
+ipcMain.handle('ocr:translate', (_event, payload) => llm.translate(payload.text, payload.target));
+
+ipcMain.handle('images:pick', async (event) => {
+  const win = event.sender.getOwnerBrowserWindow();
+  const result = await dialog.showOpenDialog(win, {
+    title: 'Выберите изображение',
+    properties: ['openFile'],
+    filters: [
+      { name: 'Изображения', extensions: ['png', 'jpg', 'jpeg', 'bmp', 'gif', 'tif', 'tiff', 'webp'] },
+      { name: 'Все файлы', extensions: ['*'] },
+    ],
+  });
+  return result.canceled ? null : result.filePaths[0];
+});
 
 // ---------- тема ----------
 

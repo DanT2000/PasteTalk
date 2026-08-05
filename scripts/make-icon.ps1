@@ -100,9 +100,7 @@ function Save-Ico($path, $sizes, [bool]$plain, $ink, $pngPath) {
 # Иконка приложения — на подложке, её видно в меню «Пуск» и на ярлыке.
 Save-Ico (Join-Path $Out 'icon.ico') @(256, 128, 64, 48, 32, 16) $false $null (Join-Path $Out 'icon.png')
 
-# Значок в трее — только микрофон. Два варианта под светлую и тёмную
-# панель задач: Windows тему панели не сообщает, приложение выбирает само.
-$Light = [System.Drawing.Color]::FromArgb(255, 240, 240, 245)
-$Dark  = [System.Drawing.Color]::FromArgb(255, 32, 32, 36)
-Save-Ico (Join-Path $Out 'tray-light.ico') @(32, 24, 20, 16) $true $Light $null
-Save-Ico (Join-Path $Out 'tray-dark.ico')  @(32, 24, 20, 16) $true $Dark  $null
+# Значок в трее — тот же микрофон и тем же фирменным цветом, что и логотип,
+# только без подложки. Оранжевый одинаково читается и на светлой панели
+# задач, и на тёмной, поэтому подстраиваться под тему не нужно.
+Save-Ico (Join-Path $Out 'tray.ico') @(32, 24, 20, 16) $true $Brass $null

@@ -22,7 +22,6 @@ const DEFAULTS = {
 
   text: {
     autoPaste: true,
-    showToast: true,
     keepPunctuation: true,
   },
 
@@ -45,6 +44,9 @@ const DEFAULTS = {
     recordAndImprove: 'Control+Alt+Return',
     improveClipboard: 'Control+Alt+I',
     quickPanel: 'Control+Alt+Q',
+    // Распознать картинку, лежащую в буфере обмена: сделали снимок
+    // экрана — и текст с него сразу в буфере.
+    recognizeImage: 'Control+Alt+T',
   },
 
   appearance: {
@@ -68,6 +70,15 @@ const DEFAULTS = {
   },
 
   files: { timestamps: false },
+
+  images: {
+    // Пусто — Windows берёт языки, установленные в системе. Так почти
+    // всегда правильнее, чем угадывать за человека.
+    ocrLanguage: '',
+    translateTo: 'ru',
+    // Переводить сразу после распознавания, не дожидаясь нажатия.
+    autoTranslate: false,
+  },
 
   startup: { autoLaunch: true, restartOnCrash: true },
 };

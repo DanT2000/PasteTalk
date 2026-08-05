@@ -25,11 +25,22 @@ KEEP_TAIL_MS = 200        # хвост тишины оставляем: с ни�
 
 
 class Session:
-    def __init__(self, models: ModelManager, language: str | None, initial_prompt: str = "") -> None:
+    def __init__(
+        self,
+        models: ModelManager,
+        language: str | None,
+        initial_prompt: str = "",
+        keep_dir: str | None = None,
+    ) -> None:
         self.id = uuid.uuid4().hex[:12]
         self.models = models
         self.language = language or None
         self.initial_prompt = initial_prompt
+        # Куда сложить запись целиком. Нужно для проверок: живой голос —
+        # единственный честный материал, а собрать его заново каждый раз
+        # значит каждый раз проверять на чём-то другом.
+        self.keep_dir = keep_dir
+        self.saved_path = ""
 
         self._buffer = np.zeros(0, dtype=np.float32)
         self._cursor = 0
@@ -106,12 +117,33 @@ class Session:
         self._jobs.put(None)
         self._worker.join(timeout=timeout)
         self._closed = True
+        if self.keep_dir:
+            self._save()
         return {
             "text": self.text(),
             "segments": list(self._segments),
             "durationS": round(len(self._buffer) / SAMPLE_RATE, 2),
+            "savedTo": self.saved_path,
             "error": self._error,
         }
+
+    def _save(self) -> None:
+        """Сложить запись в WAV — обычный, чтобы открывался чем угодно."""
+        import os
+        import wave
+
+        try:
+            os.makedirs(self.keep_dir, exist_ok=True)
+            path = os.path.join(self.keep_dir, f"{self.id}.wav")
+            pcm = np.clip(self._buffer, -1.0, 1.0)
+            with wave.open(path, "wb") as out:
+                out.setnchannels(1)
+                out.setsampwidth(2)
+                out.setframerate(SAMPLE_RATE)
+                out.writeframes((pcm * 32767).astype(np.int16).tobytes())
+            self.saved_path = path
+        except Exception as exc:  # noqa: BLE001 — сохранение не должно ронять запись
+            self._error = self._error or f"Не удалось сохранить запись: {exc}"
 
     def cancel(self) -> None:
         self._closed = True

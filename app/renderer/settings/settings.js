@@ -149,23 +149,56 @@ api.engine.onState((info) => {
 
 // ---------- микрофоны ----------
 
+/**
+ * Windows не отдаёт ни названий, ни идентификаторов устройств, пока
+ * программа хоть раз не получила доступ к микрофону. Поэтому сначала
+ * коротко открываем поток — и сразу закрываем: он нужен только ради
+ * разрешения, записывать мы здесь ничего не собираемся.
+ */
+async function unlockDeviceNames() {
+  try {
+    const devices = await api.media.devices();
+    const named = devices.some((device) => device.kind === 'audioinput' && device.label);
+    if (named) return;
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream.getTracks().forEach((track) => track.stop());
+  } catch { /* не дали — покажем только «по умолчанию» */ }
+}
+
+/**
+ * Windows называет устройства так: «Микрофон (DM30 USB Microphone) (352f:0101)».
+ * Приставка одинаковая у всех, а код в конце — для драйвера, не для
+ * человека. Убираем и то и другое, оставляя само название.
+ */
+function prettyDevice(label) {
+  if (!label) return 'Микрофон без названия';
+  const withoutVendorId = label.replace(/\s*\([0-9a-f]{4}:[0-9a-f]{4}\)\s*$/i, '').trim();
+  const inner = /^(?:Микрофон|Microphone|Линейный вход|Line In)\s*\((.+)\)$/i.exec(withoutVendorId);
+  return (inner ? inner[1] : withoutVendorId).trim() || label;
+}
+
 async function loadMicrophones() {
+  await unlockDeviceNames();
   let devices = [];
   try {
     devices = (await api.media.devices()).filter((device) => device.kind === 'audioinput');
   } catch { /* доступ ещё не выдан */ }
 
+  // Windows показывает каждое устройство трижды: «Default — …»,
+  // «Communications — …» и само устройство. Первые два — псевдонимы,
+  // и в списке из шести строк три оказываются одним микрофоном.
+  const real = devices.filter((device) =>
+    device.deviceId && device.deviceId !== 'default' && device.deviceId !== 'communications');
+
   for (const select of [$('mic'), $('welcome-mic')]) {
     const chosen = settings.microphoneId || 'default';
     select.innerHTML = '<option value="default">По умолчанию в Windows</option>';
-    devices
-      .filter((device) => device.deviceId && device.deviceId !== 'default')
-      .forEach((device) => {
-        const option = document.createElement('option');
-        option.value = device.deviceId;
-        option.textContent = device.label || 'Микрофон без названия';
-        select.appendChild(option);
-      });
+    real.forEach((device) => {
+      const option = document.createElement('option');
+      option.value = device.deviceId;
+      option.textContent = prettyDevice(device.label);
+      select.appendChild(option);
+    });
     select.value = [...select.options].some((o) => o.value === chosen) ? chosen : 'default';
   }
 }
@@ -177,11 +210,10 @@ $('mic-test').addEventListener('click', async () => {
         ? { deviceId: { exact: settings.microphoneId } }
         : true,
     });
-    // Метки устройств Windows отдаёт только после первого разрешения —
-    // заодно обновим список, теперь он будет с названиями.
     stream.getTracks().forEach((track) => track.stop());
     await loadMicrophones();
-    say('Микрофон доступен');
+    const count = $('mic').options.length - 1;
+    say(count > 0 ? `Микрофон доступен, устройств найдено: ${count}` : 'Микрофон доступен');
   } catch (error) {
     say(`Микрофон недоступен: ${error.message}`);
   }
@@ -329,7 +361,7 @@ const HOTKEYS = [
   { key: 'record', title: 'Начать и закончить запись', sub: 'Первое нажатие — говорите, второе — текст в буфере' },
   { key: 'recordAndImprove', title: 'Закончить запись и улучшить текст', sub: 'Вместо обычного завершения сразу отправляет сказанное в модель' },
   { key: 'improveClipboard', title: 'Улучшить то, что уже в буфере', sub: 'Пригодится, если вставили как есть, а потом передумали' },
-  { key: 'quickPanel', title: 'Панель быстрых параметров', sub: 'Микрофон, язык и модель на лету. Видна, пока сочетание удерживается' },
+  { key: 'quickPanel', title: 'Панель быстрых параметров', sub: 'Микрофон, язык и модель на лету. Нажали — открылась, нажали ещё раз — закрылась' },
 ];
 
 const SHOWN = {
@@ -697,7 +729,10 @@ const drop = $('drop');
 drop.addEventListener('drop', (event) => {
   event.preventDefault();
   const file = event.dataTransfer.files[0];
-  if (file?.path) startFile(file.path);
+  if (!file) return;
+  const path = api.files.pathOf(file);
+  if (path) startFile(path);
+  else say('Не удалось получить путь к файлу — выберите его кнопкой');
 });
 
 $('file-copy').addEventListener('click', async () => {
@@ -712,6 +747,119 @@ $('file-save').addEventListener('click', async () => {
   if (saved) say(`Сохранил: ${saved}`);
 });
 
+// ---------- изображения ----------
+
+let lastImageText = '';
+
+function showImageResult(name, note, text) {
+  $('img-drop').classList.add('is-hidden');
+  $('img-result').classList.remove('is-hidden');
+  $('img-name').textContent = name;
+  $('img-info').textContent = note;
+  $('img-text').textContent = text;
+  lastImageText = text;
+  const has = Boolean(text);
+  $('img-copy').disabled = !has;
+  $('img-translate').disabled = !has;
+}
+
+async function recognizeImage(source, name) {
+  $('img-drop').classList.add('is-hidden');
+  $('img-result').classList.remove('is-hidden');
+  $('img-name').textContent = name;
+  $('img-info').textContent = 'Читаю…';
+  $('img-text').textContent = '';
+
+  const started = Date.now();
+  try {
+    const language = settings.images?.ocrLanguage || '';
+    const text = source === 'clipboard'
+      ? await api.images.fromClipboard(language)
+      : await api.images.fromFile(source, language);
+    showImageResult(name, text
+      ? `${text.length} символов за ${Date.now() - started} мс`
+      : 'Текста на картинке не нашлось', text);
+  } catch (error) {
+    showImageResult(name, error.message === 'EMPTY_CLIPBOARD' ? 'В буфере обмена нет картинки' : error.message, '');
+  }
+}
+
+$('img-pick').addEventListener('click', async () => {
+  const path = await api.images.pick();
+  if (path) recognizeImage(path, path.split(/[\\/]/).pop());
+});
+$('img-paste').addEventListener('click', () => recognizeImage('clipboard', 'Из буфера обмена'));
+$('img-another').addEventListener('click', () => {
+  $('img-result').classList.add('is-hidden');
+  $('img-drop').classList.remove('is-hidden');
+});
+$('img-copy').addEventListener('click', async () => {
+  await api.clipboard.write($('img-text').textContent);
+  say('Текст скопирован');
+});
+$('img-translate').addEventListener('click', async () => {
+  const source = $('img-text').textContent.trim();
+  if (!source) return;
+  if (!settings.ai?.enabled) { say('Включите улучшение текста — перевод идёт через ту же модель'); return; }
+
+  $('img-translate').disabled = true;
+  $('img-info').textContent = 'Перевожу…';
+  try {
+    const translated = await api.images.translate(source, settings.images?.translateTo || 'ru');
+    $('img-text').textContent = translated;
+    $('img-info').textContent = 'Переведено';
+    await api.clipboard.write(translated);
+    say('Перевод готов и скопирован');
+  } catch (error) {
+    $('img-info').textContent = `Перевести не вышло: ${error.message}`;
+  }
+  $('img-translate').disabled = false;
+});
+
+// Вставка снимка экрана прямо в окно — самый короткий путь: сняли
+// Win+Shift+S, перешли сюда, нажали Ctrl+V.
+window.addEventListener('paste', async () => {
+  if (!document.querySelector('.page[data-page="images"]').classList.contains('is-active')) return;
+  if (await api.images.hasImage()) recognizeImage('clipboard', 'Из буфера обмена');
+});
+
+const imgDrop = $('img-drop');
+['dragenter', 'dragover'].forEach((name) => imgDrop.addEventListener(name, (event) => {
+  event.preventDefault();
+  imgDrop.classList.add('is-over');
+}));
+['dragleave', 'drop'].forEach((name) => imgDrop.addEventListener(name, () => imgDrop.classList.remove('is-over')));
+imgDrop.addEventListener('drop', (event) => {
+  event.preventDefault();
+  const file = event.dataTransfer.files[0];
+  if (!file) return;
+  const path = api.files.pathOf(file);
+  if (path) recognizeImage(path, file.name);
+  else say('Не удалось получить путь к файлу — выберите его кнопкой');
+});
+
+/** Языки, которые Windows умеет читать на этой машине. */
+async function loadOcrLanguages() {
+  const list = await api.images.languages();
+  const select = $('ocr-lang');
+  const chosen = settings.images?.ocrLanguage || '';
+  select.innerHTML = '<option value="">Как в Windows</option>';
+  list.forEach((item) => {
+    const option = document.createElement('option');
+    option.value = item.tag;
+    option.textContent = item.title;
+    select.appendChild(option);
+  });
+  select.value = [...select.options].some((o) => o.value === chosen) ? chosen : '';
+  $('ocr-lang-sub').textContent = list.length
+    ? `Windows умеет читать: ${list.map((item) => item.title).join(', ')}`
+    : 'Windows не сообщил ни одного языка распознавания';
+}
+
+api.images.onResult(({ text, translated }) => {
+  showImageResult('Из буфера обмена', translated ? 'Переведено' : 'Распознано по горячей клавише', text);
+});
+
 // ---------- о программе ----------
 
 async function refreshLogs() {
@@ -719,19 +867,112 @@ async function refreshLogs() {
   const box = $('logs');
   box.textContent = lines.join('\n') || 'Пока пусто';
   box.scrollTop = box.scrollHeight;
+  refreshErrors();
 }
+
+function whenText(stamp) {
+  const minutes = Math.round((Date.now() - stamp) / 60000);
+  if (minutes < 1) return 'только что';
+  if (minutes < 60) return `${minutes} мин назад`;
+  return `${Math.round(minutes / 60)} ч назад`;
+}
+
+/** Ошибки показываем свёрнутыми: одна строка на беду, с числом повторов. */
+async function refreshErrors() {
+  const list = await api.app.errors(20);
+  const card = $('errors');
+  card.innerHTML = '';
+
+  if (!list.length) {
+    card.innerHTML = '<div class="row"><div class="row-text">'
+      + '<div class="row-title">За сутки ошибок не было</div>'
+      + '<div class="row-sub">Если что-то пойдёт не так, оно появится здесь</div></div></div>';
+    return;
+  }
+
+  for (const item of list) {
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.innerHTML = `
+      <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <path d="M12 8v5M12 17h.01"/><path d="M12 3 2 20h20z"/>
+      </svg>
+      <div class="row-text">
+        <div class="row-title">${escapeHtml(item.message).slice(0, 300)}</div>
+        <div class="row-sub">${item.scope} · ${whenText(item.last)}${item.count > 1 ? ` · повторилось ${item.count} раз` : ''}</div>
+      </div>`;
+    row.querySelector('.row-icon').style.color = 'var(--live)';
+    card.appendChild(row);
+  }
+}
+
+function escapeHtml(text) {
+  return String(text).replace(/[&<>"]/g, (ch) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+}
+
 $('logs-refresh').addEventListener('click', refreshLogs);
+$('errors-refresh').addEventListener('click', refreshErrors);
 $('logs-open').addEventListener('click', async () => api.app.openPath((await api.app.state()).logFile));
+$('errors-open').addEventListener('click', async () => api.app.openPath((await api.app.state()).errorFile));
 $('open-github').addEventListener('click', () => api.app.openExternal('https://github.com/DanT2000/PasteTalk'));
+
+let updateLink = '';
+$('update-check').addEventListener('click', async () => {
+  $('update-check').disabled = true;
+  $('update-pill').classList.add('is-hidden');
+  $('update-sub').textContent = 'Спрашиваю GitHub…';
+
+  const answer = await api.app.checkUpdates();
+  $('update-check').disabled = false;
+
+  if (!answer.ok) {
+    $('update-sub').textContent = `Проверить не вышло: ${answer.error}`;
+    $('update-get').style.display = 'none';
+    return;
+  }
+
+  const pill = $('update-pill');
+  pill.classList.remove('is-hidden');
+  if (answer.newer) {
+    updateLink = answer.download;
+    pill.className = 'pill';
+    pill.textContent = `есть ${answer.latest}`;
+    $('update-sub').textContent = `У вас ${answer.current}, на GitHub ${answer.latest}`
+      + (answer.sizeMb ? ` — установщик ${answer.sizeMb} МБ` : '')
+      + '. Скачайте и запустите поверх, настройки сохранятся';
+    $('update-get').style.display = '';
+  } else {
+    pill.className = 'pill pill-ok';
+    pill.textContent = 'последняя';
+    $('update-sub').textContent = `У вас ${answer.current} — новее пока нет`;
+    $('update-get').style.display = 'none';
+  }
+});
+$('update-get').addEventListener('click', () => {
+  if (updateLink) api.app.openExternal(updateLink);
+});
 $('engine-restart').addEventListener('click', async () => {
   say('Перезапускаю движок');
   await api.engine.restart();
   setTimeout(refreshHealth, 1500);
 });
 
-$('clip-how').addEventListener('click', () => {
+async function showClipboardHistory() {
+  const { enabled, unknown } = await api.app.clipboardHistory();
+  const pill = $('clip-pill');
+  pill.className = `pill ${enabled ? 'pill-ok' : 'pill-muted'}`;
+  pill.textContent = unknown ? 'не знаю' : (enabled ? 'включён' : 'выключен');
+  $('clip-sub').textContent = enabled
+    ? 'Включён. Обычный и улучшенный текст лежат рядом — вызывайте по Win+V и выбирайте любой'
+    : 'Рекомендуем включить: хранит несколько последних текстов, вызывается по Win+V. Без него улучшенный текст затрёт обычный';
+}
+
+$('clip-how').addEventListener('click', async () => {
   api.app.openExternal('ms-settings:clipboard');
-  say('Открыл параметры Windows — включите «Журнал буфера обмена»');
+  say('Открыл параметры Windows — раздел «Журнал буфера обмена»');
+  // Человек мог переключить его прямо сейчас — перепроверим через паузу.
+  setTimeout(showClipboardHistory, 4000);
 });
 $('welcome-clip').addEventListener('click', () => api.app.openExternal('ms-settings:clipboard'));
 $('ffmpeg-how').addEventListener('click', () =>
@@ -809,6 +1050,8 @@ async function start() {
   $('open-settings-file').addEventListener('click', () => api.app.openPath(state.settingsFile));
 
   if (settings.firstRun) goto('welcome');
+  showClipboardHistory();
+  loadOcrLanguages();
   await refreshHealth();
 
   api.config.onChanged((fresh) => {

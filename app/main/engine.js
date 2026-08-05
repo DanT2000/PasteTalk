@@ -18,7 +18,14 @@ const log = require('./logger').scoped('engine');
 
 const READY_PREFIX = 'PASTETALK_ENGINE ';
 const READY_TIMEOUT_MS = 60000;
-const RESTART_DELAYS_MS = [1000, 3000, 8000];
+
+// Десять попыток — но в пределах получаса. Движок, который упал один раз
+// за день, не должен доедать лимит, накопленный неделю назад; а тот, что
+// падает по кругу прямо сейчас, должен упереться в потолок и сказать об
+// этом человеку, а не молотить вечно.
+const MAX_RESTARTS = 10;
+const RESTART_WINDOW_MS = 30 * 60 * 1000;
+const RESTART_DELAYS_MS = [1000, 2000, 4000, 8000, 15000, 30000];
 
 class Engine {
   constructor() {
@@ -28,6 +35,7 @@ class Engine {
     this.state = 'stopped';   // stopped | starting | ready | failed
     this.lastError = '';
     this.restarts = 0;
+    this.firstRestartAt = 0;
     this.stopping = false;
     this.onState = () => {};
   }
@@ -72,6 +80,12 @@ class Engine {
       '--model', model.name || 'large-v3',
       '--device', model.device || 'cuda',
     ];
+
+    // В разработке храним записи целиком: на живом голосе проверять
+    // куда честнее, чем на синтезированном.
+    if (process.argv.includes('--dev')) {
+      args.push('--recordings', path.join(app.getPath('userData'), 'recordings'));
+    }
 
     log.info(`запускаю: ${found.command}`);
     // stdin держим открытым специально: движок следит за ним и завершается
@@ -133,13 +147,25 @@ class Engine {
     }
 
     log.warn(`движок завершился с кодом ${code}`);
-    if (!config.get('startup.restartOnCrash', true) || this.restarts >= RESTART_DELAYS_MS.length) {
-      this.fail('Движок падает при запуске. Откройте журнал — там причина.');
+    if (!config.get('startup.restartOnCrash', true)) {
+      this.fail('Движок остановился, а перезапуск после сбоя выключен в настройках.');
       return;
     }
-    const delay = RESTART_DELAYS_MS[this.restarts];
+
+    // Счётчик стареет: если полчаса всё было тихо, начинаем с нуля.
+    const now = Date.now();
+    if (now - this.firstRestartAt > RESTART_WINDOW_MS) {
+      this.restarts = 0;
+      this.firstRestartAt = now;
+    }
+    if (this.restarts >= MAX_RESTARTS) {
+      this.fail(`Движок упал ${MAX_RESTARTS} раз за полчаса. Откройте журнал — там причина.`);
+      return;
+    }
+
+    const delay = RESTART_DELAYS_MS[Math.min(this.restarts, RESTART_DELAYS_MS.length - 1)];
     this.restarts += 1;
-    log.info(`перезапуск через ${delay} мс (попытка ${this.restarts})`);
+    log.info(`перезапуск через ${delay} мс (попытка ${this.restarts} из ${MAX_RESTARTS})`);
     this.setState('starting');
     setTimeout(() => this.start(), delay);
   }

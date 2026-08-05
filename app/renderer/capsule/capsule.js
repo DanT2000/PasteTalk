@@ -22,6 +22,7 @@ const ICONS = {
   warn: '<path d="M12 8v5M12 17h.01"/><path d="M12 3 2 20h20z"/>',
   spin: '<path d="M12 3a9 9 0 1 0 9 9"/>',
   spark: '<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/>',
+  image: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="m6 16 4-5 3 3.5 2-2.5 3 4"/><circle cx="8.5" cy="9" r="1.2"/>',
 };
 
 const STATES = {
@@ -33,6 +34,10 @@ const STATES = {
   aidone:     { tone: 'ok',     wave: 'flat', mic: 'check', status: 'Текст улучшен',   hint: 'Обычный — в Win+V',  ai: true },
   aierror:    { tone: 'warn',   wave: 'flat', mic: 'warn',  status: 'ИИ не ответил',   hint: 'Обычный текст на месте', ai: true },
   countdown:  { tone: 'accent', wave: 'flat', mic: 'mic',   status: 'Приготовьтесь',   hint: 'Ещё раз — отменю',   ai: false },
+  ocr:        { tone: 'accent', wave: 'busy', mic: 'image', status: 'Читаю картинку',  hint: '',                   ai: false },
+  translating:{ tone: 'accent', wave: 'busy', mic: 'spark', status: 'Перевожу',        hint: 'Оригинал уже в буфере', ai: false },
+  ocrdone:    { tone: 'ok',     wave: 'flat', mic: 'check', status: 'Текст в буфере',  hint: 'Вставить — Ctrl+V',  ai: true },
+  ocrfail:    { tone: 'warn',   wave: 'flat', mic: 'image', status: 'Не прочиталось',  hint: '',                   ai: false },
   nospeech:   { tone: 'mute',   wave: 'flat', mic: 'mute',  status: 'Тишина',          hint: 'Запись отменил',     ai: false },
   micdead:    { tone: 'warn',   wave: 'flat', mic: 'warn',  status: 'Микрофон молчит', hint: 'Проверьте устройство', ai: false },
   engineDown: { tone: 'warn',   wave: 'flat', mic: 'warn',  status: 'Движок не готов', hint: '',                   ai: false },
@@ -148,6 +153,44 @@ function applyConfig(settings) {
   document.getElementById('q-lang').value = settings.language || 'auto';
   document.getElementById('q-model').value = settings.model?.name || 'large-v3';
 }
+
+/* ---- быстрые параметры ---- */
+
+function shortName(label) {
+  if (!label) return 'Микрофон без названия';
+  const withoutId = label.replace(/\s*\([0-9a-f]{4}:[0-9a-f]{4}\)\s*$/i, '').trim();
+  const inner = /^(?:Микрофон|Microphone)\s*\((.+)\)$/i.exec(withoutId);
+  return (inner ? inner[1] : withoutId).trim() || label;
+}
+
+async function fillMicrophones() {
+  const select = document.getElementById('q-mic');
+  const chosen = config?.microphoneId || 'default';
+  let devices = [];
+  try {
+    devices = await window.capsule.microphones();
+  } catch { /* без разрешения останется только «по умолчанию» */ }
+
+  select.innerHTML = '<option value="default">По умолчанию</option>';
+  devices
+    .filter((device) => device.deviceId && device.deviceId !== 'default' && device.deviceId !== 'communications')
+    .forEach((device) => {
+      const option = document.createElement('option');
+      option.value = device.deviceId;
+      option.textContent = shortName(device.label);
+      select.appendChild(option);
+    });
+  select.value = [...select.options].some((o) => o.value === chosen) ? chosen : 'default';
+}
+
+document.getElementById('q-mic').addEventListener('change', (event) =>
+  window.capsule.set({ microphoneId: event.target.value }));
+document.getElementById('q-lang').addEventListener('change', (event) =>
+  window.capsule.set({ language: event.target.value }));
+document.getElementById('q-model').addEventListener('change', (event) =>
+  window.capsule.set({ model: { name: event.target.value } }));
+
+window.capsule.onQuick((payload) => { if (payload.visible) fillMicrophones(); });
 
 window.capsule.onConfig(applyConfig);
 window.capsule.onTheme(() => window.capsule.config().then(applyConfig));

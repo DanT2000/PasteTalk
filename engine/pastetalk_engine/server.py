@@ -31,7 +31,8 @@ MAX_BODY = 64 * 1024 * 1024
 
 
 class Engine:
-    def __init__(self, cache_dir: str | None) -> None:
+    def __init__(self, cache_dir: str | None, recordings_dir: str | None = None) -> None:
+        self.recordings_dir = recordings_dir
         self.models = ModelManager(cache_dir)
         self.sessions: dict[str, Session] = {}
         self.jobs: dict[str, FileJob] = {}
@@ -104,6 +105,7 @@ class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     engine: Engine
     token: str
+    _raw: bytes = b""
 
     # ---------- инфраструктура ----------
 
@@ -121,7 +123,14 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _body(self) -> bytes:
+    def _read_body(self) -> bytes:
+        """Вычитать тело целиком — обязательно, даже если оно не нужно.
+
+        Соединение живёт между запросами (HTTP/1.1), и невычитанные байты
+        остаются в сокете. Следующий запрос начнёт разбор с них, увидит
+        вместо метода кусок JSON и ответит 501. Ошибка выглядит так,
+        будто движок сошёл с ума, а причина — непрочитанное тело.
+        """
         length = int(self.headers.get("Content-Length") or 0)
         if length <= 0:
             return b""
@@ -129,11 +138,13 @@ class Handler(BaseHTTPRequestHandler):
             raise ValueError("Тело запроса слишком большое")
         return self.rfile.read(length)
 
+    def _body(self) -> bytes:
+        return self._raw
+
     def _json(self) -> dict[str, Any]:
-        raw = self._body()
-        if not raw:
+        if not self._raw:
             return {}
-        return json.loads(raw.decode("utf-8"))
+        return json.loads(self._raw.decode("utf-8"))
 
     def _authorised(self) -> bool:
         return secrets.compare_digest(self.headers.get("X-PasteTalk-Token", ""), self.token)
@@ -150,6 +161,12 @@ class Handler(BaseHTTPRequestHandler):
         self._route("DELETE")
 
     def _route(self, method: str) -> None:
+        try:
+            self._raw = self._read_body()
+        except ValueError as exc:
+            self._reject(413, str(exc))
+            return
+
         if not self._authorised():
             self._reject(401, "Неверный токен")
             return
@@ -189,6 +206,15 @@ class Handler(BaseHTTPRequestHandler):
         elif method == "POST" and head == "benchmark":
             self._send(200, engine.benchmark())
 
+        elif method == "GET" and head == "ocr" and len(parts) == 2 and parts[1] == "languages":
+            from . import ocr
+            self._send(200, {"languages": ocr.languages()})
+
+        elif method == "POST" and head == "ocr":
+            from . import ocr
+            payload = self._json()
+            self._send(200, {"text": ocr.recognize(payload.get("path", ""), payload.get("language", ""))})
+
         elif method == "POST" and head == "session" and len(parts) == 1:
             if not engine.models.is_ready():
                 self._reject(409, "MODEL_NOT_READY")
@@ -198,6 +224,7 @@ class Handler(BaseHTTPRequestHandler):
                 engine.models,
                 payload.get("language") or None,
                 payload.get("prompt", ""),
+                keep_dir=engine.recordings_dir,
             )
             engine.sessions[session.id] = session
             self._send(200, {"id": session.id})
@@ -284,12 +311,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=0, help="0 — занять свободный")
     parser.add_argument("--cache-dir", default=None, help="куда складывать модели")
+    parser.add_argument("--recordings", default=None,
+                        help="куда сохранять записи целиком (для проверок)")
     parser.add_argument("--parent-pid", type=int, default=0)
     parser.add_argument("--model", default="", help="загрузить сразу при старте")
     parser.add_argument("--device", default="cuda")
     args = parser.parse_args(argv)
 
-    engine = Engine(args.cache_dir)
+    engine = Engine(args.cache_dir, args.recordings)
     token = secrets.token_urlsafe(24)
 
     handler = type("BoundHandler", (Handler,), {"engine": engine, "token": token})

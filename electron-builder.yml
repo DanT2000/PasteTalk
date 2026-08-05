@@ -19,6 +19,11 @@ extraResources:
   - from: build/engine
     to: engine
     filter: ['**/*']
+  # Значок трея нужен в готовом виде: рисовать его на лету нечем.
+  - from: build/tray.ico
+    to: build/tray.ico
+  - from: build/icon.ico
+    to: build/icon.ico
 
 win:
   icon: build/icon.ico

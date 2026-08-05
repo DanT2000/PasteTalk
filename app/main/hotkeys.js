@@ -6,15 +6,17 @@ const config = require('./config');
 const log = require('./logger').scoped('hotkeys');
 
 /**
- * Горячие клавиши. Electron умеет только «нажали» — удержания не даёт,
- * поэтому панель быстрых параметров держится на таймере: пока сочетание
- * жмут, события идут потоком, замолчали — через полсекунды прячем.
+ * Горячие клавиши.
+ *
+ * Важное ограничение: Windows сообщает приложению только о нажатии
+ * сочетания, но не об отпускании. Узнать, держат клавишу или уже нет,
+ * без перехвата всей клавиатуры невозможно — а ставить такой перехват
+ * ради одной панели неправильно. Поэтому панель быстрых параметров
+ * работает переключателем: нажали — открылась, нажали ещё раз — закрылась.
  */
 
-const HOLD_GRACE_MS = 600;
-
 let handlers = {};
-let holdTimer = null;
+let quickVisible = false;
 
 function label(accelerator) {
   return String(accelerator || '')
@@ -31,7 +33,8 @@ function register(actions) {
     ['record', () => actions.record()],
     ['recordAndImprove', () => actions.recordAndImprove()],
     ['improveClipboard', () => actions.improveClipboard()],
-    ['quickPanel', () => holdQuickPanel(actions)],
+    ['recognizeImage', () => actions.recognizeImage()],
+    ['quickPanel', () => toggleQuickPanel(actions)],
   ];
 
   const failed = [];
@@ -54,14 +57,18 @@ function register(actions) {
   return failed;
 }
 
-function holdQuickPanel(actions) {
-  actions.quickPanel(true);
-  clearTimeout(holdTimer);
-  holdTimer = setTimeout(() => actions.quickPanel(false), HOLD_GRACE_MS);
+function toggleQuickPanel(actions) {
+  quickVisible = !quickVisible;
+  actions.quickPanel(quickVisible);
+}
+
+/** Панель закрывают не только клавишей — надо знать об этом. */
+function quickPanelClosed() {
+  quickVisible = false;
 }
 
 function unregister() {
-  clearTimeout(holdTimer);
+  quickVisible = false;
   globalShortcut.unregisterAll();
 }
 
@@ -78,4 +85,4 @@ function isFree(accelerator) {
   }
 }
 
-module.exports = { register, unregister, isFree, label, handlers: () => handlers };
+module.exports = { register, unregister, isFree, label, quickPanelClosed, handlers: () => handlers };

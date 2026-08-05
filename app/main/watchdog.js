@@ -22,7 +22,9 @@ const log = require('./logger').scoped('watchdog');
 
 const CHECK_EVERY_MS = 30000;
 const FAILURES_BEFORE_RESTART = 2;
-const RESTARTS_BEFORE_GIVING_UP = 3;
+// Столько же, сколько выдерживает сам движок при падениях: разные числа
+// в двух местах приводили бы к тому, что одна защита сдаётся раньше другой.
+const RESTARTS_BEFORE_GIVING_UP = 10;
 
 let timer = null;
 let failures = 0;
@@ -75,12 +77,12 @@ async function check() {
 function giveUp() {
   if (warned) return;
   warned = true;
-  log.error('движок не отвечает после трёх перезапусков');
+  log.error(`движок не отвечает после ${RESTARTS_BEFORE_GIVING_UP} перезапусков`);
   dialog.showMessageBox({
     type: 'error',
     title: 'PasteTalk',
     message: 'Движок распознавания не отвечает',
-    detail: 'Три попытки поднять его подряд не помогли. Диктовка сейчас не работает.\n\n'
+    detail: `${RESTARTS_BEFORE_GIVING_UP} попыток поднять его подряд не помогли. Диктовка сейчас не работает.\n\n`
       + 'Что обычно помогает: переключить вычисления на процессор в настройках, '
       + 'взять модель поменьше или перезапустить компьютер. Подробности — в журнале работы.',
     buttons: ['Открыть журнал', 'Закрыть'],

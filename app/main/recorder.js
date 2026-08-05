@@ -19,6 +19,21 @@ const log = require('./logger').scoped('record');
 const MIC_DEAD_MS = 3000;      // столько цифровой тишины — и микрофон считаем немым
 const HIDE_AFTER_MS = 2200;    // сколько панель висит с готовым результатом
 
+/**
+ * Убрать знаки препинания, если человек их не хочет.
+ *
+ * Whisper расставляет их сам и отключить это в модели нельзя — значит
+ * снимаем уже с готового текста. Дефисы внутри слов и апострофы трогать
+ * нельзя: «кто-то» и «O'Brien» должны остаться собой.
+ */
+function stripPunctuation(text) {
+  return text
+    .replace(/[.,!?;:…«»"„“”()\[\]{}]/g, '')
+    .replace(/\s+—\s+/g, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
 class Recorder extends EventEmitter {
   constructor() {
     super();
@@ -142,7 +157,8 @@ class Recorder extends EventEmitter {
       return;
     }
 
-    const text = (result.text || '').trim();
+    let text = (result.text || '').trim();
+    if (text && !config.get('text.keepPunctuation', true)) text = stripPunctuation(text);
     if (!text) {
       this.emitState('nospeech');
       this.scheduleHide(1800);
