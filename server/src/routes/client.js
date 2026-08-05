@@ -29,7 +29,7 @@ function who(request) {
 function register(app) {
   app.post('/v1/activate', async (request, reply) => {
     const { code, kind, externalId = null, title = '' } = request.body || {};
-    if (!['telegram', 'android'].includes(kind)) {
+    if (!['telegram', 'android', 'desktop'].includes(kind)) {
       return reply.code(400).send({ error: 'Неизвестный вид устройства' });
     }
     try {

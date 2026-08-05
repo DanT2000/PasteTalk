@@ -12,6 +12,7 @@ const logger = require('./logger');
 const paste = require('./paste');
 const recorder = require('./recorder');
 const relay = require('./relay');
+const remote = require('./remote');
 const tray = require('./tray');
 const updates = require('./updates');
 const watchdog = require('./watchdog');
@@ -303,6 +304,10 @@ ipcMain.handle('app:state', () => ({
   errorFile: logger.errorFile(),
   settingsFile: config.file(),
 }));
+ipcMain.handle('recognition:providers', () => remote.CLOUD);
+ipcMain.handle('recognition:pair', (_event, code) => remote.pair(code));
+ipcMain.handle('recognition:check', () => remote.check());
+
 ipcMain.handle('relay:state', () => ({
   ...relay.state(),
   // Порт движка человек настраивает в «Основных»; здесь его только

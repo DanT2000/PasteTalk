@@ -260,6 +260,103 @@
         <h2>Распознавание</h2>
         <p class="lede">Речь превращается в текст на вашем компьютере. Интернет нужен один раз — чтобы скачать модель.</p>
 
+        <div class="group-title">Где считать</div>
+        <div class="card">
+          <div class="row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="4" width="20" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
+            <div class="row-text">
+              <div class="row-title">Считать речь</div>
+              <div class="row-sub" id="where-sub">На этом компьютере — ничего не уходит в интернет</div>
+            </div>
+            <div class="row-control">
+              <select id="rec-where" data-cfg="recognition.where">
+                <option value="local">На этом компьютере</option>
+                <option value="server">На сервере PasteTalk</option>
+                <option value="cloud">В облаке по своему ключу</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="note" id="weak-note" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
+          <div>Звук будет уходить наружу — это плата за скорость на компьютере без видеокарты. Улучшение текста настраивается отдельно и здесь ни при чём.</div>
+        </div>
+
+        <!-- Сервер PasteTalk -->
+        <div id="block-server" hidden>
+          <div class="group-title">Сервер PasteTalk</div>
+          <div class="card">
+            <div class="row">
+              <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1.5 1.5"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1.5-1.5"/></svg>
+              <div class="row-text">
+                <div class="row-title">Адрес сервера</div>
+                <div class="row-sub">Например, https://pastetalk.dev.appswire.ru</div>
+              </div>
+              <div class="row-control"><input class="field" type="text" id="rec-server-url" data-cfg="recognition.serverUrl" spellcheck="false" placeholder="https://ваш-сервер.ru"></div>
+            </div>
+            <div class="row">
+              <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+              <div class="row-text">
+                <div class="row-title">Код доступа</div>
+                <div class="row-sub">Шесть цифр от владельца сервера. Вводится один раз</div>
+              </div>
+              <div class="row-control">
+                <input class="field" type="text" id="rec-code" inputmode="numeric" maxlength="6" placeholder="000000" spellcheck="false">
+                <button class="btn" id="rec-pair">Привязать</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Облако по своему ключу -->
+        <div id="block-cloud" hidden>
+          <div class="group-title">Облако</div>
+          <div class="card">
+            <div class="row">
+              <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 18a4 4 0 0 0 0-8 6 6 0 0 0-11.3 2A3.5 3.5 0 0 0 6.5 18z"/></svg>
+              <div class="row-text">
+                <div class="row-title">Кто распознаёт</div>
+                <div class="row-sub" id="cloud-hint">Ключ берётся на aitunnel.ru</div>
+              </div>
+              <div class="row-control"><select id="rec-cloud" data-cfg="recognition.cloudProvider"></select></div>
+            </div>
+            <div class="row" id="row-cloud-url" hidden>
+              <div class="row-text">
+                <div class="row-title">Адрес</div>
+                <div class="row-sub">Любой сервер с /v1/audio/transcriptions</div>
+              </div>
+              <div class="row-control"><input class="field" type="text" id="rec-cloud-url" data-cfg="recognition.cloudUrl" spellcheck="false" placeholder="https://..."></div>
+            </div>
+            <div class="row">
+              <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="8" cy="15" r="4"/><path d="M11 12l8-8 2 2-2 2 2 2-3 3-2-2-3 3"/></svg>
+              <div class="row-text">
+                <div class="row-title">Ключ</div>
+                <div class="row-sub">Хранится только на этом компьютере</div>
+              </div>
+              <div class="row-control"><input class="field" type="password" id="rec-cloud-key" data-cfg="recognition.cloudKey" spellcheck="false"></div>
+            </div>
+            <div class="row">
+              <div class="row-text">
+                <div class="row-title">Модель</div>
+                <div class="row-sub" id="cloud-model-sub">Пусто — возьмём подходящую по умолчанию</div>
+              </div>
+              <div class="row-control"><input class="field" type="text" id="rec-cloud-model" data-cfg="recognition.cloudModel" spellcheck="false" placeholder="whisper-large-v3-turbo"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" id="rec-check-card" hidden>
+          <div class="row">
+            <div class="row-text">
+              <div class="row-title">Проверка связи</div>
+              <div class="row-sub" id="rec-check-sub">Отправим полсекунды тишины и посмотрим, что ответят</div>
+            </div>
+            <div class="row-control"><button class="btn" id="rec-check">Проверить</button></div>
+          </div>
+        </div>
+
+        <div id="block-local">
         <div class="group-title">Модель</div>
         <div class="card" id="model-list"></div>
 
@@ -351,6 +448,7 @@
             </div>
           </div>
         </div>
+        </div><!-- /block-local -->
       </section>
 
       <!-- ===== ГОРЯЧИЕ КЛАВИШИ ===== -->

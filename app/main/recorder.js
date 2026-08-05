@@ -6,6 +6,7 @@ const config = require('./config');
 const engine = require('./engine');
 const llm = require('./llm');
 const paste = require('./paste');
+const remote = require('./remote');
 const log = require('./logger').scoped('record');
 
 /**
@@ -49,6 +50,9 @@ class Recorder extends EventEmitter {
     this.silentSince = 0;
     this.lastText = '';
     this.busy = false;
+    // Копилка звука для внешнего распознавания. null означает «копить не
+    // надо» — иначе брошенная запись осталась бы висеть в памяти.
+    this.chunks = null;
   }
 
   get active() {
@@ -64,6 +68,12 @@ class Recorder extends EventEmitter {
 
   async start(mode = 'plain') {
     if (this.busy || this.state === 'listening') return;
+
+    // Когда считает не эта машина, движок не нужен вовсе: копим звук
+    // и отправим целиком. Проверять его готовность тут нельзя — на
+    // слабом компьютере модель может быть вообще не загружена.
+    if (remote.isRemote()) return this.startRemote(mode);
+
     if (!engine.isReady) {
       this.emitState('engineDown', { hint: engine.lastError || 'Движок ещё запускается' });
       this.scheduleHide(3000);
@@ -91,10 +101,25 @@ class Recorder extends EventEmitter {
     }
   }
 
+  /** Начать запись, которую посчитают снаружи. Движок не задействован. */
+  startRemote(mode) {
+    this.sessionId = null;
+    this.chunks = [];
+    this.mode = mode;
+    this.startedAt = Date.now();
+    this.everSpoke = false;
+    this.silentSince = Date.now();
+    this.lastText = '';
+    this.emitState('listening', { elapsedMs: 0 });
+    log.info(`запись начата (${mode}), считать будет ${remote.where()}`);
+  }
+
   // ---------- поток звука из окна записи ----------
 
   async pushAudio(chunk, peak) {
-    if (this.state !== 'listening' || !this.sessionId) return;
+    if (this.state !== 'listening') return;
+    if (this.chunks) return this.collect(chunk, peak);
+    if (!this.sessionId) return;
 
     // Микрофон, который отдаёт ровный ноль, — это не молчащий человек,
     // а выключенное или занятое устройство. Об этом лучше сказать прямо.
@@ -138,11 +163,73 @@ class Recorder extends EventEmitter {
     }
   }
 
+  /**
+   * Копить звук, пока человек говорит.
+   *
+   * Пределы по времени и тишине здесь те же, что и при местном
+   * распознавании: они считаются по громкости, а не по тексту, и от того,
+   * кто будет распознавать, не зависят.
+   */
+  collect(chunk, peak) {
+    if (peak > 0.0005) {
+      this.silentSince = Date.now();
+      this.everSpoke = true;
+    } else if (Date.now() - this.silentSince > MIC_DEAD_MS && !this.everSpoke) {
+      this.abort('micdead');
+      return;
+    }
+
+    this.chunks.push(Buffer.from(chunk));
+    const elapsedMs = Date.now() - this.startedAt;
+    this.emitState('listening', { elapsedMs });
+
+    const limits = config.get('limits', {});
+    if (elapsedMs >= limits.maxDurationMs) {
+      log.info('достигнут предел по времени');
+      this.finish('limit');
+      return;
+    }
+    if (!this.everSpoke && limits.noSpeechCancelMs > 0 && elapsedMs >= limits.noSpeechCancelMs) {
+      log.info('за отведённое время не сказано ни слова — отменяю');
+      this.abort('nospeech');
+      return;
+    }
+    if (this.everSpoke && limits.silenceStopMs > 0
+        && Date.now() - this.silentSince >= limits.silenceStopMs) {
+      log.info('долгая тишина после речи — заканчиваю');
+      this.finish('done');
+    }
+  }
+
+  /** Отправить накопленное туда, где считают. */
+  async finishRemote(reason) {
+    const pcm = Buffer.concat(this.chunks || []);
+    this.chunks = null;
+    this.emitState(reason === 'limit' ? 'limit' : 'thinking');
+
+    if (!this.everSpoke || pcm.length === 0) {
+      this.emitState('nospeech');
+      this.scheduleHide(1800);
+      return;
+    }
+
+    try {
+      const result = await remote.transcribe(pcm);
+      await this.deliver(result.text, result.durationS);
+    } catch (error) {
+      log.warn(`распознать снаружи не вышло: ${error.message}`);
+      this.emitState('engineDown', { hint: error.message });
+      this.scheduleHide(3600);
+    }
+  }
+
   // ---------- завершение ----------
 
   /** Закончить и отдать текст. reason определяет только подпись на панели. */
   async finish(reason = 'done') {
-    if (this.state !== 'listening' || !this.sessionId) return;
+    if (this.state !== 'listening') return;
+    if (this.chunks) return this.finishRemote(reason);
+    if (!this.sessionId) return;
     const id = this.sessionId;
     this.sessionId = null;
     this.emitState(reason === 'limit' ? 'limit' : 'thinking');
@@ -164,7 +251,17 @@ class Recorder extends EventEmitter {
       log.info(`выброшено как выдумка модели: «${item.text}» — ${item.reason}`);
     }
 
-    let text = (result.text || '').trim();
+    await this.deliver(result.text, result.durationS);
+  }
+
+  /**
+   * Довести готовый текст до человека.
+   *
+   * Общее для обоих путей — местного и внешнего. Разными они остаются
+   * только до этого места: дальше человеку всё равно, кто считал.
+   */
+  async deliver(raw, durationS = 0) {
+    let text = (raw || '').trim();
     if (text && !config.get('text.keepPunctuation', true)) text = stripPunctuation(text);
     if (!text) {
       this.emitState('nospeech');
@@ -175,8 +272,8 @@ class Recorder extends EventEmitter {
     this.lastText = text;
     const autoPaste = config.get('text.autoPaste', true);
     await paste.deliver(text, autoPaste);
-    log.info(`распознано ${text.length} символов за ${Math.round(result.durationS)} с звука`);
-    this.emit('text', { text, improved: false, seconds: result.durationS });
+    log.info(`распознано ${text.length} символов за ${Math.round(durationS)} с звука`);
+    this.emit('text', { text, improved: false, seconds: durationS });
 
     const wantsAi = this.mode === 'improve' && config.get('ai.enabled', false);
     if (wantsAi) await this.improve(text, autoPaste);
@@ -253,6 +350,7 @@ class Recorder extends EventEmitter {
   async abort(reason = 'nospeech', hint = '') {
     const id = this.sessionId;
     this.sessionId = null;
+    this.chunks = null;
     if (id) engine.cancelSession(id).catch(() => {});
     this.emitState(reason, { hint });
     this.scheduleHide(reason === 'nospeech' ? 1800 : 3600);

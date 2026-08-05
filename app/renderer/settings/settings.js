@@ -1063,6 +1063,99 @@ async function start() {
   });
 }
 
+// ---------- Где считать речь ----------
+
+const WHERE_WORDS = {
+  local: 'На этом компьютере — ничего не уходит в интернет',
+  server: 'На сервере PasteTalk — вашему компьютеру считать не придётся',
+  cloud: 'В облаке по вашему ключу — платите за минуты вы',
+};
+
+function showWhere() {
+  const select = $('rec-where');
+  if (!select) return;
+  const where = select.value || 'local';
+
+  const sub = $('where-sub');
+  if (sub) sub.textContent = WHERE_WORDS[where] || '';
+
+  // Местные модели и выбор видеокарты незачем показывать тому, кто
+  // считает не у себя: это лишние вопросы без единого ответа.
+  const show = (id, on) => { const node = $(id); if (node) node.hidden = !on; };
+  show('block-local', where === 'local');
+  show('block-server', where === 'server');
+  show('block-cloud', where === 'cloud');
+  show('weak-note', where !== 'local');
+  show('rec-check-card', where !== 'local');
+
+  const provider = $('rec-cloud');
+  show('row-cloud-url', where === 'cloud' && provider?.value === 'custom');
+}
+
+// Таблица провайдеров живёт в главном процессе — держим её копию здесь,
+// чтобы подписи не требовали запроса на каждое переключение.
+let cloudPresets = {};
+
+async function fillCloudProviders() {
+  const select = $('rec-cloud');
+  if (!select) return;
+  cloudPresets = (await api.recognition.providers()) || {};
+  if (select.options.length) return;
+  for (const [id, preset] of Object.entries(cloudPresets)) {
+    const option = document.createElement('option');
+    option.value = id;
+    option.textContent = preset.title;
+    select.appendChild(option);
+  }
+  // Значение из настроек ставим после того, как список построен.
+  select.value = settings.recognition?.cloudProvider || 'aitunnel';
+}
+
+function showCloudHints() {
+  const preset = cloudPresets[$('rec-cloud')?.value];
+  if (!preset) return;
+  const hint = $('cloud-hint');
+  if (hint) hint.textContent = preset.hint || '';
+  const model = $('cloud-model-sub');
+  if (model) model.textContent = `Пусто — возьмём ${preset.defaultModel}`;
+}
+
+$('rec-where')?.addEventListener('change', showWhere);
+$('rec-cloud')?.addEventListener('change', () => {
+  showCloudHints();
+  showWhere();
+});
+
+$('rec-pair')?.addEventListener('click', async () => {
+  const field = $('rec-code');
+  const button = $('rec-pair');
+  const code = field.value.trim();
+  const sub = $('rec-check-sub');
+  if (!/^\d{6}$/.test(code)) {
+    if (sub) sub.textContent = 'Код — это ровно шесть цифр';
+    return;
+  }
+  button.disabled = true;
+  const result = await api.recognition.pair(code);
+  button.disabled = false;
+  if (sub) sub.textContent = result.ok ? 'Код принят, сервер подключён' : result.error;
+  if (result.ok) field.value = '';
+});
+
+$('rec-check')?.addEventListener('click', async () => {
+  const button = $('rec-check');
+  const sub = $('rec-check-sub');
+  button.disabled = true;
+  if (sub) sub.textContent = 'Проверяю…';
+  const result = await api.recognition.check();
+  button.disabled = false;
+  if (sub) {
+    sub.textContent = result.ok
+      ? 'Связь есть — можно диктовать'
+      : `Не вышло: ${result.error}`;
+  }
+});
+
 // ---------- Интеграция ----------
 
 const RELAY_WORDS = {
@@ -1117,6 +1210,11 @@ $('relay-url')?.addEventListener('change', () => setTimeout(() => api.relay.refr
 api.relay?.onState(showRelay);
 
 start()
+  .then(async () => {
+    await fillCloudProviders();
+    showCloudHints();
+    showWhere();
+  })
   .then(() => api.relay?.state().then(showRelay))
   .catch((error) => say(`Не удалось открыть настройки: ${error.message}`));
 

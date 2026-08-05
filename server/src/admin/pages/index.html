@@ -153,6 +153,8 @@ $('make-key').addEventListener('click', async () => {
   }
 });
 
+const DEVICE_WORDS = { telegram: 'Telegram', android: 'Телефон', desktop: 'Компьютер' };
+
 function when(ms) {
   return ms ? new Date(ms).toLocaleString('ru') : '—';
 }
@@ -161,7 +163,7 @@ async function drawPeople() {
   const { people } = await api('/admin/api/people');
   const rows = people.map((person) => {
     const devices = person.devices.map((device) =>
-      (device.kind === 'telegram' ? 'Telegram' : 'Android') + ': ' + safe(device.title || '—')
+      DEVICE_WORDS[device.kind] + ': ' + safe(device.title || '—')
       + ' <button class="act" data-device="' + device.id + '">убрать</button>').join('<br>');
     return '<tr>'
       + '<td>' + safe(person.name) + (person.revoked ? ' <span class="note">(отозван)</span>' : '') + '</td>'
