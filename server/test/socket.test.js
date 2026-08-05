@@ -12,6 +12,7 @@ test.beforeEach(() => { db.close(); db.open(':memory:'); keys.forgetMisses(); so
 /** Агент без токена сервером не признаётся, поэтому заводим настоящий. */
 function agentToken() {
   const key = keys.issue('Домашний ПК');
+  keys.setMayServe(key.id, true);
   return keys.activate(key.code, 'desktop', null, 'ДОМ-ПК', '1.1.1.1').token;
 }
 
@@ -119,16 +120,29 @@ test('ответ на неизвестную задачу тихо отбрас�
   });
 });
 
-test('телефон агентом не становится, даже со своим токеном', () => {
+test('без разрешения владельца агентом не стать, даже назвавшись компьютером', () => {
   const sent = [];
   const fake = { send: (raw) => sent.push(JSON.parse(raw)), close: () => {} };
   const key = keys.issue('Мама');
-  const phone = keys.activate(key.code, 'android', null, 'Redmi', '1.1.1.1');
+  // Вид устройства выбирает сам клиент — назваться компьютером может любой.
+  const guest = keys.activate(key.code, 'desktop', null, 'ЧУЖОЙ-ПК', '1.1.1.1');
 
-  socket.handle(fake, JSON.stringify({ type: 'hello', name: 'ЧУЖОЙ', token: phone.token }));
+  socket.handle(fake, JSON.stringify({ type: 'hello', name: 'ЧУЖОЙ', token: guest.token }));
 
-  assert.strictEqual(socket.online(), false, 'иначе телефон получал бы чужие диктовки звуком');
+  assert.strictEqual(socket.online(), false, 'иначе чужой получал бы диктовки звуком');
   assert.strictEqual(sent[0].type, 'denied');
+});
+
+test('отзыв профиля снимает агента с линии, а не ждёт обрыва', () => {
+  const fake = { send: () => {}, close: () => {} };
+  const key = keys.issue('Домашний ПК');
+  keys.setMayServe(key.id, true);
+  const token = keys.activate(key.code, 'desktop', null, 'ДОМ-ПК', '1.1.1.1').token;
+  socket.handle(fake, JSON.stringify({ type: 'hello', name: 'ДОМ-ПК', token }));
+  assert.strictEqual(socket.online(), true);
+
+  keys.revoke(key.id);
+  assert.strictEqual(socket.online(), false, 'иначе звук уходил бы отозванному');
 });
 
 test('чужой сокет не освежает жизнь настоящего агента', () => {

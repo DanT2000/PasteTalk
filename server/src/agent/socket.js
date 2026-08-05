@@ -25,7 +25,20 @@ let live = null;              // { socket, name, lastSeen, agentId }
 const waiting = new Map();    // id задачи → { resolve, reject, timer }
 
 function online() {
-  return Boolean(live) && Date.now() - live.lastSeen < DEAD_MS;
+  if (!live || Date.now() - live.lastSeen >= DEAD_MS) return false;
+  // Токен проверяется при рукопожатии, но ключ могли отозвать уже после.
+  // Без этой сверки отозванный агент оставался бы на линии и продолжал
+  // получать чужие диктовки, пока не оборвётся соединение.
+  if (live.deviceId && !keys.byDevice(live.deviceId)) {
+    drop('доступ отозван');
+    return false;
+  }
+  return true;
+}
+
+/** Снять с линии агента, которому только что запретили им быть. */
+function dropIfDenied() {
+  if (live && live.deviceId && !keys.byDevice(live.deviceId)) drop('доступ отозван');
 }
 
 function state() {
@@ -85,11 +98,15 @@ function greet(socket, data) {
     try { socket.close(); } catch { /* уже закрывается */ }
     return;
   }
-  // Агентом становится только компьютер. Телефону выдаётся такой же
-  // токен, и без этой проверки он мог бы назваться агентом — и получать
-  // чужие диктовки звуком, вытеснив настоящий ПК.
-  if (device.kind !== 'desktop') {
-    socket.send(JSON.stringify({ type: 'denied', message: 'Агентом может быть только компьютер' }));
+  // Агентом становится только тот, кому владелец это разрешил в админке.
+  // Вид устройства для этого не годится: его выбирает сам клиент, и любой
+  // человек с кодом на телефон мог бы назваться компьютером, вытеснить
+  // настоящий ПК и получать чужие диктовки звуком.
+  if (!device.mayServe) {
+    socket.send(JSON.stringify({
+      type: 'denied',
+      message: 'Этому профилю не разрешено работать агентом. Включите в админке',
+    }));
     try { socket.close(); } catch { /* уже закрывается */ }
     return;
   }
@@ -107,7 +124,7 @@ function greet(socket, data) {
     ? existing.id
     : Number(database.prepare('INSERT INTO agents (name, paired_at, last_seen) VALUES (?, ?, ?)')
       .run(name, now, now).lastInsertRowid);
-  live = { socket, name, lastSeen: now, agentId };
+  live = { socket, name, lastSeen: now, agentId, deviceId: device.deviceId };
   socket.send(JSON.stringify({ type: 'welcome' }));
 }
 
@@ -169,7 +186,15 @@ async function ping() {
 function register(app) {
   app.get('/agent', { websocket: true }, (socket) => {
     const heartbeat = setInterval(() => {
-      if (live && Date.now() - live.lastSeen > DEAD_MS) {
+      // Судим только о своём сокете. Их может быть два: ПК переподключился
+      // раньше, чем сервер увидел close старого, — и таймер старого не
+      // должен снимать с линии нового, живого.
+      if (live?.socket !== socket) {
+        clearInterval(heartbeat);
+        try { socket.close(); } catch { /* уже закрыт */ }
+        return;
+      }
+      if (Date.now() - live.lastSeen > DEAD_MS) {
         drop('ПК перестал отвечать');
         try { socket.close(); } catch { /* уже закрыт */ }
         return;
@@ -185,4 +210,7 @@ function register(app) {
   });
 }
 
-module.exports = { register, handle, drop, forget, online, send, ping, state, PING_MS, DEAD_MS };
+module.exports = {
+  register, handle, drop, forget, dropIfDenied, online, send, ping, state,
+  PING_MS, DEAD_MS,
+};

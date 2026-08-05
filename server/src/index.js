@@ -10,9 +10,11 @@ const Fastify = require('fastify');
  */
 
 function build(options = {}) {
-  // Предел тела в 32 МБ: голосовое на двадцать минут в ogg весит около
-  // десяти, и упереться в предел на длинной диктовке было бы обидно.
-  const app = Fastify({ logger: false, bodyLimit: 32 * 1024 * 1024, ...options });
+  // Предел тела в 96 МБ. Считали по ogg из Telegram, где двадцать минут
+  // весят около десяти, — но десктоп шлёт сырой WAV в base64, а это
+  // 43 КБ в секунду: те же двадцать минут дают почти 50 МБ. Упереться в
+  // предел на длинной диктовке нельзя: звук к тому времени уже стёрт.
+  const app = Fastify({ logger: false, bodyLimit: 96 * 1024 * 1024, ...options });
 
   app.register(require('@fastify/websocket'));
   app.register(async (scope) => {

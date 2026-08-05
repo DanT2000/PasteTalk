@@ -87,19 +87,38 @@ function forgetMisses() {
 
 async function allowed(password, address) {
   const now = Date.now();
-  // Попытку засчитываем ДО проверки: scrypt асинхронный, и полсотни
-  // одновременных запросов иначе проскочили бы гейт все разом, до того
-  // как хоть один промах успел записаться.
   const state = misses.get(address) || { count: 0, until: 0 };
-  state.count += 1;
-  if (state.count > MAX_TRIES) state.until = now + PAUSE_MS;
-  misses.set(address, state);
+
+  // Пауза кончилась — начинаем счёт заново. Без этого каждая новая
+  // попытка взводила бы её снова, и панель запиралась бы навсегда.
+  if (state.until && state.until <= now) {
+    state.count = 0;
+    state.until = 0;
+  }
 
   if (state.until > now) {
+    misses.set(address, state);
     return {
       ok: false,
       mustChange: false,
       error: `Слишком много попыток. Подождите ${Math.ceil((state.until - now) / 60000)} мин.`,
+    };
+  }
+
+  // Попытку засчитываем ДО проверки: scrypt асинхронный, и полсотни
+  // одновременных запросов иначе проскочили бы гейт все разом, до того
+  // как хоть один промах успел записаться.
+  state.count += 1;
+  misses.set(address, state);
+
+  if (state.count > MAX_TRIES) {
+    // Перебрали — запираем, не доходя до пароля. Проверять его здесь
+    // значило бы, что верная догадка на шестой попытке всё равно пройдёт.
+    state.until = now + PAUSE_MS;
+    return {
+      ok: false,
+      mustChange: false,
+      error: `Слишком много попыток. Подождите ${Math.ceil(PAUSE_MS / 60000)} мин.`,
     };
   }
 

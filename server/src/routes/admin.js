@@ -61,6 +61,7 @@ function register(app) {
         name: key.name,
         code: key.code,
         codeUntil: key.code_until,
+        mayServe: Boolean(key.may_serve),
         revoked: Boolean(key.revoked_at),
         minutes: spend.get(key.id)?.minutes || 0,
         rub: spend.get(key.id)?.rub || 0,
@@ -91,6 +92,18 @@ function register(app) {
   app.delete('/admin/api/keys/:id', async (request, reply) => {
     if (!guard(request, reply)) return undefined;
     return { ok: keys.revoke(Number(request.params.id)) };
+  });
+
+  // Разрешение работать агентом даёт только владелец: вид устройства
+  // выбирает сам клиент, и по нему судить нельзя.
+  app.post('/admin/api/keys/:id/serve', async (request, reply) => {
+    if (!guard(request, reply)) return undefined;
+    const allowed = Boolean((request.body || {}).allowed);
+    if (!keys.setMayServe(Number(request.params.id), allowed)) {
+      return reply.code(400).send({ error: 'Такого профиля нет' });
+    }
+    if (!allowed) socket.dropIfDenied();
+    return { ok: true, mayServe: allowed };
   });
 
   app.delete('/admin/api/devices/:id', async (request, reply) => {

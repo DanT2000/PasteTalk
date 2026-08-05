@@ -195,17 +195,38 @@ function authenticate(token) {
   if (!token) return null;
   const database = db.open();
   const row = database.prepare(`
-    SELECT d.id AS device_id, d.key_id, d.kind
+    SELECT d.id AS device_id, d.key_id, d.kind, k.may_serve
     FROM devices d
     JOIN keys k ON k.id = d.key_id
     WHERE d.token_hash = ? AND k.revoked_at IS NULL
   `).get(hash(token));
   if (!row) return null;
   database.prepare('UPDATE devices SET last_seen = ? WHERE id = ?').run(Date.now(), row.device_id);
-  return { keyId: row.key_id, deviceId: row.device_id, kind: row.kind };
+  return {
+    keyId: row.key_id,
+    deviceId: row.device_id,
+    kind: row.kind,
+    mayServe: Boolean(row.may_serve),
+  };
+}
+
+/** Живо ли устройство: не отвязали ли его и не отозвали ли профиль. */
+function byDevice(deviceId) {
+  return db.open().prepare(`
+    SELECT d.id FROM devices d JOIN keys k ON k.id = d.key_id
+    WHERE d.id = ? AND k.revoked_at IS NULL AND k.may_serve = 1
+  `).get(deviceId) || null;
+}
+
+/** Разрешить или запретить профилю работать агентом. Решает только владелец. */
+function setMayServe(id, allowed) {
+  const info = db.open().prepare('UPDATE keys SET may_serve = ? WHERE id = ?')
+    .run(allowed ? 1 : 0, id);
+  return info.changes > 0;
 }
 
 module.exports = {
-  issue, reissue, list, revoke, unbind, bind, byExternal, activate, authenticate, forgetMisses,
+  issue, reissue, list, revoke, unbind, bind, byExternal, activate, authenticate,
+  setMayServe, byDevice, forgetMisses,
   MAX_DEVICES, MAX_TRIES, PAUSE_MS, DEFAULT_CODE_TTL_MS,
 };

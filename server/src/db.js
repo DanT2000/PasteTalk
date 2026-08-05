@@ -21,6 +21,10 @@ CREATE TABLE IF NOT EXISTS keys (
   name          TEXT NOT NULL,
   code          TEXT,
   code_until    INTEGER,
+  -- Может ли этот профиль работать агентом, то есть принимать чужие
+  -- диктовки и считать их своей видеокартой. По умолчанию нет: вид
+  -- устройства выбирает сам клиент, и доверять ему нельзя.
+  may_serve     INTEGER NOT NULL DEFAULT 0,
   created_at    INTEGER NOT NULL,
   first_used_at INTEGER,
   revoked_at    INTEGER
@@ -81,6 +85,7 @@ CREATE INDEX IF NOT EXISTS devices_key ON devices(key_id);
  */
 const ADDED = [
   { table: 'keys', column: 'code_until', ddl: 'INTEGER' },
+  { table: 'keys', column: 'may_serve', ddl: 'INTEGER NOT NULL DEFAULT 0' },
 ];
 
 /**
@@ -131,7 +136,10 @@ function migrate(database) {
 let current = null;
 
 function defaultFile() {
-  return process.env.PASTETALK_DB || path.join(process.cwd(), 'data', 'pastetalk.db');
+  if (process.env.PASTETALK_DB) return process.env.PASTETALK_DB;
+  // Рядом с сервером, а не там, откуда запустили: иначе база оказывается
+  // в корне репозитория — а в ней ключи провайдеров открытым текстом.
+  return path.join(__dirname, '..', 'data', 'pastetalk.db');
 }
 
 function open(file = defaultFile()) {

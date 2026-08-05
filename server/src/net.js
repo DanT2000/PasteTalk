@@ -27,8 +27,10 @@ function clientIp(request) {
   if (!chain.length) return request.ip;
 
   // Отсчитываем от конца: последний элемент дописал ближайший прокси.
+  // Цепочка короче ожидаемой — значит доверять в ней нечему: берём адрес
+  // соединения, а не первый элемент, который пишет сам клиент.
   const index = chain.length - depth;
-  return index >= 0 ? chain[index] : chain[0];
+  return index >= 0 ? chain[index] : request.ip;
 }
 
 module.exports = { clientIp, trustedDepth };

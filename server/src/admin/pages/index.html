@@ -388,7 +388,10 @@ async function drawPeople() {
       + '<td class="num">' + money(person.rub) + '</td>'
       + '<td>' + devices + '</td>'
       + '<td><div class="row-actions">'
-        + (person.revoked ? '' : '<button class="btn ghost tiny" data-code="' + person.id + '">новый код</button>'
+        + (person.revoked ? '' : '<button class="btn ghost tiny" data-serve="' + person.id + '" data-on="'
+            + (person.mayServe ? '1' : '0') + '">'
+            + (person.mayServe ? 'агент: да' : 'агент: нет') + '</button>'
+          + '<button class="btn ghost tiny" data-code="' + person.id + '">новый код</button>'
           + '<button class="btn ghost tiny" data-bind="' + person.id + '">телеграм вручную</button>'
           + '<button class="btn ghost tiny" data-key="' + person.id + '">удалить</button>')
       + '</div></td>'
@@ -397,7 +400,7 @@ async function drawPeople() {
 
   $('people').innerHTML =
     '<div class="card"><h2>Выдать доступ</h2>'
-    + '<p class="muted">Код одноразовый: сработал — исчез. Одно устройство — один профиль, чтобы потом было видно, откуда пришёл доступ. Нужны телефон и телеграм — заведите «Мама, телефон» и «Мама, телеграм».</p>'
+    + '<p class="muted">Кнопка «агент» разрешает профилю принимать чужие диктовки — включайте её только для своего домашнего компьютера. Код одноразовый: сработал — исчез. Одно устройство — один профиль, чтобы потом было видно, откуда пришёл доступ. Нужны телефон и телеграм — заведите «Мама, телефон» и «Мама, телеграм».</p>'
     + '<div class="row-actions" style="margin-top:1rem">'
       + '<input id="new-name" placeholder="Мама, телефон" style="flex:1 1 12rem;max-width:20rem">'
       + '<select id="new-ttl">'
@@ -442,6 +445,17 @@ async function drawPeople() {
       } catch (error) {
         $('app-err').textContent = error.message;
       }
+    });
+  });
+
+  $('people').querySelectorAll('[data-serve]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const on = button.dataset.on === '1';
+      if (!on && !confirm('Разрешить этому профилю принимать чужие диктовки и считать их своей видеокартой?')) return;
+      await api('/admin/api/keys/' + button.dataset.serve + '/serve', {
+        method: 'POST', body: JSON.stringify({ allowed: !on }),
+      });
+      drawPeople();
     });
   });
 
@@ -628,7 +642,7 @@ async function drawSettings() {
     + '<p class="muted">' + (data.botRunning
       ? '<span class="ok">Бот опрашивает Telegram.</span> Люди с кодом могут присылать ему голосовые.'
       : 'Бот выключен. Впишите токен от @BotFather — он начнёт отвечать сразу, перезапуск не нужен.') + '</p>'
-    + keyField('Токен бота', 'bot.token', get('bot.token', ''), 'Берётся у @BotFather. Пустой — бот молчит')
+    + keyField('Токен бота', 'bot.token', get('bot.token', ''), 'Берётся у @BotFather. Чтобы выключить бота — впишите минус и сохраните')
     + '</div>'
 
     + '<div class="card"><h2>Ключи провайдеров</h2>'
@@ -677,9 +691,12 @@ async function drawSettings() {
         body.settings[key] = input.value.split(',').map((part) => part.trim()).filter(Boolean);
       } else if (key === 'spillToCloud') {
         body.settings[key] = input.value === 'true';
+      } else if (input.value.trim() === '-') {
+        // Одинокий минус — «стереть». Пустое поле означает «не трогали»,
+        // иначе сохранение формы стирало бы ключ, которого она и не
+        // показывала, — но и выключить бота тогда было бы нечем.
+        body.settings[key] = '';
       } else if (input.value.trim()) {
-        // Пустое поле ключа означает «не трогали»: иначе сохранение формы
-        // стирало бы ключ, которого она и не показывала.
         body.settings[key] = input.value.trim();
       }
     });
