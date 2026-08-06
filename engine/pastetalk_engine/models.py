@@ -115,9 +115,15 @@ class ModelManager:
 
         Не «лежит ли модель в памяти»: отпущенная по простою модель
         грузится обратно за секунды, и отказывать в записи из-за этого
-        значило бы наказывать человека за бережливость.
+        значило бы наказывать человека за бережливость. Модель, которая
+        прямо сейчас грузится, — тоже не отказ: звук записи копится, а
+        расшифровка в ensure_loaded() дождётся конца загрузки. Раньше
+        нажатие клавиши в первые секунды после запуска кончалось голым
+        MODEL_NOT_READY в журнале ошибок.
         """
         if self._model is not None and self.state.state == "ready":
+            return True
+        if self.state.state == "loading":
             return True
         return self._sleeping and self.is_cached(self.state.name)
 
@@ -156,8 +162,16 @@ class ModelManager:
         self._used_at = time.time()
         if self._model is not None:
             return
+        # Модель уже в пути — запуск приложения или смена в настройках.
+        # Дожидаемся, а не отказываем: загрузка занимает секунды, и человек,
+        # нажавший клавишу сразу после старта, не должен получать ошибку.
+        while self._model is None and self.state.state in ("downloading", "loading"):
+            time.sleep(0.2)
+        if self._model is not None:
+            self._used_at = time.time()
+            return
         if not self._sleeping:
-            raise RuntimeError("MODEL_NOT_READY")
+            raise RuntimeError(self.state.error or "MODEL_NOT_READY")
         with self._wake_lock:
             if self._model is not None:
                 return

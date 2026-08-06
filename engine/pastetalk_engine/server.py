@@ -218,7 +218,9 @@ class Handler(BaseHTTPRequestHandler):
 
         elif method == "POST" and head == "session" and len(parts) == 1:
             if not engine.models.is_ready():
-                self._reject(409, "MODEL_NOT_READY")
+                # Если модель не поднялась из-за ошибки — говорим её словами:
+                # «не хватает видеопамяти» полезнее голого MODEL_NOT_READY.
+                self._reject(409, engine.models.state.error or "MODEL_NOT_READY")
                 return
             payload = self._json()
             # Будим модель прямо сейчас, фоном: человек только нажал клавишу
@@ -256,7 +258,7 @@ class Handler(BaseHTTPRequestHandler):
 
         elif method == "POST" and head == "file" and len(parts) == 1:
             if not engine.models.is_ready():
-                self._reject(409, "MODEL_NOT_READY")
+                self._reject(409, engine.models.state.error or "MODEL_NOT_READY")
                 return
             payload = self._json()
             path = payload.get("path", "")
