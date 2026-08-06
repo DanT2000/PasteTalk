@@ -61,8 +61,17 @@ function makeTelegram(token) {
   };
 }
 
+/** Строка журнала с меткой времени: хвост без дат уже дважды выдавал
+ *  вчерашние ошибки за сегодняшние. */
+function say(text) {
+  process.stderr.write(`${new Date().toISOString()} ${text}\n`);
+}
+
 async function loop(state) {
   const tg = makeTelegram(state.token);
+  // Об успехе тоже говорим — один раз после каждой полосы неудач. Молчащий
+  // при успехе бот неотличим в журнале от давно умершего.
+  let failing = true;
   while (!state.stop) {
     let updates;
     try {
@@ -71,9 +80,14 @@ async function loop(state) {
         timeout: POLL_SECONDS,
         allowed_updates: ['message', 'callback_query'],
       });
+      if (failing) {
+        say('бот: опрос работает');
+        failing = false;
+      }
     } catch (error) {
       if (state.stop) return;
-      process.stderr.write(`бот: опрос не удался — ${error.message}\n`);
+      failing = true;
+      say(`бот: опрос не удался — ${error.message}`);
       // Пауза, чтобы при недоступном Telegram не молотить запросами.
       await new Promise((wait) => setTimeout(wait, 5000));
       continue;
