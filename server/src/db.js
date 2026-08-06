@@ -142,6 +142,10 @@ function migrate(database) {
     process.stdout.write(`База: добавлен столбец ${table}.${column}\n`);
   }
   relaxKeysCode(database);
+  // Старый socket.js заводил в agents строку на каждое имя компьютера —
+  // без ключа. Подключиться такая строка не может никогда, а в списке
+  // машин выглядит вечно молчащим двойником. Вычищаем.
+  database.prepare('DELETE FROM agents WHERE key_hash IS NULL').run();
 }
 
 let current = null;
