@@ -85,6 +85,7 @@ class ModelManager:
     def __init__(self, cache_dir: str | None = None) -> None:
         self.cache_dir = cache_dir
         self.state = ModelState()
+        self._wanted = 0
         self._model: WhisperModel | None = None
         self._transcribe_lock = threading.Lock()
 
@@ -132,27 +133,50 @@ class ModelManager:
         self.state.error = ""
         self.state.progress = 0.0
         self.state.state = "loading"
-        threading.Thread(target=self._load, args=(name, device, compute_type), daemon=True).start()
+        # Номер запроса. Пока грузится одна модель, человек может выбрать
+        # другую — и тогда первая, дойдя до конца, не должна ни занимать
+        # место второй, ни объявлять себя готовой.
+        self._wanted += 1
+        wanted = self._wanted
+        threading.Thread(
+            target=self._load, args=(name, device, compute_type, wanted), daemon=True,
+        ).start()
 
-    def _load(self, name: str, device: str, compute_type: str) -> None:
-        with self.state.lock:
-            try:
-                if not self.is_cached(name):
-                    self.state.state = "downloading"
-                    self._download(name)
-                self.state.state = "loading"
-                self._model = WhisperModel(
-                    name,
-                    device=device,
-                    compute_type=compute_type,
-                    download_root=self.cache_dir,
-                )
-                self.state.state = "ready"
-                self.state.progress = 1.0
-            except Exception as exc:  # noqa: BLE001 — наружу уходит текстом
+    def _load(self, name: str, device: str, compute_type: str, wanted: int) -> None:
+        """Загрузить модель в память.
+
+        Замок берётся только на подмену готовой модели, а не на всю
+        загрузку: иначе второй выбор человека встаёт в очередь за первым,
+        и на экране навсегда остаётся «загружаю» — ровно то, что видно,
+        если переключить модель и сразу вернуть обратно.
+        """
+        try:
+            if not self.is_cached(name):
+                self.state.state = "downloading"
+                self._download(name)
+            if wanted != self._wanted:
+                return
+            self.state.state = "loading"
+            model = WhisperModel(
+                name,
+                device=device,
+                compute_type=compute_type,
+                download_root=self.cache_dir,
+            )
+            # Пока грузили, человек мог выбрать другую. Тогда эта — лишняя.
+            if wanted != self._wanted:
+                return
+            with self.state.lock:
+                self._model = model
+            self.state.state = "ready"
+            self.state.progress = 1.0
+        except Exception as exc:  # noqa: BLE001 — наружу уходит текстом
+            if wanted != self._wanted:
+                return
+            with self.state.lock:
                 self._model = None
-                self.state.state = "error"
-                self.state.error = _friendly_error(exc, device)
+            self.state.state = "error"
+            self.state.error = _friendly_error(exc, device)
 
     def _download(self, name: str) -> None:
         """Тянем модель с прогрессом, чтобы окно не выглядело зависшим."""

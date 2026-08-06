@@ -217,6 +217,10 @@ kbd {
 .pill-ok { background: transparent; border: 1px solid var(--ok); color: var(--ok); }
 .pill-bad { background: transparent; border: 1px solid var(--live); color: var(--live); }
 
+/* Своё display перебивает hidden из браузера, и спрятанное остаётся на
+   виду. Раз уж мы такие правила пишем — сначала общее правило для всех. */
+[hidden] { display: none !important; }
+
 .note {
   display: flex; gap: .75rem; align-items: flex-start; margin-bottom: 1.5rem;
   padding: .875rem 1rem; border-radius: .4375rem;
