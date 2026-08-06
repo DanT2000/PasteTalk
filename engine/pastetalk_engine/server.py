@@ -203,7 +203,17 @@ class Handler(BaseHTTPRequestHandler):
             freed = engine.models.remove(parts[1])
             self._send(200, {"ok": True, "freedMb": round(freed, 1)})
 
+        elif method == "POST" and head == "idle":
+            # Через сколько простоя отпускать видеопамять. Меняется на лету:
+            # человек передумал держать модель — и она уходит без перезапуска.
+            payload = self._json()
+            engine.models.set_idle_unload(int(payload.get("ms", -1)))
+            self._send(200, {"ok": True})
+
         elif method == "POST" and head == "benchmark":
+            # Будим заранее: иначе к времени работы приписалось бы время
+            # загрузки, и человек увидел бы втрое худшую оценку железа.
+            engine.models.ensure_loaded()
             self._send(200, engine.benchmark())
 
         elif method == "POST" and head == "session" and len(parts) == 1:
@@ -211,6 +221,10 @@ class Handler(BaseHTTPRequestHandler):
                 self._reject(409, "MODEL_NOT_READY")
                 return
             payload = self._json()
+            # Будим модель прямо сейчас, фоном: человек только нажал клавишу
+            # и ещё набирает воздух. Пока он говорит первую фразу, модель
+            # успевает вернуться в память — ждать в конце не придётся.
+            threading.Thread(target=engine.models.ensure_loaded, daemon=True).start()
             session = Session(
                 engine.models,
                 payload.get("language") or None,

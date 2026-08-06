@@ -57,6 +57,11 @@ app.whenReady().then(async () => {
   engine.onState = (info) => {
     tray.refresh();
     windows.send('settings', 'engine:state', { ...info, ready: engine.isReady });
+    // Движок про наши настройки не знает — говорим ему, как только ожил.
+    if (info.state === 'ready') {
+      engine.setIdleUnload(Number(config.get('engine.idleUnloadMs', -1)))
+        .catch((error) => log.warn(`не передал срок выгрузки: ${error.message}`));
+    }
   };
   await engine.start();
 
@@ -265,6 +270,12 @@ function quit() {
 
 ipcMain.handle('config:all', () => config.all());
 ipcMain.handle('config:set', (_event, patch) => {
+  // Срок выгрузки движок держит у себя — говорим ему сразу, иначе выбор
+  // «никогда не выгружать» вступал бы в силу только после перезапуска.
+  if (patch?.engine?.idleUnloadMs !== undefined && engine.isReady) {
+    engine.setIdleUnload(Number(patch.engine.idleUnloadMs))
+      .catch((error) => log.warn(`не передал срок выгрузки: ${error.message}`));
+  }
   const before = config.all();
   const after = config.set(patch);
 

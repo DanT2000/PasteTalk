@@ -360,6 +360,26 @@
         <div class="group-title">Модель</div>
         <div class="card" id="model-list"></div>
 
+        <div class="group-title">Видеопамять</div>
+        <div class="card">
+          <div class="row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 9h4M7 13h7"/></svg>
+            <div class="row-text">
+              <div class="row-title">Отпускать память при простое</div>
+              <div class="row-sub">Модель занимает несколько гигабайт. Обратно она грузится три-четыре секунды — меньше, чем длится обычная диктовка</div>
+            </div>
+            <div class="row-control">
+              <select data-cfg="engine.idleUnloadMs" data-number>
+                <option value="0">сразу после диктовки</option>
+                <option value="300000">через 5 минут</option>
+                <option value="1800000">через 30 минут</option>
+                <option value="3600000">через час</option>
+                <option value="-1">никогда, держать всегда</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
         <div class="group-title">Вычисления</div>
         <div class="card">
           <div class="row">

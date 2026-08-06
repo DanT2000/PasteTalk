@@ -77,7 +77,7 @@ class FileJob:
                 status = self.models.status()
                 self.models.request(self.model, status["device"], status["computeType"])
                 waited = 0.0
-                while self.models.status()["state"] not in ("ready", "error") and waited < 1800:
+                while self.models.status()["state"] not in ("ready", "error", "sleeping") and waited < 1800:
                     time.sleep(0.5)
                     waited += 0.5
                     self.progress = min(self.models.status().get("progress", 0.0), 0.99)

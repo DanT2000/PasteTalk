@@ -266,6 +266,8 @@ class Engine {
   stopSession(id) { return this.request('POST', `/session/${id}/stop`, {}, 300000); }
   cancelSession(id) { return this.request('DELETE', `/session/${id}`, null, 5000); }
 
+  setIdleUnload(ms) { return this.request('POST', '/idle', { ms }, 5000); }
+
   startFile(options) { return this.request('POST', '/file', options, 10000); }
   fileStatus(id) { return this.request('GET', `/file/${id}`, null, 10000); }
   cancelFile(id) { return this.request('DELETE', `/file/${id}`, null, 5000); }

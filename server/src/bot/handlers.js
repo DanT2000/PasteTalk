@@ -15,12 +15,15 @@ const usage = require('../usage');
 // ухищрений, а проверка до скачивания бережёт и трафик, и время человека.
 const MAX_SECONDS = 15 * 60;
 
+// Кнопки в столбик, а не в ряд: «Почистить и переписать» рядом с
+// «Почистить» Telegram ужимает до многоточия, и человек видит две
+// одинаковые кнопки. В столбик каждая занимает всю ширину.
 const MODE_BUTTONS = {
   reply_markup: {
-    inline_keyboard: [[
-      { text: 'Почистить', callback_data: 'clean' },
-      { text: 'Почистить и переписать', callback_data: 'both' },
-    ]],
+    inline_keyboard: [
+      [{ text: 'Почистить', callback_data: 'clean' }],
+      [{ text: 'Почистить и переписать', callback_data: 'both' }],
+    ],
   },
 };
 

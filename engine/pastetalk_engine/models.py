@@ -6,7 +6,9 @@
 
 from __future__ import annotations
 
+import gc
 import threading
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -22,6 +24,7 @@ CATALOG: dict[str, dict[str, Any]] = {
     "tiny":     {"repo": "Systran/faster-whisper-tiny",     "size_mb": 75,   "title": "Tiny"},
 }
 
+MIN_IDLE_MS = 20_000
 DEFAULT_MODEL = "large-v3"
 
 
@@ -86,6 +89,19 @@ class ModelManager:
         self.cache_dir = cache_dir
         self.state = ModelState()
         self._wanted = 0
+        # Через сколько простоя отпускать видеопамять. 0 — сразу после
+        # работы, отрицательное — держать всегда.
+        self._idle_ms = -1
+        self._used_at = 0.0
+        self._sleeping = False
+        # Сколько расшифровок идёт прямо сейчас. Отпускать память под
+        # работающей моделью нельзя: остальные куски диктовки упали бы на
+        # пустом месте, а память всё равно бы не освободилась — на объект
+        # ещё ссылается работающий вызов.
+        self._busy = 0
+        self._wake_lock = threading.Lock()
+        self._count_lock = threading.Lock()
+        threading.Thread(target=self._sweep_idle, daemon=True).start()
         self._model: WhisperModel | None = None
         self._transcribe_lock = threading.Lock()
 
@@ -95,7 +111,69 @@ class ModelManager:
         return self.state.as_dict()
 
     def is_ready(self) -> bool:
-        return self._model is not None and self.state.state == "ready"
+        """Может ли движок обслужить запрос.
+
+        Не «лежит ли модель в памяти»: отпущенная по простою модель
+        грузится обратно за секунды, и отказывать в записи из-за этого
+        значило бы наказывать человека за бережливость.
+        """
+        if self._model is not None and self.state.state == "ready":
+            return True
+        return self._sleeping and self.is_cached(self.state.name)
+
+    def set_idle_unload(self, ms: int) -> None:
+        """Сколько ждать простоя перед тем, как отпустить видеопамять."""
+        self._idle_ms = int(ms)
+        self._used_at = time.time()
+
+    def release(self) -> None:
+        """Отпустить видеопамять, оставшись готовым загрузиться заново."""
+        with self.state.lock:
+            if self._model is None or self._busy:
+                return
+            self._model = None
+        self._sleeping = True
+        self.state.state = "sleeping"
+        gc.collect()
+
+    def _sweep_idle(self) -> None:
+        """Не пользовались достаточно долго — отпускаем память.
+
+        Ноль в настройке значит «сразу, как закончили», а не «всегда»:
+        иначе пауза посреди речи стоила бы полной перезагрузки модели.
+        Поэтому даже при нуле ждём небольшую паузу после последней работы.
+        """
+        while True:
+            time.sleep(2)
+            if self._idle_ms < 0 or self._model is None or self._busy:
+                continue
+            waited = (time.time() - self._used_at) * 1000
+            if waited >= max(self._idle_ms, MIN_IDLE_MS):
+                self.release()
+
+    def ensure_loaded(self) -> None:
+        """Загрузить модель, если её отпустили. Ждём — это секунды."""
+        self._used_at = time.time()
+        if self._model is not None:
+            return
+        if not self._sleeping:
+            raise RuntimeError("MODEL_NOT_READY")
+        with self._wake_lock:
+            if self._model is not None:
+                return
+            name = self.state.name
+            device = self.state.device
+            compute = self.state.compute_type
+            self.state.state = "loading"
+            with self._count_lock:
+                self._wanted += 1
+                wanted = self._wanted
+            self._load(name, device, compute, wanted)
+            # Не загрузилось — остаёмся спящими, чтобы попробовать ещё раз.
+            # Иначе один CUDA out of memory запирал бы диктовку насовсем.
+            self._sleeping = self._model is None
+        if self._model is None:
+            raise RuntimeError(self.state.error or "MODEL_NOT_READY")
 
     def is_cached(self, name: str) -> bool:
         """Лежит ли модель уже на диске — чтобы не тянуть её заново."""
@@ -136,8 +214,9 @@ class ModelManager:
         # Номер запроса. Пока грузится одна модель, человек может выбрать
         # другую — и тогда первая, дойдя до конца, не должна ни занимать
         # место второй, ни объявлять себя готовой.
-        self._wanted += 1
-        wanted = self._wanted
+        with self._count_lock:
+            self._wanted += 1
+            wanted = self._wanted
         threading.Thread(
             target=self._load, args=(name, device, compute_type, wanted), daemon=True,
         ).start()
@@ -168,6 +247,8 @@ class ModelManager:
                 return
             with self.state.lock:
                 self._model = model
+            self._sleeping = False
+            self._used_at = time.time()
             self.state.state = "ready"
             self.state.progress = 1.0
         except Exception as exc:  # noqa: BLE001 — наружу уходит текстом
@@ -257,11 +338,22 @@ class ModelManager:
 
     def transcribe(self, audio, **options):
         """Один проход по куску звука. Модель не потокобезопасна — очередь."""
-        if self._model is None:
-            raise RuntimeError("MODEL_NOT_READY")
+        self.ensure_loaded()
         with self._transcribe_lock:
-            segments, info = self._model.transcribe(audio, **options)
-            return list(segments), info
+            model = self._model
+            if model is None:
+                raise RuntimeError("MODEL_NOT_READY")
+            with self.state.lock:
+                self._busy += 1
+            try:
+                segments, info = model.transcribe(audio, **options)
+                result = list(segments), info
+            finally:
+                with self.state.lock:
+                    self._busy -= 1
+                # Час расшифровки файла — это работа, а не простой.
+                self._used_at = time.time()
+            return result
 
 
 def _friendly_error(exc: Exception, device: str) -> str:
