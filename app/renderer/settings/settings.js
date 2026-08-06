@@ -1210,9 +1210,47 @@ $('relay-url')?.addEventListener('change', () => setTimeout(() => api.relay.refr
 
 api.relay?.onState(showRelay);
 
+/** Наполнить список экранов: их состав знает только главный процесс. */
+async function fillDisplays() {
+  const select = $('capsule-display');
+  if (!select) return;
+  try {
+    const displays = await api.app.displays();
+    // Список строится заново при каждом вызове: мониторы подключают и
+    // отключают на ходу, а однажды замороженный список делал новый экран
+    // недоступным до перезапуска программы.
+    [...select.options].filter((o) => o.value !== 'cursor').forEach((o) => o.remove());
+    for (const display of displays) {
+      const option = document.createElement('option');
+      option.value = display.id;
+      option.textContent = display.title;
+      select.appendChild(option);
+    }
+    const saved = String(settings.appearance?.capsuleDisplay || 'cursor');
+    if (saved !== 'cursor' && ![...select.options].some((o) => o.value === saved)) {
+      // Сохранённый экран отключён. Говорим это словами, а не пустой
+      // строкой: showValues() на каждое изменение настроек выставляет
+      // сохранённое значение, и без такого пункта селект просто пустел.
+      const gone = document.createElement('option');
+      gone.value = saved;
+      gone.textContent = 'Экран отключён — панель там, где курсор';
+      select.appendChild(gone);
+    }
+    select.value = saved;
+  } catch { /* без списка остаётся «где курсор» */ }
+}
+
+// Окно настроек прячется, а не умирает, поэтому страница живёт весь сеанс.
+// Открыли окно снова или сменился состав мониторов — список перечитывается.
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) fillDisplays();
+});
+api.app.onDisplays?.(() => fillDisplays());
+
 start()
   .then(async () => {
     await fillCloudProviders();
+    await fillDisplays();
     showCloudHints();
     showWhere();
   })

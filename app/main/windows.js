@@ -90,10 +90,20 @@ function capsuleSize() {
   };
 }
 
+/** Экран для панели: закреплённый настройкой или тот, где курсор. */
+function pickDisplay(cursor) {
+  const wanted = String(config.get('appearance.capsuleDisplay', 'cursor'));
+  if (wanted === 'cursor') return screen.getDisplayNearestPoint(cursor);
+  if (wanted === 'primary') return screen.getPrimaryDisplay();
+  const pinned = screen.getAllDisplays().find((d) => String(d.id) === wanted);
+  // Закреплённый экран могли отключить — тогда ведём себя как раньше.
+  return pinned || screen.getDisplayNearestPoint(cursor);
+}
+
 function capsuleBounds() {
   const { width, height } = capsuleSize();
   const cursor = screen.getCursorScreenPoint();
-  const display = screen.getDisplayNearestPoint(cursor);
+  const display = pickDisplay(cursor);
   const area = display.workArea;
   const position = config.get('appearance.capsulePosition', 'bottom');
 

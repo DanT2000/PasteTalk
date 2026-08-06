@@ -49,6 +49,10 @@ const DEFAULTS = {
     theme: 'system',        // system | dark | light
     scale: 100,             // 100 | 125 | 150
     capsulePosition: 'bottom',
+    // За каким экраном закреплена панель. 'cursor' — где курсор; при
+    // нескольких мониторах это заставляет её прыгать за мышью, и слышно,
+    // но не видно. Число — id конкретного экрана.
+    capsuleDisplay: 'cursor',
     capsuleSize: 'full',    // full | compact
   },
 

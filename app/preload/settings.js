@@ -54,6 +54,8 @@ contextBridge.exposeInMainWorld('pastetalk', {
   },
   app: {
     state: () => ipcRenderer.invoke('app:state'),
+    displays: () => ipcRenderer.invoke('app:displays'),
+    onDisplays: on('displays:changed'),
     setPaused: (value) => ipcRenderer.invoke('app:setPaused', value),
     logs: () => ipcRenderer.invoke('app:logs'),
     errors: (limit) => ipcRenderer.invoke('app:errors', limit),

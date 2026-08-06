@@ -78,6 +78,12 @@ app.whenReady().then(async () => {
 
   updates.scheduleStartupCheck(announceUpdate);
 
+  // Мониторы подключают и отключают на ходу — окно настроек должно узнать
+  // об этом сразу, иначе новый экран не выбрать до перезапуска программы.
+  const { screen } = require('electron');
+  screen.on('display-added', () => windows.broadcast('displays:changed', null));
+  screen.on('display-removed', () => windows.broadcast('displays:changed', null));
+
   // Снимки окон нужны только при разработке и только с этим флагом.
   if (process.argv.includes('--dev')) require('./devserver').start();
 });
@@ -317,6 +323,16 @@ ipcMain.handle('app:state', () => ({
   errorFile: logger.errorFile(),
   settingsFile: config.file(),
 }));
+ipcMain.handle('app:displays', () => {
+  const { screen } = require('electron');
+  const primary = screen.getPrimaryDisplay();
+  return screen.getAllDisplays().map((d, i) => ({
+    id: String(d.id),
+    title: `Экран ${i + 1} — ${d.size.width}×${d.size.height}`
+      + (d.id === primary.id ? ' (основной)' : ''),
+  }));
+});
+
 ipcMain.handle('recognition:providers', () => remote.CLOUD);
 ipcMain.handle('recognition:pair', (_event, code) => remote.pair(code));
 ipcMain.handle('recognition:check', () => remote.check());
