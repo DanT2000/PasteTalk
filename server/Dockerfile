@@ -5,9 +5,14 @@
 FROM node:22-slim
 
 # better-sqlite3 при отсутствии готовой сборки под платформу собирается
-# из исходников, а для этого нужен компилятор.
-RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ \
-    && rm -rf /var/lib/apt/lists/*
+# из исходников, а для этого нужен компилятор. Но зеркала Debian с
+# домашнего сервера временами недоступны, а готовая сборка под node:22
+# у better-sqlite3 есть — поэтому неудача этого шага деплой не валит:
+# если и компилятора нет, и готовой сборки не нашлось, честно упадёт
+# npm ci строкой ниже.
+RUN (apt-get update && apt-get install -y --no-install-recommends python3 make g++ \
+    && rm -rf /var/lib/apt/lists/*) \
+    || echo "зеркала Debian недоступны — рассчитываем на готовую сборку better-sqlite3"
 
 WORKDIR /app
 
