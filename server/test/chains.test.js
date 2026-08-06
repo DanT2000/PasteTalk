@@ -72,3 +72,22 @@ test('по умолчанию аварийка — AITunnel на звук и Dee
   assert.deepStrictEqual(chains.sttChain(), ['aitunnel']);
   assert.deepStrictEqual(chains.llmChain(), ['deepseek']);
 });
+
+test('расширение .oga приводится к .ogg: шлюзы его отвергают', async () => {
+  const stt = require('../src/providers/stt');
+  const settings = require('../src/settings');
+  settings.set('key.aitunnel', 'проверочный');
+
+  let sentName = '';
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, options) => {
+    sentName = options.body.get('file').name;
+    return { ok: true, json: async () => ({ text: 'ок', duration: 1 }) };
+  };
+  try {
+    await stt.transcribe('aitunnel', { audio: Buffer.alloc(10), filename: 'voice.oga' });
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  assert.strictEqual(sentName, 'voice.ogg', 'иначе голосовые из Telegram падают с 400');
+});

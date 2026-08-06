@@ -41,7 +41,11 @@ async function transcribe(providerId, { audio, filename, language, clientSeconds
   const model = settings.get(`model.stt.${providerId}`, preset.defaultSttModel || 'whisper-1');
 
   const form = new FormData();
-  form.set('file', new Blob([audio]), filename || 'voice.ogg');
+  // .oga шлюзы отвергают, хотя это тот же ogg: у них список расширений, а
+  // не разбор содержимого. Telegram отдаёт голосовые именно как .oga —
+  // проверено, тот же звук под .ogg проходит, под .oga даёт 400.
+  const safeName = String(filename || 'voice.ogg').replace(/\.oga$/i, '.ogg');
+  form.set('file', new Blob([audio]), safeName);
   form.set('model', model);
   if (language) form.set('language', language);
   // verbose_json — ради длительности: по ней считается стоимость.
