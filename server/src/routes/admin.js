@@ -193,6 +193,15 @@ function register(app) {
     return socket.state();
   });
 
+  // Перезапуск опроса руками: когда что-то застряло, владелец не должен
+  // передеплоивать контейнер ради цикла из тридцати строк.
+  app.post('/admin/api/bot/restart', async (request, reply) => {
+    if (!guard(request, reply)) return undefined;
+    const bot = require('../bot/telegram');
+    bot.stop();
+    return { ok: true, running: bot.sync() };
+  });
+
   app.post('/admin/api/proxy/check', async (request, reply) => {
     if (!guard(request, reply)) return undefined;
     return require('../proxy').check();

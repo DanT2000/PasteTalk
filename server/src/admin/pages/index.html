@@ -190,10 +190,12 @@ function safe(value) {
 }
 
 async function api(url, options = {}) {
-  const response = await fetch(url, {
-    ...options,
-    headers: { 'Content-Type': 'application/json', 'X-Admin-Session': session, ...(options.headers || {}) },
-  });
+  // Content-Type ставим только при настоящем теле: POST без тела, но с
+  // заголовком JSON Fastify отвергает как Bad Request — на этом молча
+  // ломались и проверка прокси, и пинг компьютера.
+  const headers = { 'X-Admin-Session': session, ...(options.headers || {}) };
+  if (options.body) headers['Content-Type'] = 'application/json';
+  const response = await fetch(url, { ...options, headers });
   const data = await response.json().catch(() => ({}));
   if (response.status === 401) {
     // Сессия кончилась — вернуть на вход, а не делать вид, что всё хорошо.
@@ -727,6 +729,8 @@ async function drawSettings() {
       ? '<span class="ok">Бот опрашивает Telegram.</span> Люди с кодом могут присылать ему голосовые.'
       : 'Бот выключен. Впишите токен от @BotFather — он начнёт отвечать сразу, перезапуск не нужен.') + '</p>'
     + keyField('Токен бота', 'bot.token', get('bot.token', ''), 'Берётся у @BotFather. Чтобы выключить бота — впишите минус и сохраните')
+    + '<div class="row-actions"><button class="btn ghost tiny" id="bot-restart">Перезапустить бота</button>'
+      + '<span id="bot-restart-res" class="muted"></span></div>'
     + '</div>'
 
     + '<div class="card"><h2>Прокси</h2>'
@@ -777,6 +781,20 @@ async function drawSettings() {
     + '<span id="settings-note" class="muted"></span></div>';
 
   bindPriceButtons();
+
+  $('bot-restart')?.addEventListener('click', async () => {
+    const out = $('bot-restart-res');
+    out.className = 'muted';
+    out.textContent = 'Перезапускаю…';
+    try {
+      const r = await api('/admin/api/bot/restart', { method: 'POST' });
+      out.className = r.running ? 'ok' : 'err';
+      out.textContent = r.running ? 'Бот перезапущен и опрашивает' : 'Бот выключен: токен не задан';
+    } catch (error) {
+      out.className = 'err';
+      out.textContent = error.message;
+    }
+  });
 
   $('check-proxy')?.addEventListener('click', async () => {
     const out = $('proxy-res');

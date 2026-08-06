@@ -25,6 +25,9 @@ function fakeTelegram() {
     editMessage: async (chatId, messageId, text, extra) => {
       sent.push({ do: 'edit', chatId, messageId, text, extra });
     },
+    editMarkup: async (chatId, messageId, markup) => {
+      sent.push({ do: 'markup', chatId, messageId, markup });
+    },
     answerCallback: async (id, text) => { sent.push({ do: 'answer', id, text }); },
     download: async () => Buffer.from('звук'),
   };
@@ -128,7 +131,7 @@ test('нет связи с распознаванием — говорим пр�
   assert.match(tg.sent[1].text, /Связи с распознаванием нет/);
 });
 
-test('кнопка улучшает тот же текст', async () => {
+test('улучшение приходит отдельным сообщением, распознанное не трогается', async () => {
   const key = keys.issue('Мама');
   keys.bind(key.id, 'telegram', '555', 'Мама');
   const tg = fakeTelegram();
@@ -140,8 +143,22 @@ test('кнопка улучшает тот же текст', async () => {
     },
   }, { tg, queue: okQueue });
 
-  const edit = tg.sent.find((item) => item.do === 'edit');
+  // Распознанное сообщение текстом не редактировалось ни разу.
+  assert.ok(!tg.sent.some((s) => s.do === 'edit' && s.messageId === 101));
+  // Пока шла работа — «Чищу…», у распознанного пропали кнопки.
+  const placeholder = tg.sent.find((s) => s.do === 'send');
+  assert.match(placeholder.text, /Чищу/);
+  const hidden = tg.sent.findIndex((s) => s.do === 'markup');
+  const asked = tg.sent.findIndex((s) => s.do === 'send');
+  assert.ok(hidden >= 0 && hidden < asked, 'кнопки прячутся до «Чищу…»');
+  assert.strictEqual(tg.sent[hidden].markup, undefined);
+  // Улучшенный текст встал на место «Чищу…».
+  const edit = tg.sent.find((s) => s.do === 'edit');
   assert.strictEqual(edit.text, 'Сказанное вслух.');
+  // Кнопки вернулись на распознанное: можно попробовать другой режим.
+  const restored = tg.sent.filter((s) => s.do === 'markup').pop();
+  assert.strictEqual(restored.messageId, 101);
+  assert.ok(restored.markup);
 });
 
 test('улучшение не вышло — текст остаётся при человеке', async () => {
@@ -156,9 +173,31 @@ test('улучшение не вышло — текст остаётся при 
     },
   }, { tg, queue: { improve: async () => { throw new Error('модель молчит'); } } });
 
+  // Распознанное цело, ошибка пришла на месте «Переписываю…», кнопки вернулись.
+  assert.ok(!tg.sent.some((s) => s.do === 'edit' && s.messageId === 101));
   const edit = tg.sent.find((item) => item.do === 'edit');
-  assert.match(edit.text, /сказанное вслух/);
-  assert.match(edit.text, /не вышло|не удалось/i);
+  assert.match(edit.text, /не вышло/i);
+  const restored = tg.sent.filter((s) => s.do === 'markup').pop();
+  assert.ok(restored.markup);
+});
+
+test('не ушло даже «Чищу…» — кнопки всё равно возвращаются', async () => {
+  const key = keys.issue('Мама');
+  keys.bind(key.id, 'telegram', '555', 'Мама');
+  const tg = fakeTelegram();
+  tg.sendMessage = async () => { throw new Error('сеть моргнула'); };
+
+  await assert.rejects(bot.handle({
+    callback_query: {
+      id: 'cb1', data: 'clean', from: { id: 555 },
+      message: { message_id: 101, chat: { id: 555 }, text: 'сказанное вслух' },
+    },
+  }, { tg, queue: okQueue }), /сеть моргнула/);
+
+  // Кнопки спрятали и вернули: человек может нажать ещё раз.
+  const markups = tg.sent.filter((s) => s.do === 'markup');
+  assert.strictEqual(markups.length, 2);
+  assert.ok(markups[1].markup, 'последним действием кнопки возвращены');
 });
 
 test('/id работает у всех, даже у непривязанных', async () => {

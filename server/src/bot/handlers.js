@@ -103,12 +103,25 @@ async function onButton(update, { tg, queue }, device) {
   const query = update.callback_query;
   const chatId = query.message.chat.id;
   const source = query.message.text || '';
+  const mode = query.data;
 
-  await tg.answerCallback(query.id, 'Причёсываю…');
+  await tg.answerCallback(query.id, 'Взял в работу');
   if (!source.trim()) return;
 
+  // Распознанный текст не трогаем вовсе: он остаётся в переписке как был.
+  // Кнопки на время работы прячем — видно, что нажатие принято, и второй
+  // клик не запустит ту же обработку ещё раз.
+  await tg.editMarkup(chatId, query.message.message_id, undefined).catch(() => {});
+
+  // Отправка «Чищу…» — внутри try: если она не пройдёт (сеть моргнула),
+  // finally всё равно вернёт кнопки. Снаружи try их не возвращал никто,
+  // и после единственного сбоя текст оставался без кнопок навсегда.
+  let placeholder;
   try {
-    const result = await queue.improve({ text: source, mode: query.data });
+    placeholder = await tg.sendMessage(
+      chatId, mode === 'both' ? 'Переписываю…' : 'Чищу…',
+    );
+    const result = await queue.improve({ text: source, mode });
     usage.record({
       keyId: device.keyId,
       deviceKind: 'telegram',
@@ -119,14 +132,20 @@ async function onButton(update, { tg, queue }, device) {
       tokensIn: result.tokensIn || 0,
       tokensOut: result.tokensOut || 0,
     });
-    await tg.editMessage(chatId, query.message.message_id, result.text, MODE_BUTTONS);
+    // Улучшенный — отдельным сообщением: сначала распознанный, под ним
+    // причёсанный, и оба на руках.
+    await tg.editMessage(chatId, placeholder.message_id, result.text);
   } catch (error) {
-    // Текст остаётся при человеке: улучшение — надстройка, а не условие.
+    // Без плейсхолдера сообщать некуда — до Telegram не достучаться;
+    // пробрасываем, чтобы цикл опроса записал сбой в журнал.
+    if (!placeholder) throw error;
     await tg.editMessage(
-      chatId, query.message.message_id,
-      `${source}\n\n— причесать не вышло: ${error.message}`,
-      MODE_BUTTONS,
+      chatId, placeholder.message_id, `Причесать не вышло: ${error.message}`,
     );
+  } finally {
+    // Кнопки возвращаются на распознанное: можно попробовать другой режим.
+    await tg.editMarkup(chatId, query.message.message_id, MODE_BUTTONS.reply_markup)
+      .catch(() => {});
   }
 }
 

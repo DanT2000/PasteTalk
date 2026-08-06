@@ -51,6 +51,14 @@ function makeTelegram(token) {
     answerCallback: (id, text) =>
       api(token, 'answerCallbackQuery', { callback_query_id: id, text }),
 
+    // Только кнопки под сообщением, не трогая его текст.
+    editMarkup: (chatId, messageId, markup) =>
+      api(token, 'editMessageReplyMarkup', {
+        chat_id: chatId, message_id: messageId, reply_markup: markup,
+      }).catch((error) => {
+        if (!/not modified/i.test(error.message)) throw error;
+      }),
+
     download: async (fileId) => {
       const file = await api(token, 'getFile', { file_id: fileId });
       const response = await fetch(`${API}/file/bot${token}/${file.file_path}`,
