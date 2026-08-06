@@ -22,7 +22,9 @@ const settings = require('../settings');
 
 const SPILL_MS = 30 * 1000;
 
-let tail = Promise.resolve();
+// Очередь у каждой машины своя: одна держит одну модель, но две машины —
+// это два одновременных распознавания.
+const tails = new Map();
 
 /**
  * Поставить задачу в хвост очереди к агенту.
@@ -32,7 +34,7 @@ let tail = Promise.resolve();
  * от работы. Есть и `abandon()`: если задачу уже отдали облаку, будить
  * ради неё видеокарту незачем.
  */
-function throughAgent(job) {
+function throughAgent(job, agentId = 0) {
   let markStarted;
   const started = new Promise((resolve) => { markStarted = resolve; });
   let abandoned = false;
@@ -43,12 +45,54 @@ function throughAgent(job) {
     return job();
   };
 
+  const tail = tails.get(agentId) || Promise.resolve();
   const done = tail.then(run, run);
   // Хвост не должен обрываться из-за одной упавшей задачи, иначе
   // следующий диктующий не дождётся своей очереди никогда.
-  tail = done.then(() => {}, () => {});
+  tails.set(agentId, done.then(() => {}, () => {}));
 
   return { started, done, abandon: () => { abandoned = true; } };
+}
+
+/**
+ * Прогнать задачу по машинам в порядке опроса.
+ *
+ * Ожидание отмеряется отдельно для каждой: не взялась первая за
+ * SPILL_MS — идём ко второй, и только когда кончились все, отдаём
+ * задачу облаку. Это и есть «минимальное время ожидания».
+ */
+async function throughAgents(makeJob, cloudJob, spill) {
+  const machines = socket.onlineAgents();
+  let lastError = new Error('ПК не на связи');
+
+  for (const machine of machines) {
+    const attempt = throughAgent(() => makeJob(machine.id), machine.id);
+    try {
+      if (!spill) return await attempt.done;
+
+      // Ждём, когда машина возьмётся за дело, но не дольше предела.
+      // Не взялась — бросаем её и идём к следующей: у каждой машины своё
+      // ожидание, в этом и смысл порядка.
+      const took = await Promise.race([
+        attempt.started.then(() => true),
+        new Promise((resolve) => { setTimeout(() => resolve(false), SPILL_MS); }),
+      ]);
+      if (!took) {
+        attempt.abandon();
+        // Хвост её очереди не должен взорваться позже, когда до брошенной
+        // задачи дойдёт дело, — гасим отказ заранее.
+        attempt.done.catch(() => {});
+        lastError = new Error('ПК не ответил вовремя');
+        continue;
+      }
+      return await attempt.done;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  if (cloudJob) return cloudJob();
+  throw lastError;
 }
 
 /**
@@ -104,23 +148,20 @@ async function transcribe({ audio, filename, language, clientSeconds }) {
     executedBy: 'cloud',
   });
 
-  const agent = () => throughAgent(async () => ({
-    ...await socket.send({
+  const job = async (agentId) => ({
+    ...await socket.sendTo(agentId, {
       kind: 'stt',
       payload: { audio: audio.toString('base64'), filename, language },
     }),
     executedBy: 'agent',
-  }));
+  });
 
-  // «Никогда не тратить деньги» должно значить именно это: ни когда ПК
-  // выключен, ни когда задача на нём сорвалась.
-  if (!spillAllowed()) return agent().done;
+  // «Никогда не тратить деньги» должно значить именно это.
+  if (!spillAllowed()) return throughAgents(job, null, false);
   if (!socket.online()) return cloud();
-  // Облака может не быть вовсе: человек настроил только домашний ПК.
-  // Тогда ждать его — единственный разумный путь, иначе диктовка гибнет
-  // при исправном компьютере, всего лишь занятом на полминуты.
-  if (!chains.sttChain().length) return agent().done;
-  return withSpill(agent, cloud);
+  // Облака может не быть вовсе — тогда ждём машины, сколько нужно.
+  if (!chains.sttChain().length) return throughAgents(job, null, false);
+  return throughAgents(job, cloud, true);
 }
 
 async function improve({ text, mode }) {
@@ -133,15 +174,15 @@ async function improve({ text, mode }) {
     executedBy: 'cloud',
   });
 
-  const agent = () => throughAgent(async () => ({
-    ...await socket.send({ kind: 'llm', payload: { text, mode } }),
+  const job = async (agentId) => ({
+    ...await socket.sendTo(agentId, { kind: 'llm', payload: { text, mode } }),
     executedBy: 'agent',
-  }));
+  });
 
-  if (!spillAllowed()) return agent().done;
+  if (!spillAllowed()) return throughAgents(job, null, false);
   if (!socket.online()) return cloud();
-  if (!chains.llmChain().length) return agent().done;
-  return withSpill(agent, cloud);
+  if (!chains.llmChain().length) return throughAgents(job, null, false);
+  return throughAgents(job, cloud, true);
 }
 
-module.exports = { transcribe, improve, throughAgent, withSpill, SPILL_MS };
+module.exports = { transcribe, improve, throughAgent, throughAgents, withSpill, SPILL_MS };

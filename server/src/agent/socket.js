@@ -2,150 +2,167 @@
 
 const crypto = require('node:crypto');
 
-const db = require('../db');
-const keys = require('../keys');
+const agents = require('../agents');
 
 /**
- * Соединение с домашним компьютером.
+ * Соединения с компьютерами.
  *
- * Звонит всегда он: обратное направление требовало бы проброса порта на
- * каждом домашнем роутере, постоянного IP и открытого наружу порта с
- * распознаванием. Здесь наружу не торчит ничего, а признак «на связи»
- * получается сам собой — сокет жив или мёртв.
+ * Звонят всегда они: обратное направление требовало бы проброса порта на
+ * каждом домашнем роутере. Наружу не торчит ничего, а «на связи» — это
+ * просто живой сокет.
  *
- * Агент один: это домашний компьютер владельца, а не ферма. Второй
- * поздоровавшийся просто занимает место первого.
+ * Машин может быть несколько: у каждой свой ключ из раздела «Компьютеры»
+ * и свой порядок. Задача уходит первой по порядку, не взялась — следующей.
+ * Ключ человека сюда не подходит: код на телефон не должен давать право
+ * принимать чужие диктовки звуком.
  */
 
 const PING_MS = 20 * 1000;
 const DEAD_MS = 60 * 1000;
 const JOB_TIMEOUT_MS = 10 * 60 * 1000;
 
-let live = null;              // { socket, name, lastSeen, agentId }
-const waiting = new Map();    // id задачи → { resolve, reject, timer }
+// id компьютера → { socket, name, lastSeen }
+const live = new Map();
+// id задачи → { resolve, reject, timer, agentId }
+const waiting = new Map();
 
-function online() {
-  if (!live || Date.now() - live.lastSeen >= DEAD_MS) return false;
-  // Токен проверяется при рукопожатии, но ключ могли отозвать уже после.
-  // Без этой сверки отозванный агент оставался бы на линии и продолжал
-  // получать чужие диктовки, пока не оборвётся соединение.
-  if (live.deviceId && !keys.byDevice(live.deviceId)) {
-    drop('доступ отозван');
-    return false;
-  }
-  return true;
+function alive(entry) {
+  return Boolean(entry) && Date.now() - entry.lastSeen < DEAD_MS;
 }
 
-/** Снять с линии агента, которому только что запретили им быть. */
-function dropIfDenied() {
-  if (live && live.deviceId && !keys.byDevice(live.deviceId)) drop('доступ отозван');
+/** Компьютеры на связи, в порядке опроса. */
+function onlineAgents() {
+  const out = [];
+  for (const agent of agents.list()) {
+    const entry = live.get(agent.id);
+    if (!alive(entry)) continue;
+    // Машину могли удалить, пока сокет жив, — тогда она больше не своя.
+    if (!agents.exists(agent.id)) {
+      dropAgent(agent.id, 'компьютер удалён');
+      continue;
+    }
+    out.push({ ...agent, entry });
+  }
+  return out;
+}
+
+function online() {
+  return onlineAgents().length > 0;
 }
 
 function state() {
-  const row = db.open().prepare('SELECT * FROM agents ORDER BY last_seen DESC LIMIT 1').get();
+  const rows = agents.list().map((agent) => ({
+    id: agent.id,
+    name: agent.name,
+    priority: agent.priority,
+    online: alive(live.get(agent.id)),
+    lastSeen: live.get(agent.id)?.lastSeen || agent.last_seen || null,
+    jobsDone: agent.jobs_done,
+  }));
+  const first = rows.find((row) => row.online);
   return {
-    online: online(),
-    name: live?.name || row?.name || null,
-    lastSeen: live?.lastSeen || row?.last_seen || null,
-    jobsDone: row?.jobs_done || 0,
+    // Прежняя форма остаётся: её читают админка и клиенты.
+    online: Boolean(first),
+    name: first?.name || rows[0]?.name || null,
+    lastSeen: first?.lastSeen || rows[0]?.lastSeen || null,
+    jobsDone: rows.reduce((sum, row) => sum + row.jobsDone, 0),
+    agents: rows,
   };
 }
 
-/**
- * Порвать связь и не оставить никого висеть.
- *
- * Ждущие задачи обязаны получить отказ: без этого запрос с телефона
- * молчал бы до самого таймаута, хотя ответить уже некому.
- */
-function drop(reason) {
-  for (const [, pending] of waiting) {
+/** Снять одну машину с линии, отпустив её задачи. */
+function dropAgent(agentId, reason) {
+  const entry = live.get(agentId);
+  live.delete(agentId);
+  for (const [id, pending] of waiting) {
+    if (pending.agentId !== agentId) continue;
     clearTimeout(pending.timer);
+    waiting.delete(id);
     pending.reject(new Error(reason));
   }
-  waiting.clear();
-  live = null;
+  if (entry) {
+    try { entry.socket.close(); } catch { /* уже закрыт */ }
+  }
 }
 
-/** Полный сброс — нужен тестам, чтобы соседние проверки не мешали друг другу. */
+/** Полный сброс — нужен тестам. */
 function forget() {
-  drop('сброс');
+  for (const id of [...live.keys()]) dropAgent(id, 'сброс');
+  live.clear();
 }
 
-function send(job) {
-  if (!online()) return Promise.reject(new Error('ПК не на связи'));
+/** Отправить задачу конкретной машине. */
+function sendTo(agentId, job) {
+  const entry = live.get(agentId);
+  if (!alive(entry)) return Promise.reject(new Error('ПК не на связи'));
   const id = crypto.randomUUID();
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       waiting.delete(id);
       reject(new Error('ПК не ответил вовремя'));
     }, JOB_TIMEOUT_MS);
-    waiting.set(id, { resolve, reject, timer });
-    live.socket.send(JSON.stringify({ type: 'job', id, ...job }));
+    waiting.set(id, { resolve, reject, timer, agentId });
+    entry.socket.send(JSON.stringify({ type: 'job', id, ...job }));
   });
 }
 
-/**
- * Агент здоровается.
- *
- * Токен проверяем обязательно: без этого ручка /agent открыта всему
- * интернету, и любой, кто знает адрес сервера, назвался бы домашним
- * компьютером — и получал бы чужие диктовки целиком, звуком.
- */
+/** Совместимость: задача первой машине на связи. */
+function send(job) {
+  const first = onlineAgents()[0];
+  if (!first) return Promise.reject(new Error('ПК не на связи'));
+  return sendTo(first.id, job);
+}
+
 function greet(socket, data) {
-  const device = keys.authenticate(data.token || '');
-  if (!device) {
-    socket.send(JSON.stringify({ type: 'denied', message: 'Нужен код доступа' }));
-    try { socket.close(); } catch { /* уже закрывается */ }
-    return;
+  // Сначала новый ключ компьютера, затем — на время перехода — старый
+  // токен человека с правом may_serve. Из него заводится НАСТОЯЩАЯ машина:
+  // полупризнанная, которой очередь не даёт задач, была бы хуже отказа —
+  // связь выглядела бы живой, а диктовки молча уходили бы в облако.
+  let agent = agents.byKey(data.key || data.token || '');
+  if (!agent && (data.token || data.key)) {
+    const keys = require('../keys');
+    const device = keys.authenticate(data.token || data.key || '');
+    if (device && device.mayServe) {
+      agent = agents.adopt(data.token || data.key, data.name || 'ПК');
+    }
   }
-  // Агентом становится только тот, кому владелец это разрешил в админке.
-  // Вид устройства для этого не годится: его выбирает сам клиент, и любой
-  // человек с кодом на телефон мог бы назваться компьютером, вытеснить
-  // настоящий ПК и получать чужие диктовки звуком.
-  if (!device.mayServe) {
+  if (!agent) {
     socket.send(JSON.stringify({
       type: 'denied',
-      message: 'Этому профилю не разрешено работать агентом. Включите в админке',
+      message: 'Нужен ключ компьютера — раздел «Компьютеры» в админке',
     }));
     try { socket.close(); } catch { /* уже закрывается */ }
     return;
   }
 
-  // Прежний сокет мог не успеть закрыться: моргнула сеть, ПК переподключился
-  // раньше, чем сервер увидел close. Его задачи надо отпустить здесь, иначе
-  // они провисят до таймаута и заблокируют очередь на десять минут.
-  if (live && live.socket !== socket) {
-    // Прежнему говорим прямо и закрываем его. Молча оставленный сокет
-    // через двадцать секунд отвалится по сердцебиению, переподключится и
-    // вытеснит нового — два компьютера меняли бы друг друга бесконечно.
-    const old = live.socket;
-    drop('ПК переподключился');
+  // Тот же компьютер переподключился: прежний сокет мог не успеть
+  // закрыться. Его задачи отпускаем, а ему самому говорим прямо — иначе
+  // два ПК с одним ключом молча выбивали бы друг друга каждые две
+  // секунды, и оба показывали бы «на связи».
+  const prev = live.get(agent.id);
+  if (prev && prev.socket === socket) {
+    prev.lastSeen = Date.now();
+    socket.send(JSON.stringify({ type: 'welcome' }));
+    return;
+  }
+  if (prev) {
     try {
-      old.send(JSON.stringify({
+      prev.socket.send(JSON.stringify({
         type: 'denied',
-        message: 'Агентом стал другой компьютер. Отвяжите лишний в админке',
+        message: 'Этим ключом подключился другой компьютер. Каждой машине — свой ключ',
       }));
-      old.close();
     } catch { /* уже закрыт */ }
+    dropAgent(agent.id, 'ПК переподключился');
   }
 
-  const now = Date.now();
-  const database = db.open();
-  const name = data.name || 'ПК';
-  const existing = database.prepare('SELECT id FROM agents WHERE name = ?').get(name);
-  const agentId = existing
-    ? existing.id
-    : Number(database.prepare('INSERT INTO agents (name, paired_at, last_seen) VALUES (?, ?, ?)')
-      .run(name, now, now).lastInsertRowid);
-  live = { socket, name, lastSeen: now, agentId, deviceId: device.deviceId };
+  live.set(agent.id, { socket, name: agent.name, lastSeen: Date.now() });
+  if (agent.id > 0) agents.noteSeen(agent.id);
   socket.send(JSON.stringify({ type: 'welcome' }));
 }
 
 /**
- * Разбор одного сообщения от агента.
- *
- * Вынесено из register отдельной функцией, потому что это чистая логика:
- * её можно прогнать тестами, не поднимая ни сети, ни настоящего сокета.
+ * Разбор одного сообщения. Вынесено из register: чистую логику можно
+ * гонять тестами без сети и настоящего сокета.
  */
 function handle(socket, message) {
   let data;
@@ -156,16 +173,18 @@ function handle(socket, message) {
     return;
   }
 
-  // Сообщения принимаем только от того сокета, который поздоровался.
-  // Иначе посторонний, не проходя проверки токена, освежал бы lastSeen
-  // молчаливым мусором и держал бы мёртвого агента «на связи».
-  if (!live || live.socket !== socket) return;
-  live.lastSeen = Date.now();
+  // Сообщения принимаем только от поздоровавшегося сокета.
+  let agentId = null;
+  for (const [id, entry] of live) {
+    if (entry.socket === socket) { agentId = id; break; }
+  }
+  if (agentId === null) return;
+  live.get(agentId).lastSeen = Date.now();
 
   if (data.type !== 'result' && data.type !== 'error') return;
 
   const pending = waiting.get(data.id);
-  if (!pending) return;
+  if (!pending || pending.agentId !== agentId) return;
   clearTimeout(pending.timer);
   waiting.delete(data.id);
 
@@ -173,23 +192,19 @@ function handle(socket, message) {
     pending.reject(new Error(data.message || 'ПК не смог обработать'));
     return;
   }
-
-  db.open().prepare('UPDATE agents SET jobs_done = jobs_done + 1, last_seen = ? WHERE id = ?')
-    .run(Date.now(), live.agentId);
+  if (agentId > 0) agents.noteJob(agentId);
   pending.resolve(data.result);
 }
 
-/**
- * Спросить компьютер, жив ли он, и замерить ответ.
- *
- * Отдельно от «на связи»: сокет может числиться открытым, пока сеть уже
- * отвалилась, и узнать правду можно только дождавшись ответа.
- */
-async function ping() {
-  if (!online()) return { ok: false, error: 'ПК не на связи' };
+/** Спросить машину по-настоящему и замерить ответ. */
+async function ping(agentId) {
+  const target = agentId
+    ? (alive(live.get(Number(agentId))) ? Number(agentId) : null)
+    : (onlineAgents()[0]?.id ?? null);
+  if (target === null) return { ok: false, error: 'ПК не на связи' };
   const started = Date.now();
   try {
-    await send({ kind: 'ping', payload: {} });
+    await sendTo(target, { kind: 'ping', payload: {} });
     return { ok: true, ms: Date.now() - started };
   } catch (error) {
     return { ok: false, error: error.message };
@@ -199,17 +214,19 @@ async function ping() {
 function register(app) {
   app.get('/agent', { websocket: true }, (socket) => {
     const heartbeat = setInterval(() => {
-      // Судим только о своём сокете. Их может быть два: ПК переподключился
-      // раньше, чем сервер увидел close старого, — и таймер старого не
-      // должен снимать с линии нового, живого.
-      if (live?.socket !== socket) {
+      // Судим только о своём сокете: их теперь много.
+      let mine = null;
+      for (const [id, entry] of live) {
+        if (entry.socket === socket) { mine = id; break; }
+      }
+      if (mine === null) {
         clearInterval(heartbeat);
         try { socket.close(); } catch { /* уже закрыт */ }
         return;
       }
-      if (Date.now() - live.lastSeen > DEAD_MS) {
-        drop('ПК перестал отвечать');
-        try { socket.close(); } catch { /* уже закрыт */ }
+      if (Date.now() - live.get(mine).lastSeen > DEAD_MS) {
+        dropAgent(mine, 'ПК перестал отвечать');
+        clearInterval(heartbeat);
         return;
       }
       try { socket.send(JSON.stringify({ type: 'ping' })); } catch { /* закрывается */ }
@@ -218,12 +235,14 @@ function register(app) {
     socket.on('message', (raw) => handle(socket, raw.toString()));
     socket.on('close', () => {
       clearInterval(heartbeat);
-      if (live?.socket === socket) drop('ПК отключился');
+      for (const [id, entry] of live) {
+        if (entry.socket === socket) { dropAgent(id, 'ПК отключился'); break; }
+      }
     });
   });
 }
 
 module.exports = {
-  register, handle, drop, forget, dropIfDenied, online, send, ping, state,
-  PING_MS, DEAD_MS,
+  register, handle, forget, online, onlineAgents, send, sendTo, ping, state,
+  dropAgent, PING_MS, DEAD_MS,
 };

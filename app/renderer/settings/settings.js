@@ -1185,19 +1185,19 @@ function showRelay(state) {
 $('relay-pair')?.addEventListener('click', async () => {
   const field = $('relay-code');
   const button = $('relay-pair');
-  const code = field.value.trim();
-  if (!/^\d{6}$/.test(code)) {
-    $('relay-state').textContent = 'Код — это ровно шесть цифр';
+  const key = field.value.trim();
+  if (!key) {
+    $('relay-state').textContent = 'Вставьте ключ из раздела «Компьютеры»';
     return;
   }
   button.disabled = true;
-  $('relay-state').textContent = 'Проверяю код…';
-  const result = await api.relay.pair(code);
+  $('relay-state').textContent = 'Подключаюсь…';
+  const result = await api.relay.pair(key);
   button.disabled = false;
   if (result.ok) {
     field.value = '';
     $('relay-enabled').checked = true;
-    $('relay-state').textContent = 'Код принят, подключаюсь…';
+    $('relay-state').textContent = 'Ключ принят, подключаюсь…';
   } else {
     $('relay-state').textContent = result.error;
   }

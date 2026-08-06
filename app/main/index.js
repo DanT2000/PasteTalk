@@ -336,6 +336,20 @@ ipcMain.handle('relay:refresh', () => {
 ipcMain.handle('relay:pair', async (_event, code) => {
   const url = String(config.get('relay.url', '')).trim().replace(/\/+$/, '');
   if (!url) return { ok: false, error: 'Сначала укажите адрес сервера' };
+
+  // Ключ компьютера кладётся как есть: обменивать его не на что, он и
+  // есть постоянный доступ. Шесть цифр — прежний путь через код человека.
+  const clean = String(code || '').trim();
+  if (!/^\d{6}$/.test(clean)) {
+    // Обрезанный или захвативший лишнее ключ лучше отвергнуть сейчас,
+    // чем сказать «принят» и молча не подключиться.
+    if (!/^pt_[A-Za-z0-9_-]{20,}$/.test(clean)) {
+      return { ok: false, error: 'Ключ выглядит неполным — скопируйте его из админки целиком' };
+    }
+    config.set({ relay: { token: clean, enabled: true } });
+    relay.refresh();
+    return { ok: true };
+  }
   // Привязка идёт обычным HTTP, а работа — по WebSocket. Адрес человек
   // вводит один, поэтому схему подменяем сами.
   const httpUrl = url.replace(/^wss:/i, 'https:').replace(/^ws:/i, 'http:');

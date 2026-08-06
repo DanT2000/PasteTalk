@@ -58,9 +58,17 @@ CREATE TABLE IF NOT EXISTS usage (
   llm_cost_rub   REAL NOT NULL DEFAULT 0
 );
 
+-- Компьютеры, которые считают за других. Это не люди: у них нет ни
+-- минут, ни рублей, ни разового кода — только постоянный ключ, который
+-- владелец вставляет в PasteTalk на машине. Искать компьютер среди людей
+-- неудобно, а путать их — опасно: код на телефон не должен давать право
+-- принимать чужие диктовки.
 CREATE TABLE IF NOT EXISTS agents (
   id        INTEGER PRIMARY KEY,
   name      TEXT NOT NULL,
+  key_hash  TEXT UNIQUE,
+  -- Кого спрашивать первым. Меньше — раньше.
+  priority  INTEGER NOT NULL DEFAULT 1,
   paired_at INTEGER NOT NULL,
   last_seen INTEGER NOT NULL,
   jobs_done INTEGER NOT NULL DEFAULT 0
@@ -86,6 +94,8 @@ CREATE INDEX IF NOT EXISTS devices_key ON devices(key_id);
 const ADDED = [
   { table: 'keys', column: 'code_until', ddl: 'INTEGER' },
   { table: 'keys', column: 'may_serve', ddl: 'INTEGER NOT NULL DEFAULT 0' },
+  { table: 'agents', column: 'key_hash', ddl: 'TEXT' },
+  { table: 'agents', column: 'priority', ddl: 'INTEGER NOT NULL DEFAULT 1' },
 ];
 
 /**

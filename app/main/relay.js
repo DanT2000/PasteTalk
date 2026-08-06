@@ -71,6 +71,9 @@ class Relay extends EventEmitter {
       this.attempt = 0;
       socket.send(JSON.stringify({
         type: 'hello',
+        // Новый путь — ключ компьютера из админки. token остаётся на время
+        // перехода: у уже настроенных машин там старый токен устройства.
+        key: token,
         token,
         name: config.get('relay.name', '') || os.hostname(),
       }));

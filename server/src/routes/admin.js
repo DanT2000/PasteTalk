@@ -10,6 +10,7 @@ const usage = require('../usage');
 const settings = require('../settings');
 const prices = require('../prices');
 const socket = require('../agent/socket');
+const agents = require('../agents');
 
 /**
  * Админка: четыре экрана и ничего лишнего.
@@ -110,16 +111,13 @@ function register(app) {
     return { ok: keys.revoke(Number(request.params.id)) };
   });
 
-  // Разрешение работать агентом даёт только владелец: вид устройства
-  // выбирает сам клиент, и по нему судить нельзя.
+  // Компьютеры переехали в свой раздел. Людям право «агент» больше не
+  // выдаётся: код на телефон не должен превращаться в приём чужого звука.
   app.post('/admin/api/keys/:id/serve', async (request, reply) => {
     if (!guard(request, reply)) return undefined;
-    const allowed = Boolean((request.body || {}).allowed);
-    if (!keys.setMayServe(Number(request.params.id), allowed)) {
-      return reply.code(400).send({ error: 'Такого профиля нет' });
-    }
-    if (!allowed) socket.dropIfDenied();
-    return { ok: true, mayServe: allowed };
+    return reply.code(410).send({
+      error: 'Компьютеры теперь в своём разделе — заведите машину там',
+    });
   });
 
   app.delete('/admin/api/devices/:id', async (request, reply) => {
@@ -148,6 +146,46 @@ function register(app) {
       daily: usage.daily(),
       note: 'Оценка по своему прайсу: провайдеры фактическую стоимость не присылают',
     };
+  });
+
+  // ---------- компьютеры ----------
+
+  app.get('/admin/api/agents', async (request, reply) => {
+    if (!guard(request, reply)) return undefined;
+    return { agents: socket.state().agents };
+  });
+
+  app.post('/admin/api/agents', async (request, reply) => {
+    if (!guard(request, reply)) return undefined;
+    return agents.add((request.body || {}).name);
+  });
+
+  // Новый ключ: прежний перестаёт работать сразу, машину переподключают.
+  app.post('/admin/api/agents/:id/key', async (request, reply) => {
+    if (!guard(request, reply)) return undefined;
+    try {
+      const fresh = agents.reissue(Number(request.params.id));
+      socket.dropAgent(Number(request.params.id), 'ключ перевыпущен');
+      return fresh;
+    } catch (error) {
+      return reply.code(400).send({ error: error.message });
+    }
+  });
+
+  app.post('/admin/api/agents/:id/move', async (request, reply) => {
+    if (!guard(request, reply)) return undefined;
+    return { ok: agents.move(Number(request.params.id), Boolean((request.body || {}).up)) };
+  });
+
+  app.post('/admin/api/agents/:id/ping', async (request, reply) => {
+    if (!guard(request, reply)) return undefined;
+    return socket.ping(Number(request.params.id));
+  });
+
+  app.delete('/admin/api/agents/:id', async (request, reply) => {
+    if (!guard(request, reply)) return undefined;
+    socket.dropAgent(Number(request.params.id), 'компьютер удалён');
+    return { ok: agents.remove(Number(request.params.id)) };
   });
 
   app.get('/admin/api/agent', async (request, reply) => {

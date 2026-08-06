@@ -108,3 +108,34 @@ test('брошенная задача не перебивает ответ об�
   assert.strictEqual(result, 'облако');
   await blocker.done;
 });
+
+test('не взялась первая машина — задача уходит второй, а не сразу в облако', async () => {
+  const agents = require('../src/agents');
+  const socket = require('../src/agent/socket');
+  socket.forget();
+
+  const one = agents.add('Первый');
+  const two = agents.add('Второй');
+  const gotOne = []; const gotTwo = [];
+  const fakeOne = { send: (raw) => gotOne.push(JSON.parse(raw)), close: () => {} };
+  const fakeTwo = { send: (raw) => gotTwo.push(JSON.parse(raw)), close: () => {} };
+  socket.handle(fakeOne, JSON.stringify({ type: 'hello', key: one.key, name: 'Первый' }));
+  socket.handle(fakeTwo, JSON.stringify({ type: 'hello', key: two.key, name: 'Второй' }));
+
+  let cloudCalled = false;
+  const promise = queue.throughAgents(
+    async (agentId) => {
+      const machines = socket.state().agents;
+      const mine = machines.find((m) => m.id === agentId);
+      if (mine.name === 'Первый') throw new Error('занят');
+      return 'посчитал ' + mine.name;
+    },
+    async () => { cloudCalled = true; return 'облако'; },
+    true,
+  );
+
+  const result = await promise;
+  assert.strictEqual(result, 'посчитал Второй');
+  assert.strictEqual(cloudCalled, false, 'облако не нужно, пока есть вторая машина');
+  socket.forget();
+});

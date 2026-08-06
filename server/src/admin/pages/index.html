@@ -437,10 +437,7 @@ async function drawPeople() {
       + '<td class="num">' + money(person.rub) + '</td>'
       + '<td>' + devices + '</td>'
       + '<td><div class="row-actions">'
-        + (person.revoked ? '' : '<button class="btn ghost tiny" data-serve="' + person.id + '" data-on="'
-            + (person.mayServe ? '1' : '0') + '">'
-            + (person.mayServe ? 'агент: да' : 'агент: нет') + '</button>'
-          + '<button class="btn ghost tiny" data-code="' + person.id + '">новый код</button>'
+        + (person.revoked ? '' : '<button class="btn ghost tiny" data-code="' + person.id + '">новый код</button>'
           + '<button class="btn ghost tiny" data-bind="' + person.id + '">телеграм вручную</button>'
           + '<button class="btn ghost tiny" data-key="' + person.id + '">удалить</button>')
       + '</div></td>'
@@ -449,7 +446,7 @@ async function drawPeople() {
 
   $('people').innerHTML =
     '<div class="card"><h2>Выдать доступ</h2>'
-    + '<p class="muted">Кнопка «агент» разрешает профилю принимать чужие диктовки — включайте её только для своего домашнего компьютера. Код одноразовый: сработал — исчез. Одно устройство — один профиль, чтобы потом было видно, откуда пришёл доступ. Нужны телефон и телеграм — заведите «Мама, телефон» и «Мама, телеграм».</p>'
+    + '<p class="muted">Здесь только люди. Компьютеры, которые считают за других, живут во вкладке «Компьютеры». Код одноразовый: сработал — исчез. Одно устройство — один профиль, чтобы потом было видно, откуда пришёл доступ. Нужны телефон и телеграм — заведите «Мама, телефон» и «Мама, телеграм».</p>'
     + '<div class="row-actions" style="margin-top:1rem">'
       + '<input id="new-name" placeholder="Мама, телефон" style="flex:1 1 12rem;max-width:20rem">'
       + '<select id="new-ttl">'
@@ -496,17 +493,6 @@ async function drawPeople() {
     });
   });
 
-  $('people').querySelectorAll('[data-serve]').forEach((button) => {
-    button.addEventListener('click', async () => {
-      const on = button.dataset.on === '1';
-      if (!on && !confirm('Разрешить этому профилю принимать чужие диктовки и считать их своей видеокартой?')) return;
-      await api('/admin/api/keys/' + button.dataset.serve + '/serve', {
-        method: 'POST', body: JSON.stringify({ allowed: !on }),
-      });
-      drawPeople();
-    });
-  });
-
   $('people').querySelectorAll('[data-key]').forEach((button) => {
     button.addEventListener('click', async () => {
       if (!confirm('Удалить профиль? Все его устройства перестанут работать сразу.')) return;
@@ -548,46 +534,96 @@ setInterval(() => {
 // ---------- компьютер ----------
 
 async function drawAgent() {
-  const data = await api('/admin/api/agent');
+  const { agents: machines } = await api('/admin/api/agents');
+
+  const rows = machines.map((m, index) =>
+    '<tr>'
+    + '<td><div>' + safe(m.name) + '</div><div class="muted">порядок ' + m.priority + '</div></td>'
+    + '<td>' + (m.online ? '<span class="ok">на связи</span>' : '<span class="muted">не на связи</span>') + '</td>'
+    + '<td class="num">' + when(m.lastSeen) + '</td>'
+    + '<td class="num">' + m.jobsDone + '</td>'
+    + '<td><div class="row-actions">'
+      + '<button class="btn ghost tiny" data-mping="' + m.id + '">пинг</button>'
+      + (index > 0 ? '<button class="btn ghost tiny" data-up="' + m.id + '">выше</button>' : '')
+      + (index < machines.length - 1 ? '<button class="btn ghost tiny" data-down="' + m.id + '">ниже</button>' : '')
+      + '<button class="btn ghost tiny" data-mkey="' + m.id + '">новый ключ</button>'
+      + '<button class="btn ghost tiny" data-mdel="' + m.id + '">удалить</button>'
+    + '</div><div class="muted" data-mres="' + m.id + '"></div></td>'
+    + '</tr>').join('');
+
   $('agent').innerHTML =
-    '<div class="tiles">'
-    + '<div class="tile ' + (data.online ? 'local' : '') + '"><div class="label">Состояние</div>'
-      + '<div class="value">' + (data.online ? 'На связи' : 'Не на связи') + '</div>'
-      + '<div class="under">' + (data.name ? safe(data.name) : 'ещё не подключался') + '</div></div>'
-    + '<div class="tile"><div class="label">Задач выполнено</div>'
-      + '<div class="value">' + data.jobsDone + '</div>'
-      + '<div class="under">с первого подключения</div></div>'
-    + '<div class="tile"><div class="label">Последний отклик</div>'
-      + '<div class="value small">' + when(data.lastSeen) + '</div></div>'
+    '<div class="card"><h2>Добавить компьютер</h2>'
+    + '<p class="muted">Компьютер — не человек: у него постоянный ключ, а не разовый код. Задача уходит первой машине по порядку; не взялась за полминуты — следующей, и только потом в облако.</p>'
+    + '<div class="row-actions" style="margin-top:1rem">'
+      + '<input id="new-agent" placeholder="Домашний ПК" style="flex:1 1 12rem;max-width:20rem">'
+      + '<button class="btn" id="make-agent">Добавить</button>'
+    + '</div><p id="agent-made" class="ok" style="margin-bottom:0"></p></div>'
+
+    + '<div class="card"><h2>Машины</h2>'
+    + (machines.length
+      ? '<div class="wrap-x"><table><tr><th>Имя</th><th>Состояние</th><th class="num">Последний отклик</th>'
+        + '<th class="num">Задач</th><th></th></tr>' + rows + '</table></div>'
+      : '<p class="empty">Пока ни одной. Добавьте выше — получите ключ для PasteTalk.</p>')
     + '</div>'
 
-    + '<div class="card"><h2>Проверка связи</h2>'
-    + '<p class="muted">Соединение может числиться живым, когда сеть уже отвалилась. Пинг спрашивает компьютер по-настоящему и ждёт ответа.</p>'
-    + '<div class="row-actions" style="margin-top:1rem">'
-      + '<button class="btn" id="ping">Пинг</button><span id="ping-res" class="muted"></span>'
-    + '</div></div>'
+    + '<div class="card"><h2>Как подключить</h2>'
+    + '<p class="muted">На компьютере: PasteTalk → Настройки → Интеграция. Адрес этого сервера, ключ из списка выше, включить «Работать как агент сервера».</p></div>';
 
-    + '<div class="card"><h2>Как подключить компьютер</h2>'
-    + '<p class="muted">На компьютере с видеокартой: PasteTalk → Настройки → Интеграция. Укажите адрес этого сервера, введите код доступа из раздела «Люди» и включите «Работать как агент сервера».</p>'
-    + '<p class="muted">Пока компьютер на связи, диктовка считается на нём и не стоит ничего. Выключен — задачи уходят в облако.</p></div>';
-
-  $('ping').addEventListener('click', async () => {
-    const out = $('ping-res');
-    out.className = 'muted';
-    out.textContent = 'Спрашиваю…';
-    $('ping').disabled = true;
+  $('make-agent').addEventListener('click', async () => {
     try {
-      const result = await api('/admin/api/agent/ping', { method: 'POST' });
-      out.className = result.ok ? 'ok' : 'err';
-      out.textContent = result.ok ? 'Ответил за ' + result.ms + ' мс' : result.error;
+      const made = await api('/admin/api/agents', {
+        method: 'POST', body: JSON.stringify({ name: $('new-agent').value }),
+      });
+      await drawAgent();
+      showAgentKey(made);
+    } catch (error) { $('app-err').textContent = error.message; }
+  });
+
+  // Каждый обработчик ловит свои ошибки: в другой вкладке машину могли
+  // удалить, и молчание вместо ответа хуже честного отказа.
+  const complain = (error) => { $('app-err').textContent = error.message; };
+
+  $('agent').querySelectorAll('[data-mping]').forEach((b) => b.addEventListener('click', async () => {
+    const out = document.querySelector('[data-mres="' + b.dataset.mping + '"]');
+    out.textContent = 'Спрашиваю…';
+    try {
+      const r = await api('/admin/api/agents/' + b.dataset.mping + '/ping', { method: 'POST' });
+      out.textContent = r.ok ? 'Ответил за ' + r.ms + ' мс' : r.error;
     } catch (error) {
-      out.className = 'err';
       out.textContent = error.message;
     }
-    $('ping').disabled = false;
-    badges();
+  }));
+  $('agent').querySelectorAll('[data-up]').forEach((b) => b.addEventListener('click', () =>
+    api('/admin/api/agents/' + b.dataset.up + '/move', { method: 'POST', body: JSON.stringify({ up: true }) })
+      .then(drawAgent).catch(complain)));
+  $('agent').querySelectorAll('[data-down]').forEach((b) => b.addEventListener('click', () =>
+    api('/admin/api/agents/' + b.dataset.down + '/move', { method: 'POST', body: JSON.stringify({ up: false }) })
+      .then(drawAgent).catch(complain)));
+  $('agent').querySelectorAll('[data-mkey]').forEach((b) => b.addEventListener('click', async () => {
+    if (!confirm('Выпустить новый ключ? Прежний перестанет работать сразу.')) return;
+    try {
+      showAgentKey(await api('/admin/api/agents/' + b.dataset.mkey + '/key', { method: 'POST' }));
+    } catch (error) { complain(error); }
+  }));
+  $('agent').querySelectorAll('[data-mdel]').forEach((b) => b.addEventListener('click', async () => {
+    if (!confirm('Удалить компьютер? Он отключится сразу.')) return;
+    try {
+      await api('/admin/api/agents/' + b.dataset.mdel, { method: 'DELETE' });
+      drawAgent();
+    } catch (error) { complain(error); }
+  }));
+}
+
+function showAgentKey(made) {
+  const box = $('agent-made');
+  box.innerHTML = 'Ключ для «' + safe(made.name) + '»: <span class="code" style="font-size:0.9375rem">'
+    + safe(made.key) + '</span> <button class="btn ghost tiny" id="copy-agent-key">скопировать</button>'
+    + '<div class="muted" style="margin-top:0.5rem">Показывается один раз — вставьте его в PasteTalk сейчас.</div>';
+  $('copy-agent-key').addEventListener('click', (event) => {
+    navigator.clipboard.writeText(made.key).then(() => { event.target.textContent = 'скопировано'; });
   });
 }
+
 
 // ---------- настройки ----------
 

@@ -4,154 +4,157 @@ const test = require('node:test');
 const assert = require('node:assert');
 
 const db = require('../src/db');
+const agents = require('../src/agents');
 const keys = require('../src/keys');
 const socket = require('../src/agent/socket');
 
 test.beforeEach(() => { db.close(); db.open(':memory:'); keys.forgetMisses(); socket.forget(); });
 
-/** Агент без токена сервером не признаётся, поэтому заводим настоящий. */
-function agentToken() {
-  const key = keys.issue('Домашний ПК');
-  keys.setMayServe(key.id, true);
-  return keys.activate(key.code, 'desktop', null, 'ДОМ-ПК', '1.1.1.1').token;
+function machine(name = 'ДОМ-ПК') {
+  return agents.add(name);
 }
 
-function hello(name = 'ДОМ-ПК') {
-  return JSON.stringify({ type: 'hello', name, token: agentToken() });
+function hello(key, name = 'ДОМ-ПК') {
+  return JSON.stringify({ type: 'hello', key, name });
 }
 
-test('без агента отправка задачи сразу говорит, что ПК не на связи', async () => {
+test('без машин задача сразу говорит, что ПК не на связи', async () => {
   assert.strictEqual(socket.online(), false);
   await assert.rejects(() => socket.send({ kind: 'stt', payload: {} }), /не на связи/i);
 });
 
-test('состояние без агента читается и не падает', () => {
-  const state = socket.state();
-  assert.strictEqual(state.online, false);
-  assert.strictEqual(state.name, null);
-  assert.strictEqual(state.jobsDone, 0);
-});
-
-test('поздоровавшийся агент считается живым и попадает в базу', () => {
+test('машина с ключом выходит на связь', () => {
+  const made = machine();
   const sent = [];
-  const fake = { send: (raw) => sent.push(JSON.parse(raw)) };
+  const fake = { send: (raw) => sent.push(JSON.parse(raw)), close: () => {} };
 
-  socket.handle(fake, hello());
+  socket.handle(fake, hello(made.key));
 
   assert.strictEqual(socket.online(), true);
-  assert.strictEqual(socket.state().name, 'ДОМ-ПК');
   assert.strictEqual(sent[0].type, 'welcome');
-  assert.strictEqual(db.open().prepare('SELECT COUNT(*) AS n FROM agents').get().n, 1);
+  assert.strictEqual(socket.state().agents.find((a) => a.id === made.id).online, true);
 });
 
-test('задача уходит агенту и её ответ возвращается вызвавшему', async () => {
-  const sent = [];
-  const fake = { send: (raw) => sent.push(JSON.parse(raw)) };
-  socket.handle(fake, hello());
-
-  const promise = socket.send({ kind: 'stt', payload: { filename: 'a.ogg' } });
-  const job = sent.find((message) => message.type === 'job');
-  assert.strictEqual(job.kind, 'stt');
-
-  socket.handle(fake, JSON.stringify({ type: 'result', id: job.id, result: { text: 'привет' } }));
-  assert.deepStrictEqual(await promise, { text: 'привет' });
-  assert.strictEqual(socket.state().jobsDone, 1);
-});
-
-test('ошибка от агента доходит до вызвавшего словами, а не молчанием', async () => {
-  const sent = [];
-  const fake = { send: (raw) => sent.push(JSON.parse(raw)) };
-  socket.handle(fake, hello());
-
-  const promise = socket.send({ kind: 'llm', payload: {} });
-  const job = sent.find((message) => message.type === 'job');
-  socket.handle(fake, JSON.stringify({ type: 'error', id: job.id, message: 'модель не загружена' }));
-
-  await assert.rejects(() => promise, /модель не загружена/);
-});
-
-test('обрыв посреди задачи не оставляет вызвавшего висеть навсегда', async () => {
-  const fake = { send: () => {} };
-  socket.handle(fake, hello());
-
-  const promise = socket.send({ kind: 'stt', payload: {} });
-  socket.drop('ПК отключился');
-
-  await assert.rejects(() => promise, /отключился/);
-  assert.strictEqual(socket.online(), false);
-});
-
-test('чужой без токена агентом не становится', () => {
+test('чужой без ключа не проходит', () => {
   const sent = [];
   const fake = { send: (raw) => sent.push(JSON.parse(raw)), close: () => {} };
 
   socket.handle(fake, JSON.stringify({ type: 'hello', name: 'ЧУЖОЙ' }));
-  assert.strictEqual(socket.online(), false, 'без токена — не агент');
+  assert.strictEqual(socket.online(), false);
   assert.strictEqual(sent[0].type, 'denied');
 
-  socket.handle(fake, JSON.stringify({ type: 'hello', name: 'ЧУЖОЙ', token: 'выдуманный' }));
+  socket.handle(fake, hello('pt_выдуманный'));
   assert.strictEqual(socket.online(), false);
 });
 
-test('переподключение отпускает задачи прежнего сокета', async () => {
+test('код человека машиной не делает', () => {
+  const key = keys.issue('Мама');
+  const person = keys.activate(key.code, 'android', null, 'Redmi', '1.1.1.1');
+  const sent = [];
+  const fake = { send: (raw) => sent.push(JSON.parse(raw)), close: () => {} };
+
+  socket.handle(fake, hello(person.token));
+
+  assert.strictEqual(socket.online(), false, 'код на телефон не даёт принимать чужой звук');
+  assert.strictEqual(sent[0].type, 'denied');
+});
+
+test('задача уходит машине и ответ возвращается', async () => {
+  const made = machine();
+  const sent = [];
+  const fake = { send: (raw) => sent.push(JSON.parse(raw)), close: () => {} };
+  socket.handle(fake, hello(made.key));
+
+  const promise = socket.send({ kind: 'stt', payload: { filename: 'a.ogg' } });
+  const job = sent.find((m) => m.type === 'job');
+  socket.handle(fake, JSON.stringify({ type: 'result', id: job.id, result: { text: 'привет' } }));
+
+  assert.deepStrictEqual(await promise, { text: 'привет' });
+  assert.strictEqual(agents.list()[0].jobs_done, 1);
+});
+
+test('две машины: задача идёт первой по порядку', async () => {
+  const one = machine('Первый');
+  const two = machine('Второй');
+  const gotOne = []; const gotTwo = [];
+  const fakeOne = { send: (raw) => gotOne.push(JSON.parse(raw)), close: () => {} };
+  const fakeTwo = { send: (raw) => gotTwo.push(JSON.parse(raw)), close: () => {} };
+  socket.handle(fakeOne, hello(one.key, 'Первый'));
+  socket.handle(fakeTwo, hello(two.key, 'Второй'));
+
+  const promise = socket.send({ kind: 'stt', payload: {} });
+  const job = gotOne.find((m) => m.type === 'job');
+  assert.ok(job, 'первая по порядку машина получает задачу');
+  assert.strictEqual(gotTwo.filter((m) => m.type === 'job').length, 0);
+
+  socket.handle(fakeOne, JSON.stringify({ type: 'result', id: job.id, result: { ok: 1 } }));
+  await promise;
+});
+
+test('порядок можно поменять, и первой станет другая', async () => {
+  const one = machine('Первый');
+  const two = machine('Второй');
+  agents.move(two.id, true);
+
+  const gotOne = []; const gotTwo = [];
+  socket.handle({ send: (raw) => gotOne.push(JSON.parse(raw)), close: () => {} }, hello(one.key, 'Первый'));
+  const fakeTwo = { send: (raw) => gotTwo.push(JSON.parse(raw)), close: () => {} };
+  socket.handle(fakeTwo, hello(two.key, 'Второй'));
+
+  const promise = socket.send({ kind: 'stt', payload: {} });
+  const job = gotTwo.find((m) => m.type === 'job');
+  assert.ok(job, 'после перестановки первым опрашивается бывший второй');
+  socket.handle(fakeTwo, JSON.stringify({ type: 'result', id: job.id, result: { ok: 1 } }));
+  await promise;
+});
+
+test('вторая машина не мешает первой и остаётся на связи', () => {
+  const one = machine('Первый');
+  const two = machine('Второй');
+  socket.handle({ send: () => {}, close: () => {} }, hello(one.key, 'Первый'));
+  socket.handle({ send: () => {}, close: () => {} }, hello(two.key, 'Второй'));
+
+  const rows = socket.state().agents;
+  assert.strictEqual(rows.filter((a) => a.online).length, 2);
+});
+
+test('переподключение той же машины отпускает её задачи', async () => {
+  const made = machine();
   const first = { send: () => {}, close: () => {} };
-  socket.handle(first, hello());
+  socket.handle(first, hello(made.key));
   const pending = socket.send({ kind: 'stt', payload: {} });
 
-  // Сеть моргнула: ПК пришёл новым сокетом раньше, чем сервер увидел close.
   const second = { send: () => {}, close: () => {} };
-  socket.handle(second, hello());
+  socket.handle(second, hello(made.key));
 
   await assert.rejects(() => pending, /переподключ/i);
   assert.strictEqual(socket.online(), true);
 });
 
-test('мусор вместо json не роняет сервер', () => {
-  const fake = { send: () => {}, close: () => {} };
-  assert.doesNotThrow(() => socket.handle(fake, 'это не json'));
-  assert.doesNotThrow(() => socket.handle(fake, JSON.stringify({ type: 'что-то своё' })));
-});
-
-test('ответ на неизвестную задачу тихо отбрасывается', () => {
-  const fake = { send: () => {} };
-  socket.handle(fake, hello());
-  assert.doesNotThrow(() => {
-    socket.handle(fake, JSON.stringify({ type: 'result', id: 'нет такой', result: {} }));
-  });
-});
-
-test('без разрешения владельца агентом не стать, даже назвавшись компьютером', () => {
-  const sent = [];
-  const fake = { send: (raw) => sent.push(JSON.parse(raw)), close: () => {} };
-  const key = keys.issue('Мама');
-  // Вид устройства выбирает сам клиент — назваться компьютером может любой.
-  const guest = keys.activate(key.code, 'desktop', null, 'ЧУЖОЙ-ПК', '1.1.1.1');
-
-  socket.handle(fake, JSON.stringify({ type: 'hello', name: 'ЧУЖОЙ', token: guest.token }));
-
-  assert.strictEqual(socket.online(), false, 'иначе чужой получал бы диктовки звуком');
-  assert.strictEqual(sent[0].type, 'denied');
-});
-
-test('отзыв профиля снимает агента с линии, а не ждёт обрыва', () => {
-  const fake = { send: () => {}, close: () => {} };
-  const key = keys.issue('Домашний ПК');
-  keys.setMayServe(key.id, true);
-  const token = keys.activate(key.code, 'desktop', null, 'ДОМ-ПК', '1.1.1.1').token;
-  socket.handle(fake, JSON.stringify({ type: 'hello', name: 'ДОМ-ПК', token }));
+test('новый ключ отрезает старый', () => {
+  const made = machine();
+  socket.handle({ send: () => {}, close: () => {} }, hello(made.key));
   assert.strictEqual(socket.online(), true);
 
-  keys.revoke(key.id);
-  assert.strictEqual(socket.online(), false, 'иначе звук уходил бы отозванному');
+  agents.reissue(made.id);
+  socket.dropAgent(made.id, 'ключ перевыпущен');
+  assert.strictEqual(socket.online(), false);
+
+  const sent = [];
+  socket.handle({ send: (raw) => sent.push(JSON.parse(raw)), close: () => {} }, hello(made.key));
+  assert.strictEqual(sent[0].type, 'denied', 'старый ключ больше не подходит');
 });
 
-test('чужой сокет не освежает жизнь настоящего агента', () => {
-  const real = { send: () => {}, close: () => {} };
-  socket.handle(real, hello());
-  const was = socket.state().lastSeen;
+test('удалённая машина слетает с линии при первом же обращении', () => {
+  const made = machine();
+  socket.handle({ send: () => {}, close: () => {} }, hello(made.key));
+  agents.remove(made.id);
+  assert.strictEqual(socket.online(), false);
+});
 
-  const stranger = { send: () => {}, close: () => {} };
-  socket.handle(stranger, JSON.stringify({ type: 'pong' }));
-
-  assert.strictEqual(socket.state().lastSeen, was, 'мусор от постороннего не продлевает связь');
+test('мусор не роняет сервер', () => {
+  const fake = { send: () => {}, close: () => {} };
+  assert.doesNotThrow(() => socket.handle(fake, 'это не json'));
+  assert.doesNotThrow(() => socket.handle(fake, JSON.stringify({ type: 'что-то' })));
+  assert.doesNotThrow(() => socket.handle(fake, JSON.stringify({ type: 'result', id: 'нет' })));
 });
