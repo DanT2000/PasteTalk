@@ -15,9 +15,13 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.PasteTalk">
 
+        <!-- Только портрет: поворот пересоздаёт экран, а вместе с ним
+             обрывалась бы запись и пропадал уже распознанный текст. Для
+             приложения с одной кнопкой альбомная ориентация не нужна. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:screenOrientation="portrait"
             android:windowSoftInputMode="adjustResize"
             android:theme="@style/Theme.PasteTalk">
             <intent-filter>

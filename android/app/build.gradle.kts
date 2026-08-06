@@ -1,8 +1,19 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
+
+// Подпись релиза. Ключ и пароль лежат рядом с проектом и в репозиторий
+// не идут: без них собирается неподписанный APK, чего хватает для
+// отладки, но не для установки на телефон.
+val localProps = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}
+val signingStore = rootProject.file(localProps.getProperty("signing.store") ?: "pastetalk-release.jks")
 
 android {
     namespace = "ru.appswire.pastetalk"
@@ -14,13 +25,25 @@ android {
         // свежую систему от человека, которому нужна одна кнопка, незачем.
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "2.7.1"
+    }
+
+    signingConfigs {
+        create("release") {
+            if (signingStore.exists()) {
+                storeFile = signingStore
+                storePassword = localProps.getProperty("signing.password") ?: ""
+                keyAlias = localProps.getProperty("signing.alias") ?: "pastetalk"
+                keyPassword = localProps.getProperty("signing.password") ?: ""
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release").takeIf { it.storeFile != null }
         }
     }
 

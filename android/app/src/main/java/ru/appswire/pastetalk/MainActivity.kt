@@ -4,9 +4,12 @@ import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -51,6 +54,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -73,6 +77,23 @@ private val ORANGE = Color(0xFFE9A72C)
 private val DARK = Color(0xFF1B1B1F)
 private val MUTED = Color(0xFFA0A0AC)
 private val RED = Color(0xFFF2686C)
+
+/**
+ * Сетевые исключения по-русски.
+ *
+ * Сообщения Java-исключений английские («Read timed out», «Unable to
+ * resolve host…») — показывать их человеку, который и по-русски читает
+ * с трудом, нельзя.
+ */
+private fun humanError(error: Throwable, fallback: String): String = when (error) {
+    is java.net.SocketTimeoutException ->
+        "Сервер очень долго не отвечает. Попробуйте ещё раз чуть позже"
+    is java.net.UnknownHostException, is java.net.ConnectException ->
+        "Нет связи с сервером. Проверьте интернет и адрес сервера"
+    is javax.net.ssl.SSLException ->
+        "Не удалось установить защищённое соединение. Проверьте адрес сервера"
+    else -> error.message ?: fallback
+}
 
 class MainActivity : ComponentActivity() {
 
@@ -208,7 +229,7 @@ private fun ConnectScreen(store: Store, api: Api, onDone: () -> Unit) {
                     busy = false
                     outcome.fold(
                         onSuccess = { onDone() },
-                        onFailure = { error = it.message ?: "Не удалось подключиться" },
+                        onFailure = { error = humanError(it, "Не удалось подключиться") },
                     )
                 }
             },
@@ -241,10 +262,33 @@ private fun MainScreen(api: Api, voice: Voice, onSettings: () -> Unit, onRevoked
                 == PackageManager.PERMISSION_GRANTED,
         )
     }
+    // Отказали дважды — система больше не показывает диалог, и нажатия
+    // на кнопку молча ничего не делали. Из этого тупика нужен выход.
+    var deniedForever by remember { mutableStateOf(false) }
 
     val ask = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
-    ) { granted -> mayRecord = granted }
+    ) { granted ->
+        mayRecord = granted
+        if (!granted) {
+            val activity = context as? ComponentActivity
+            deniedForever =
+                activity?.shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO) == false
+            note = if (deniedForever) {
+                "Запись запрещена. Нажмите большую кнопку — откроются настройки телефона, там включите «Микрофон»"
+            } else {
+                "Без микрофона записать не выйдет. Нажмите кнопку ещё раз и разрешите запись"
+            }
+        }
+    }
+
+    // Пока идёт запись, экран не гаснет: раньше телефон засыпал по своему
+    // таймауту, Android останавливал приложение, и длинная диктовка
+    // пропадала целиком — хотя человек просто говорил, не трогая экран.
+    val view = LocalView.current
+    LaunchedEffect(stage) {
+        view.keepScreenOn = stage == Stage.RECORDING
+    }
 
     // Свернули приложение, повернули телефон, ответили на звонок — запись
     // прервалась системой. Показываем это сразу, а не при нажатии.
@@ -299,7 +343,7 @@ private fun MainScreen(api: Api, voice: Voice, onSettings: () -> Unit, onRevoked
                 },
                 onFailure = { error ->
                     if (error is AccessRevoked) onRevoked()
-                    else note = error.message ?: "Что-то не вышло"
+                    else note = humanError(error, "Что-то не вышло")
                 },
             )
         }
@@ -322,7 +366,7 @@ private fun MainScreen(api: Api, voice: Voice, onSettings: () -> Unit, onRevoked
                     // Обычный текст остаётся при человеке: улучшение —
                     // надстройка, а не условие.
                     if (error is AccessRevoked) onRevoked()
-                    else note = "Причесать не вышло: ${error.message}"
+                    else note = "Причесать не вышло: ${humanError(error, "сервер не ответил")}"
                 },
             )
         }
@@ -348,7 +392,22 @@ private fun MainScreen(api: Api, voice: Voice, onSettings: () -> Unit, onRevoked
                 stage = stage,
                 seconds = seconds,
                 onClick = {
+                    // Человек мог только что дать разрешение в настройках
+                    // телефона — перепроверяем, а не верим старому отказу.
+                    mayRecord = ContextCompat.checkSelfPermission(
+                        context, Manifest.permission.RECORD_AUDIO,
+                    ) == PackageManager.PERMISSION_GRANTED
                     when {
+                        !mayRecord && deniedForever -> {
+                            // Диалога больше не будет — ведём прямиком в
+                            // настройки приложения, там разрешение включается.
+                            context.startActivity(
+                                Intent(
+                                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                    Uri.fromParts("package", context.packageName, null),
+                                ),
+                            )
+                        }
                         !mayRecord -> ask.launch(Manifest.permission.RECORD_AUDIO)
                         stage == Stage.RECORDING -> finish()
                         stage == Stage.IDLE -> runCatching { voice.start() }
@@ -364,6 +423,8 @@ private fun MainScreen(api: Api, voice: Voice, onSettings: () -> Unit, onRevoked
             Spacer(Modifier.height(20.dp))
             Text(
                 when {
+                    !mayRecord && deniedForever ->
+                        "Микрофон запрещён — кнопка откроет настройки, включите там «Микрофон»"
                     !mayRecord -> "Нужно разрешить запись"
                     stage == Stage.RECORDING -> "Идёт запись — нажмите, чтобы закончить"
                     stage == Stage.THINKING -> "Распознаю…"
@@ -382,7 +443,11 @@ private fun MainScreen(api: Api, voice: Voice, onSettings: () -> Unit, onRevoked
         if (text.isNotEmpty()) {
             ResultBlock(
                 text = text,
-                busy = stage == Stage.IMPROVING,
+                // Занято на всё время работы, включая «Распознаю…»: нажатие
+                // «Почистить» во время распознавания запускало второй запрос
+                // наперегонки с первым, и свежая диктовка молча заменялась
+                // причёсанной старой.
+                busy = stage != Stage.IDLE,
                 onCopy = {
                     copy(text)
                     note = "Текст скопирован"

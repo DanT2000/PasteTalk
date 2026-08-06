@@ -31,16 +31,25 @@ class Voice(private val context: Context) {
             MediaRecorder()
         }
 
-        fresh.apply {
-            setAudioSource(MediaRecorder.AudioSource.VOICE_RECOGNITION)
-            setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
-            setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
-            setAudioSamplingRate(16_000)
-            setAudioChannels(1)
-            setAudioEncodingBitRate(32_000)
-            setOutputFile(target.absolutePath)
-            prepare()
-            start()
+        try {
+            fresh.apply {
+                setAudioSource(MediaRecorder.AudioSource.VOICE_RECOGNITION)
+                setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+                setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+                setAudioSamplingRate(16_000)
+                setAudioChannels(1)
+                setAudioEncodingBitRate(32_000)
+                setOutputFile(target.absolutePath)
+                prepare()
+                start()
+            }
+        } catch (error: Exception) {
+            // Микрофон занят звонком или ассистентом. Не стартовавший
+            // MediaRecorder всё равно надо освободить: каждое повторное
+            // нажатие иначе копит неосвобождённые нативные ресурсы.
+            fresh.release()
+            target.delete()
+            throw error
         }
 
         recorder = fresh

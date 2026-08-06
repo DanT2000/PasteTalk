@@ -1,6 +1,7 @@
 package ru.appswire.pastetalk
 
 import android.util.Base64
+import org.json.JSONException
 import org.json.JSONObject
 import java.io.IOException
 import java.net.HttpURLConnection
@@ -19,10 +20,27 @@ class AccessRevoked : IOException("Доступ отозван")
 
 class Api(private val store: Store) {
 
-    private fun open(path: String, timeoutMs: Int): HttpURLConnection {
-        val base = store.serverUrl
+    /**
+     * Привести адрес к виду, с которым соединение вообще возможно.
+     *
+     * Человек набирает адрес руками и чаще всего без «https://» — а без
+     * схемы URL() бросает английское «no protocol», прочитать которое
+     * нельзя. «http://» переписываем на «https://»: обычный трафик всё
+     * равно запрещён настройками безопасности — кроме адресов эмулятора,
+     * на которых живёт разработка.
+     */
+    private fun normalize(raw: String): String {
+        val given = raw.trim().trimEnd('/')
             .replace(Regex("^wss:", RegexOption.IGNORE_CASE), "https:")
             .replace(Regex("^ws:", RegexOption.IGNORE_CASE), "http:")
+        val withScheme = if (given.contains("://")) given else "https://$given"
+        val local = Regex("^http://(10\\.0\\.2\\.2|localhost|127\\.0\\.0\\.1)([:/]|$)", RegexOption.IGNORE_CASE)
+        return if (local.containsMatchIn(withScheme)) withScheme
+        else withScheme.replace(Regex("^http:", RegexOption.IGNORE_CASE), "https:")
+    }
+
+    private fun open(path: String, timeoutMs: Int): HttpURLConnection {
+        val base = normalize(store.serverUrl)
         return (URL("$base$path").openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
             doOutput = true
@@ -38,18 +56,33 @@ class Api(private val store: Store) {
         val code = connection.responseCode
         val stream = if (code in 200..299) connection.inputStream else connection.errorStream
         val text = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() } ?: ""
-        val json = if (text.isBlank()) JSONObject() else JSONObject(text)
+        // Пока контейнер сервера перезапускается, вместо JSON приходит
+        // HTML-страница «502 Bad Gateway» от прокси. Падать на её разборе
+        // нельзя: человек увидел бы «Value <html> of type…» вместо ответа.
+        val json = if (text.isBlank()) JSONObject() else try {
+            JSONObject(text)
+        } catch (broken: JSONException) {
+            JSONObject()
+        }
 
         if (code == 401) throw AccessRevoked()
         if (code !in 200..299) {
-            throw IOException(json.optString("error").ifBlank { "Сервер ответил $code" })
+            throw IOException(json.optString("error").ifBlank {
+                if (code in 500..599) "Сервер сейчас недоступен. Подождите минуту и попробуйте ещё раз"
+                else "Сервер ответил $code"
+            })
+        }
+        if (text.isNotBlank() && json.length() == 0) {
+            throw IOException("Сервер ответил непонятно — возможно, он перезапускается. Попробуйте ещё раз")
         }
         return json
     }
 
     /** Обменять шесть цифр на постоянный токен. */
     fun activate(url: String, code: String, title: String): String {
-        store.serverUrl = url
+        // В память кладём уже приведённый адрес: пусть и в настройках, и
+        // при повторной привязке он выглядит так, как реально используется.
+        store.serverUrl = normalize(url)
         val connection = open("/v1/activate", 20_000)
         val answer = send(
             connection,
@@ -72,7 +105,11 @@ class Api(private val store: Store) {
      * главный сценарий, был бы невидим в админке.
      */
     fun transcribe(audio: ByteArray, seconds: Int): String {
-        val connection = open("/v1/transcribe", 300_000)
+        // Дольше, чем любой законный путь на сервере: задача домашнему
+        // компьютеру живёт до десяти минут, плюс очередь. Раньше телефон
+        // сдавался на пятой минуте — сервер доделывал работу и списывал
+        // расход, а результат доставался никому.
+        val connection = open("/v1/transcribe", 660_000)
         connection.setRequestProperty("Authorization", "Bearer ${store.token}")
         val answer = send(
             connection,
@@ -87,7 +124,8 @@ class Api(private val store: Store) {
     /** Причесать уже полученный текст. Сервер его у себя не хранит, поэтому
      *  посылаем целиком. */
     fun improve(text: String, mode: String): String {
-        val connection = open("/v1/improve", 240_000)
+        // Как и распознавание — с запасом над серверными пределами.
+        val connection = open("/v1/improve", 660_000)
         connection.setRequestProperty("Authorization", "Bearer ${store.token}")
         val answer = send(
             connection,
