@@ -34,11 +34,13 @@ async function transcribe(providerId, { audio, filename, language, clientSeconds
   const preset = CLOUD[providerId];
   if (!preset) throw new Error(`Провайдер ${providerId} неизвестен`);
 
-  const baseUrl = settings.get(`url.${providerId}`, preset.baseUrl);
+  // «||», а не значение по умолчанию из get(): форма сохраняет пустую
+  // строку как «стандартная модель», и get() вернул бы именно пустоту.
+  const baseUrl = settings.get(`url.${providerId}`, '') || preset.baseUrl;
   if (!baseUrl) throw new Error(`Для ${preset.title} не задан адрес`);
   const key = settings.get(`key.${providerId}`, '');
   if (preset.needsKey && !key) throw new Error(`Для ${preset.title} не задан ключ`);
-  const model = settings.get(`model.stt.${providerId}`, preset.defaultSttModel || 'whisper-1');
+  const model = settings.get(`model.stt.${providerId}`, '') || preset.defaultSttModel || 'whisper-1';
 
   const form = new FormData();
   // .oga шлюзы отвергают, хотя это тот же ogg: у них список расширений, а

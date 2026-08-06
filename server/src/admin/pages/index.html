@@ -99,6 +99,11 @@ input, select, textarea {
 label.field input, label.field select { width: 100%; max-width: 28rem; display: block; margin-top: 0.3rem; }
 /* Промпты длинные — им и поле пошире, и перенос строк как в тексте. */
 label.field textarea { width: 100%; max-width: 44rem; display: block; margin-top: 0.3rem; resize: vertical; line-height: 1.45; }
+/* Модель и её цены — в один ряд: цена без модели не имеет смысла. */
+.pair { display: flex; gap: 1rem; flex-wrap: wrap; max-width: 44rem; }
+.pair .field { flex: 1 1 14rem; }
+.pair .field.narrow { flex: 0 1 9rem; }
+hr.sep { border: none; border-top: 1px solid var(--line); margin: 1.25rem 0; }
 label.field .why { display: block; margin-top: 0.3rem; font-size: 0.8125rem; }
 .btn {
   font: inherit; padding: 0.5rem 1rem; border-radius: 0.5rem; cursor: pointer;
@@ -631,85 +636,90 @@ function showAgentKey(made) {
 
 // ---------- настройки ----------
 
-let priceTable = { stt: {}, llm: {} };
+/**
+ * Блок одного провайдера: ключ, модели и цены в одном месте.
+ *
+ * Раньше ключи, порядок и прайс-лист жили тремя карточками, и связь
+ * между ними приходилось держать в голове: в прайсе одни модели, в
+ * расходе другие, а какая откуда — непонятно. Теперь цена стоит рядом
+ * с моделью, к которой относится.
+ */
+function providerBlock(id, p, get, prices) {
+  const sttModel = String(get('model.stt.' + id, '') || '');
+  const llmModel = String(get('model.llm.' + id, '') || '');
+  const sttUsed = sttModel || p.defaultSttModel || '';
+  const llmUsed = llmModel || p.defaultModel || '';
+  const sttPrice = prices.stt?.[sttUsed];
+  const llmPrice = prices.llm?.[llmUsed] || {};
 
-function priceRows() {
-  const stt = Object.entries(priceTable.stt || {}).map(([model, rub], i) =>
-    '<tr>'
-    + '<td><input data-stt-name="' + i + '" value="' + safe(model) + '"></td>'
-    + '<td><input data-stt-val="' + i + '" value="' + rub + '" type="number" step="0.01" min="0" style="max-width:7rem"></td>'
-    + '<td><button class="btn ghost tiny" data-drop-stt="' + safe(model) + '">убрать</button></td>'
-    + '</tr>').join('');
-
-  const llm = Object.entries(priceTable.llm || {}).map(([model, row], i) =>
-    '<tr>'
-    + '<td><input data-llm-name="' + i + '" value="' + safe(model) + '"></td>'
-    + '<td><input data-llm-in="' + i + '" value="' + row.in + '" type="number" step="1" min="0" style="max-width:6rem"></td>'
-    + '<td><input data-llm-out="' + i + '" value="' + row.out + '" type="number" step="1" min="0" style="max-width:6rem"></td>'
-    + '<td><button class="btn ghost tiny" data-drop-llm="' + safe(model) + '">убрать</button></td>'
-    + '</tr>').join('');
-
-  return '<h3>Распознавание речи — рублей за минуту звука</h3>'
-    + '<div class="wrap-x"><table><tr><th>Модель</th><th>₽ / мин</th><th></th></tr>'
-    + (stt || '<tr><td colspan="3" class="muted">пусто</td></tr>') + '</table></div>'
-    + '<div class="row-actions" style="margin-top:0.75rem"><button class="btn ghost tiny" id="add-stt">Добавить модель</button></div>'
-    + '<h3>Улучшение текста — рублей за миллион токенов</h3>'
-    + '<div class="wrap-x"><table><tr><th>Модель</th><th>₽ вход</th><th>₽ выход</th><th></th></tr>'
-    + (llm || '<tr><td colspan="4" class="muted">пусто</td></tr>') + '</table></div>'
-    + '<div class="row-actions" style="margin-top:0.75rem"><button class="btn ghost tiny" id="add-llm">Добавить модель</button></div>';
+  let out = '<h3>' + safe(p.title) + ' — ' + (p.stt ? 'речь и текст' : 'только текст') + '</h3>';
+  if (p.needsKey) {
+    out += keyField('Ключ', 'key.' + id, get('key.' + id, ''),
+      'Берётся в личном кабинете провайдера. Минус — стереть');
+  }
+  if (id === 'custom') {
+    out += '<label class="field">Адрес сервера'
+      + '<input data-set="url.custom" value="' + safe(get('url.custom', '')) + '" placeholder="https://адрес/v1">'
+      + '<span class="why muted">OpenAI-совместимый. Пусто — провайдер не используется</span></label>';
+  }
+  if (p.stt) {
+    out += '<div class="pair">'
+      + '<label class="field">Модель распознавания'
+      + '<input data-set="model.stt.' + id + '" value="' + safe(sttModel) + '" placeholder="' + safe(p.defaultSttModel || 'имя модели') + '">'
+      + '</label>'
+      + '<label class="field narrow">₽ за минуту звука'
+      + '<input data-price-stt="' + id + '" type="number" step="0.01" min="0" value="' + (sttPrice ?? '') + '">'
+      + '</label></div>';
+  }
+  out += '<div class="pair">'
+    + '<label class="field">Модель текста'
+    + '<input data-set="model.llm.' + id + '" value="' + safe(llmModel) + '" placeholder="' + safe(p.defaultModel || 'имя модели') + '">'
+    + '</label>'
+    + '<label class="field narrow">₽ вход, 1 млн ток.'
+    + '<input data-price-in="' + id + '" type="number" step="0.01" min="0" value="' + (llmPrice.in ?? '') + '">'
+    + '</label>'
+    + '<label class="field narrow">₽ выход, 1 млн ток.'
+    + '<input data-price-out="' + id + '" type="number" step="0.01" min="0" value="' + (llmPrice.out ?? '') + '">'
+    + '</label></div>';
+  return out;
 }
 
-/** Собрать прайс из полей. Имена моделей тоже правятся, поэтому идём по номерам. */
-function readPrices() {
-  const table = { stt: {}, llm: {} };
-  document.querySelectorAll('[data-stt-name]').forEach((input) => {
-    const model = input.value.trim();
-    if (!model) return;
-    const value = document.querySelector('[data-stt-val="' + input.dataset.sttName + '"]');
-    table.stt[model] = Number(value ? value.value : 0) || 0;
-  });
-  document.querySelectorAll('[data-llm-name]').forEach((input) => {
-    const model = input.value.trim();
-    if (!model) return;
-    const i = input.dataset.llmName;
-    table.llm[model] = {
-      in: Number(document.querySelector('[data-llm-in="' + i + '"]')?.value || 0) || 0,
-      out: Number(document.querySelector('[data-llm-out="' + i + '"]')?.value || 0) || 0,
-    };
-  });
-  return table;
+/** Выпадающий выбор провайдера для порядка обращения. */
+function chainSelect(label, kind, index, options, chosen) {
+  return '<label class="field">' + label
+    + '<select data-chain="' + kind + '-' + index + '">'
+    + '<option value=""' + (chosen ? '' : ' selected') + '>— никто —</option>'
+    + options.map(([id, title]) =>
+      '<option value="' + id + '"' + (chosen === id ? ' selected' : '') + '>' + safe(title) + '</option>').join('')
+    + '</select></label>';
 }
 
-function redrawPrices() {
-  $('prices').innerHTML = priceRows();
-  bindPriceButtons();
+/**
+ * Селекты порядка для одной работы. Обычно их два, но сохранённая раньше
+ * цепочка могла быть длиннее — тогда рисуем все её позиции, чтобы третий
+ * запасной не пропал молча при первом же сохранении формы.
+ */
+function chainRow(title, kind, options, chain) {
+  const slots = Math.max(2, (chain || []).length);
+  let out = '';
+  for (let i = 0; i < slots; i++) {
+    const label = title + ' — ' + (i === 0 ? 'основной' : (slots > 2 ? 'запасной ' + i : 'запасной'));
+    out += chainSelect(label, kind, i, options, (chain || [])[i] || '');
+  }
+  return out;
 }
 
-function bindPriceButtons() {
-  $('add-stt')?.addEventListener('click', () => {
-    priceTable = readPrices();
-    priceTable.stt['новая-модель'] = 0;
-    redrawPrices();
-  });
-  $('add-llm')?.addEventListener('click', () => {
-    priceTable = readPrices();
-    priceTable.llm['новая-модель'] = { in: 0, out: 0 };
-    redrawPrices();
-  });
-  document.querySelectorAll('[data-drop-stt]').forEach((button) => {
-    button.addEventListener('click', () => {
-      priceTable = readPrices();
-      delete priceTable.stt[button.dataset.dropStt];
-      redrawPrices();
-    });
-  });
-  document.querySelectorAll('[data-drop-llm]').forEach((button) => {
-    button.addEventListener('click', () => {
-      priceTable = readPrices();
-      delete priceTable.llm[button.dataset.dropLlm];
-      redrawPrices();
-    });
-  });
+/**
+ * Промпт показывается действующим текстом, а не серой подсказкой:
+ * владельцу нужно дописывать и переделывать его, а не набирать с нуля.
+ */
+function promptField(label, key, def, saved, why) {
+  const value = String(saved || '').trim() || def;
+  return '<label class="field">' + label
+    + '<textarea data-set="' + key + '" rows="6">' + safe(value) + '</textarea>'
+    + '<span class="why muted">' + why + '</span></label>'
+    + '<div class="row-actions" style="margin-bottom:1rem">'
+    + '<button class="btn ghost tiny" data-prompt-reset="' + key + '">Вернуть стандартный</button></div>';
 }
 
 function keyField(label, key, value, why) {
@@ -722,8 +732,17 @@ function keyField(label, key, value, why) {
 
 async function drawSettings() {
   const data = await api('/admin/api/settings');
-  priceTable = JSON.parse(JSON.stringify(data.prices || { stt: {}, llm: {} }));
+  const priceTable = JSON.parse(JSON.stringify(data.prices || { stt: {}, llm: {} }));
+  const providers = data.providers || {};
   const get = (key, fallback) => (data.settings[key] === undefined ? fallback : data.settings[key]);
+  const promptDefaults = {
+    'prompt.clean': data.prompts?.clean || '',
+    'prompt.both': data.prompts?.both || '',
+  };
+  const chainStt = get('chain.stt', ['aitunnel']) || [];
+  const chainLlm = get('chain.llm', ['deepseek']) || [];
+  const sttOptions = Object.entries(providers).filter(([, p]) => p.stt).map(([id, p]) => [id, p.title]);
+  const llmOptions = Object.entries(providers).map(([id, p]) => [id, p.title]);
 
   $('settings').innerHTML =
     '<div class="card"><h2>Telegram-бот</h2>'
@@ -749,34 +768,24 @@ async function drawSettings() {
       + '<span id="proxy-res" class="muted"></span></div>'
     + '</div>'
 
-    + '<div class="card"><h2>Ключи провайдеров</h2>'
-    + '<p class="muted">Нужны, когда домашний компьютер выключен. Введённый ключ обратно не показывается: пустое поле оставляет его как был.</p>'
-    + keyField('AITunnel', 'key.aitunnel', get('key.aitunnel', ''), 'Умеет и речь, и текст. Ключ берётся на aitunnel.ru')
-    + keyField('OpenAI', 'key.openai', get('key.openai', ''), 'Умеет и речь, и текст')
-    + keyField('DeepSeek', 'key.deepseek', get('key.deepseek', ''), 'Только текст — распознавания речи у них нет')
+    + '<div class="card"><h2>Облако: провайдеры, модели и цены</h2>'
+    + '<p class="muted">Облако подхватывает работу, когда домашний компьютер выключен или занят — пока он на связи, платные провайдеры не трогаются. У каждого провайдера здесь всё своё: ключ, модели и цены. По этим ценам считается расход — сам провайдер стоимость не присылает, цифры берутся из его тарифов. Пустая модель — стандартная, пустая цена — расход по этой модели считается нулём. Работа домашнего компьютера бесплатна, её модели в ценах не нуждаются — поэтому они видны в расходе, но не здесь.</p>'
+    + Object.entries(providers).map(([id, p]) => providerBlock(id, p, get, priceTable)).join('<hr class="sep">')
     + '</div>'
 
-    + '<div class="card"><h2>Кого спрашивать и в каком порядке</h2>'
-    + '<p class="muted">Не ответил первый — идём ко второму. Через запятую.</p>'
-    + '<label class="field">Распознавание речи'
-      + '<input data-set="chain.stt" value="' + safe((get('chain.stt', ['aitunnel']) || []).join(', ')) + '">'
-      + '<span class="why muted">Можно: aitunnel, openai, custom. DeepSeek сюда нельзя — речь он не умеет</span></label>'
-    + '<label class="field">Улучшение текста'
-      + '<input data-set="chain.llm" value="' + safe((get('chain.llm', ['deepseek']) || []).join(', ')) + '">'
-      + '<span class="why muted">Можно: deepseek, openai, aitunnel, custom</span></label>'
+    + '<div class="card"><h2>Кого спрашивать в облаке</h2>'
+    + '<p class="muted">Порядок на случай сбоя: задача идёт основному провайдеру, не ответил — запасному. «Никто» в основном — облака для этой работы нет вовсе, сервер будет ждать домашний компьютер.</p>'
+    + chainRow('Распознавание речи', 'stt', sttOptions, chainStt)
+    + chainRow('Улучшение текста', 'llm', llmOptions, chainLlm)
     + '</div>'
 
     + '<div class="card"><h2>Промпты улучшения</h2>'
-    + '<p class="muted">Что модель делает с текстом по кнопкам «Почистить» и «Почистить и переписать» — в боте, с телефона и на домашнем компьютере, когда задача пришла с сервера. Пустое поле — стандартный промпт, он показан серым внутри. Хвост «'
+    + '<p class="muted">Это действующие промпты кнопок «Почистить» и «Почистить и переписать» — везде: в боте, с телефона и на домашнем компьютере, когда задача пришла с сервера. Правьте текст прямо здесь — копируйте, дописывайте, переделывайте. Хвост «'
       + safe(data.prompts?.tail || '') + '» сервер дописывает сам к любому варианту.</p>'
-    + '<label class="field">Почистить'
-      + '<textarea data-set="prompt.clean" rows="5" placeholder="' + safe(data.prompts?.clean || '') + '">'
-        + safe(get('prompt.clean', '')) + '</textarea>'
-      + '<span class="why muted">Осторожная правка: убрать паразитов и ошибки, ничего не переписывая</span></label>'
-    + '<label class="field">Почистить и переписать'
-      + '<textarea data-set="prompt.both" rows="8" placeholder="' + safe(data.prompts?.both || '') + '">'
-        + safe(get('prompt.both', '')) + '</textarea>'
-      + '<span class="why muted">Полная переработка. Стереть всё и сохранить — вернётся стандартный</span></label>'
+    + promptField('Почистить', 'prompt.clean', promptDefaults['prompt.clean'], get('prompt.clean', ''),
+      'Осторожная правка: убрать паразитов и ошибки, ничего не переписывая')
+    + promptField('Почистить и переписать', 'prompt.both', promptDefaults['prompt.both'], get('prompt.both', ''),
+      'Полная переработка: собрать мысли и сделать текст письменным')
     + '</div>'
 
     + '<div class="card"><h2>Когда домашний компьютер занят</h2>'
@@ -788,14 +797,114 @@ async function drawSettings() {
       + '<span class="why muted">Облако стоит копейки, но избавляет от «оно висит». Второй вариант — если платить не хочется совсем</span></label>'
     + '</div>'
 
-    + '<div class="card"><h2>Прайс-лист</h2>'
-    + '<p class="muted">Провайдеры фактическую стоимость не присылают, поэтому расход считается по этим числам. Меняются цены — поправьте здесь.</p>'
-    + '<div id="prices">' + priceRows() + '</div></div>'
-
     + '<div class="row-actions"><button class="btn" id="save-settings">Сохранить</button>'
     + '<span id="settings-note" class="muted"></span></div>';
 
-  bindPriceButtons();
+  // «Вернуть стандартный» — подставляет исходный текст промпта в поле;
+  // зафиксируется он только при сохранении.
+  document.querySelectorAll('[data-prompt-reset]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const area = document.querySelector('[data-set="' + button.dataset.promptReset + '"]');
+      if (area) area.value = promptDefaults[button.dataset.promptReset] || '';
+    });
+  });
+
+  // ---- цены: копия таблицы, в которую попадают только тронутые поля ----
+  //
+  // Цена принадлежит имени модели, а поле нарисовано в блоке провайдера.
+  // Два блока могут смотреть на одну модель (у DeepSeek и AITunnel одна
+  // стандартная), а модель в поле могут сменить, не трогая цену. Поэтому
+  // каждое поле цены помнит, для какой модели её показывает (forModel) и
+  // что в нём было (was): в таблицу уходит только то, что человек менял,
+  // и ровно под тем именем, для которого поле рисовалось.
+  const workingPrices = JSON.parse(JSON.stringify(priceTable));
+  const modelFor = (kind, id) => {
+    const typed = (document.querySelector('[data-set="model.' + kind + '.' + id + '"]')?.value || '').trim();
+    return typed || (kind === 'stt' ? providers[id]?.defaultSttModel : providers[id]?.defaultModel) || '';
+  };
+  const priceInputs = (id) => ({
+    stt: document.querySelector('[data-price-stt="' + id + '"]'),
+    llmIn: document.querySelector('[data-price-in="' + id + '"]'),
+    llmOut: document.querySelector('[data-price-out="' + id + '"]'),
+  });
+
+  // Тронутые поля — в копию таблицы, под именем модели, для которой рисовались.
+  const commitPrices = (id) => {
+    const inputs = priceInputs(id);
+    if (inputs.stt && inputs.stt.value !== inputs.stt.dataset.was) {
+      const model = inputs.stt.dataset.forModel;
+      if (model) {
+        if (inputs.stt.value.trim() === '') delete workingPrices.stt[model];
+        else workingPrices.stt[model] = Number(inputs.stt.value) || 0;
+      }
+      inputs.stt.dataset.was = inputs.stt.value;
+    }
+    if (inputs.llmIn && (inputs.llmIn.value !== inputs.llmIn.dataset.was
+      || inputs.llmOut.value !== inputs.llmOut.dataset.was)) {
+      const model = inputs.llmIn.dataset.forModel;
+      if (model) {
+        if (inputs.llmIn.value.trim() === '' && inputs.llmOut.value.trim() === '') {
+          delete workingPrices.llm[model];
+        } else {
+          workingPrices.llm[model] = {
+            in: Number(inputs.llmIn.value) || 0,
+            out: Number(inputs.llmOut.value) || 0,
+          };
+        }
+      }
+      inputs.llmIn.dataset.was = inputs.llmIn.value;
+      inputs.llmOut.dataset.was = inputs.llmOut.value;
+    }
+  };
+
+  // Показать в полях цену модели, действующей у провайдера сейчас.
+  const showPrices = (id) => {
+    const inputs = priceInputs(id);
+    if (inputs.stt) {
+      const model = modelFor('stt', id);
+      inputs.stt.value = workingPrices.stt[model] ?? '';
+      inputs.stt.dataset.was = inputs.stt.value;
+      inputs.stt.dataset.forModel = model;
+    }
+    if (inputs.llmIn) {
+      const model = modelFor('llm', id);
+      const row = workingPrices.llm[model] || {};
+      inputs.llmIn.value = row.in ?? '';
+      inputs.llmOut.value = row.out ?? '';
+      inputs.llmIn.dataset.was = inputs.llmIn.value;
+      inputs.llmOut.dataset.was = inputs.llmOut.value;
+      inputs.llmIn.dataset.forModel = model;
+      inputs.llmOut.dataset.forModel = model;
+    }
+  };
+
+  Object.keys(providers).forEach((id) => {
+    showPrices(id);
+    // Сменили модель — сначала фиксируем правку цены прежней, потом
+    // показываем цену новой: поле всегда честно про то, что под ним.
+    ['stt', 'llm'].forEach((kind) => {
+      document.querySelector('[data-set="model.' + kind + '.' + id + '"]')
+        ?.addEventListener('change', () => {
+          commitPrices(id);
+          showPrices(id);
+        });
+    });
+  });
+
+  // Запасной без основного не работает — и не должен выглядеть рабочим.
+  const syncBackups = (kind) => {
+    const main = document.querySelector('[data-chain="' + kind + '-0"]');
+    document.querySelectorAll('[data-chain]').forEach((select) => {
+      if (select.dataset.chain.indexOf(kind + '-') === 0 && select.dataset.chain !== kind + '-0') {
+        select.disabled = !main?.value;
+      }
+    });
+  };
+  ['stt', 'llm'].forEach((kind) => {
+    syncBackups(kind);
+    document.querySelector('[data-chain="' + kind + '-0"]')
+      ?.addEventListener('change', () => syncBackups(kind));
+  });
 
   $('bot-restart')?.addEventListener('click', async () => {
     const out = $('bot-restart-res');
@@ -833,18 +942,23 @@ async function drawSettings() {
     const note = $('settings-note');
     note.className = 'muted';
     note.textContent = 'Сохраняю…';
-    const body = { settings: {}, prices: readPrices() };
+    // body.prices заполняется ниже из рабочей копии таблицы цен.
+    const body = { settings: {}, prices: null };
+
     document.querySelectorAll('[data-set]').forEach((input) => {
       const key = input.dataset.set;
-      if (key.startsWith('chain.')) {
-        body.settings[key] = input.value.split(',').map((part) => part.trim()).filter(Boolean);
-      } else if (key === 'proxy.scope') {
+      if (key === 'proxy.scope') {
         body.settings[key] = input.value;
       } else if (key === 'spillToCloud') {
         body.settings[key] = input.value === 'true';
       } else if (key.startsWith('prompt.')) {
-        // Промпт — не секрет и виден в поле целиком, поэтому пустота здесь
-        // значит «вернуть стандартный», а не «не трогали».
+        // Совпадает со стандартным — не фиксируем: пусть будущие правки
+        // стандартного промпта доезжают сами. Пустота — тоже стандартный.
+        const value = input.value.trim();
+        body.settings[key] = value === (promptDefaults[key] || '') ? '' : value;
+      } else if (key.startsWith('model.') || key.startsWith('url.')) {
+        // Модель и адрес видны в поле целиком — пустота значит «стандарт»,
+        // а не «не трогали».
         body.settings[key] = input.value.trim();
       } else if (input.value.trim() === '-') {
         // Одинокий минус — «стереть». Пустое поле означает «не трогали»,
@@ -855,6 +969,26 @@ async function drawSettings() {
         body.settings[key] = input.value.trim();
       }
     });
+
+    // Порядок в облаке. Пустой основной выключает облако целиком — ровно
+    // как обещает карточка: запасной без основного не «повышается», а
+    // просто не используется.
+    const chainOf = (kind) => {
+      const values = [...document.querySelectorAll('[data-chain]')]
+        .filter((select) => select.dataset.chain.indexOf(kind + '-') === 0)
+        .sort((a, b) => Number(a.dataset.chain.split('-')[1]) - Number(b.dataset.chain.split('-')[1]))
+        .map((select) => select.value);
+      if (!values[0]) return [];
+      return [...new Set(values.filter(Boolean))];
+    };
+    body.settings['chain.stt'] = chainOf('stt');
+    body.settings['chain.llm'] = chainOf('llm');
+
+    // Цены: фиксируем тронутые поля и отдаём рабочую копию таблицы —
+    // нетронутые записи в ней ровно те, что пришли с сервера.
+    Object.keys(providers).forEach((id) => commitPrices(id));
+    body.prices = JSON.parse(JSON.stringify(workingPrices));
+
     try {
       const result = await api('/admin/api/settings', { method: 'POST', body: JSON.stringify(body) });
       note.className = 'ok';

@@ -32,11 +32,16 @@ async function improve(providerId, { text, mode }) {
   const preset = CLOUD[providerId];
   if (!preset) throw new Error(`Провайдер ${providerId} неизвестен`);
 
-  const baseUrl = settings.get(`url.${providerId}`, preset.baseUrl);
+  // «||», а не значение по умолчанию из get(): форма сохраняет пустую
+  // строку как «стандартная модель», и get() вернул бы именно пустоту.
+  const baseUrl = settings.get(`url.${providerId}`, '') || preset.baseUrl;
   if (!baseUrl) throw new Error(`Для ${preset.title} не задан адрес`);
   const key = settings.get(`key.${providerId}`, '');
   if (preset.needsKey && !key) throw new Error(`Для ${preset.title} не задан ключ`);
-  const model = settings.get(`model.llm.${providerId}`, preset.defaultModel || '');
+  const model = settings.get(`model.llm.${providerId}`, '') || preset.defaultModel || '';
+  // У «своего» провайдера стандартной модели нет: без явного имени шлюз
+  // ответил бы голым 400, и человек гадал бы, что не так.
+  if (!model) throw new Error(`Для ${preset.title} не выбрана модель текста`);
 
   const base = {
     model,

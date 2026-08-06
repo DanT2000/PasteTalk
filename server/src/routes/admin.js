@@ -215,13 +215,24 @@ function register(app) {
   app.get('/admin/api/settings', async (request, reply) => {
     if (!guard(request, reply)) return undefined;
     const { MODES, TAIL } = require('../../../shared/modes');
+    const { CLOUD } = require('../../../shared/providers');
     return {
       settings: settings.all(),
       prices: prices.table(),
       botRunning: require('../bot/telegram').running(),
-      // Стандартные промпты — чтобы форма могла показать их подсказкой
-      // и владелец видел, что именно он меняет.
+      // Стандартные промпты — форма показывает их действующим текстом,
+      // который владелец правит прямо на месте.
       prompts: { clean: MODES.clean, both: MODES.both, tail: TAIL },
+      // Провайдеры целиком: страница строит по ним блоки «ключ + модели»
+      // и выборы порядка, не зашивая список у себя.
+      providers: Object.fromEntries(Object.entries(CLOUD).map(([id, p]) => [id, {
+        title: p.title,
+        stt: Boolean(p.stt),
+        needsKey: Boolean(p.needsKey),
+        baseUrl: p.baseUrl || '',
+        defaultModel: p.defaultModel || '',
+        defaultSttModel: p.defaultSttModel || '',
+      }])),
     };
   });
 
