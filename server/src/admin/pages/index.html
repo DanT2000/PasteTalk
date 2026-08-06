@@ -382,17 +382,15 @@ const DEVICE_WORDS = { telegram: 'Telegram', android: 'Телефон', desktop:
 function showCode(key) {
   const bot = window.location.hostname === 'pastetalk.dev.appswire.ru'
     ? 'https://t.me/PasteTalk_bot' : '';
-  const howto = 'Вот код доступа к PasteTalk: ' + key.code + '
-
-'
-    + (bot ? 'В Telegram: откройте ' + bot + ', нажмите «Начать» и пришлите этот код одним сообщением.
-
-' : '')
-    + 'В приложении на телефоне: адрес сервера ' + window.location.origin
-    + ', ниже этот код, кнопка «Подключиться».
-
-'
-    + 'Код одноразовый и действует ограниченное время — если не успеете, попросите новый.';
+  const parts = ['Вот код доступа к PasteTalk: ' + key.code];
+  if (bot) {
+    parts.push('В Telegram: откройте ' + bot
+      + ', нажмите «Начать» и пришлите этот код одним сообщением.');
+  }
+  parts.push('В приложении на телефоне: адрес сервера ' + window.location.origin
+    + ', ниже этот код, кнопка «Подключиться».');
+  parts.push('Код одноразовый и действует ограниченное время — если не успеете, попросите новый.');
+  const howto = parts.join('\n\n');
 
   $('made').innerHTML = 'Код для «' + safe(key.name) + '»: <span class="code">' + safe(key.code)
     + '</span> <button class="btn ghost tiny" id="copy-code">скопировать код</button>'
