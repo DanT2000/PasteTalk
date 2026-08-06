@@ -214,10 +214,14 @@ function register(app) {
 
   app.get('/admin/api/settings', async (request, reply) => {
     if (!guard(request, reply)) return undefined;
+    const { MODES, TAIL } = require('../../../shared/modes');
     return {
       settings: settings.all(),
       prices: prices.table(),
       botRunning: require('../bot/telegram').running(),
+      // Стандартные промпты — чтобы форма могла показать их подсказкой
+      // и владелец видел, что именно он меняет.
+      prompts: { clean: MODES.clean, both: MODES.both, tail: TAIL },
     };
   });
 

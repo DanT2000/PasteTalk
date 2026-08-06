@@ -181,8 +181,13 @@ class Relay extends EventEmitter {
   async doLlm(payload) {
     // llm.improve(text, overrides): второй аргумент подмешивается поверх
     // сохранённых настроек, см. resolve() в llm.js. Так режим приходит с
-    // телефона, а провайдер и ключ берутся здешние.
-    const text = await llm.improve(payload.text, { mode: payload.mode });
+    // телефона, а провайдер и ключ берутся здешние. Инструкцию, если она
+    // пришла, собрал сервер — там промпты правятся в админке, и задача
+    // с телефона должна выполняться одинаково что в облаке, что здесь.
+    const text = await llm.improve(payload.text, {
+      mode: payload.mode,
+      instruction: payload.instruction || '',
+    });
     // Токены считать неоткуда — improve возвращает только текст. Ноль тут
     // честнее выдуманного числа: своя модель денег и так не берёт.
     return { text, tokensIn: 0, tokensOut: 0, model: config.get('ai.model', '') };

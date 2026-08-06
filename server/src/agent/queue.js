@@ -4,6 +4,7 @@ const socket = require('./socket');
 const chains = require('../providers/chains');
 const stt = require('../providers/stt');
 const llm = require('../providers/llm');
+const prompts = require('../prompts');
 const settings = require('../settings');
 
 /**
@@ -175,7 +176,13 @@ async function improve({ text, mode }) {
   });
 
   const job = async (agentId) => ({
-    ...await socket.sendTo(agentId, { kind: 'llm', payload: { text, mode } }),
+    // Инструкцию собирает сервер: промпт мог быть правлен в админке, а
+    // приложение на компьютере про это знать не обязано. Старые версии
+    // приложения поле просто не заметят и соберут промпт сами.
+    ...await socket.sendTo(agentId, {
+      kind: 'llm',
+      payload: { text, mode, instruction: prompts.instructionFor(mode) },
+    }),
     executedBy: 'agent',
   });
 

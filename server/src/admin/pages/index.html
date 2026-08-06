@@ -92,11 +92,13 @@ tr:last-child td { border-bottom: none; }
 }
 
 label.field { display: block; margin-bottom: 1rem; font-size: 0.875rem; color: var(--muted); }
-input, select {
+input, select, textarea {
   font: inherit; color: var(--fg); background: var(--bg);
   padding: 0.5rem 0.6rem; border: 1px solid var(--line); border-radius: 0.5rem;
 }
 label.field input, label.field select { width: 100%; max-width: 28rem; display: block; margin-top: 0.3rem; }
+/* Промпты длинные — им и поле пошире, и перенос строк как в тексте. */
+label.field textarea { width: 100%; max-width: 44rem; display: block; margin-top: 0.3rem; resize: vertical; line-height: 1.45; }
 label.field .why { display: block; margin-top: 0.3rem; font-size: 0.8125rem; }
 .btn {
   font: inherit; padding: 0.5rem 1rem; border-radius: 0.5rem; cursor: pointer;
@@ -764,6 +766,19 @@ async function drawSettings() {
       + '<span class="why muted">Можно: deepseek, openai, aitunnel, custom</span></label>'
     + '</div>'
 
+    + '<div class="card"><h2>Промпты улучшения</h2>'
+    + '<p class="muted">Что модель делает с текстом по кнопкам «Почистить» и «Почистить и переписать» — в боте, с телефона и на домашнем компьютере, когда задача пришла с сервера. Пустое поле — стандартный промпт, он показан серым внутри. Хвост «'
+      + safe(data.prompts?.tail || '') + '» сервер дописывает сам к любому варианту.</p>'
+    + '<label class="field">Почистить'
+      + '<textarea data-set="prompt.clean" rows="5" placeholder="' + safe(data.prompts?.clean || '') + '">'
+        + safe(get('prompt.clean', '')) + '</textarea>'
+      + '<span class="why muted">Осторожная правка: убрать паразитов и ошибки, ничего не переписывая</span></label>'
+    + '<label class="field">Почистить и переписать'
+      + '<textarea data-set="prompt.both" rows="8" placeholder="' + safe(data.prompts?.both || '') + '">'
+        + safe(get('prompt.both', '')) + '</textarea>'
+      + '<span class="why muted">Полная переработка. Стереть всё и сохранить — вернётся стандартный</span></label>'
+    + '</div>'
+
     + '<div class="card"><h2>Когда домашний компьютер занят</h2>'
     + '<label class="field"><span>Ждать очереди или уходить в облако</span>'
       + '<select data-set="spillToCloud">'
@@ -827,6 +842,10 @@ async function drawSettings() {
         body.settings[key] = input.value;
       } else if (key === 'spillToCloud') {
         body.settings[key] = input.value === 'true';
+      } else if (key.startsWith('prompt.')) {
+        // Промпт — не секрет и виден в поле целиком, поэтому пустота здесь
+        // значит «вернуть стандартный», а не «не трогали».
+        body.settings[key] = input.value.trim();
       } else if (input.value.trim() === '-') {
         // Одинокий минус — «стереть». Пустое поле означает «не трогали»,
         // иначе сохранение формы стирало бы ключ, которого она и не

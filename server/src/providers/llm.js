@@ -1,8 +1,8 @@
 'use strict';
 
 const { CLOUD } = require('../../../shared/providers');
-const { instruction } = require('../../../shared/modes');
 const settings = require('../settings');
+const prompts = require('../prompts');
 const proxy = require('../proxy');
 
 /**
@@ -41,7 +41,7 @@ async function improve(providerId, { text, mode }) {
   const base = {
     model,
     messages: [
-      { role: 'system', content: instruction(mode) },
+      { role: 'system', content: prompts.instructionFor(mode) },
       { role: 'user', content: text },
     ],
     temperature: 0.3,

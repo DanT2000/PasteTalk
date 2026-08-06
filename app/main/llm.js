@@ -158,6 +158,9 @@ function resolve(overrides = {}) {
 }
 
 function instruction(settings) {
+  // Готовая инструкция приходит с задачами от сервера: промпт мог быть
+  // правлен в его админке, и собирать свой поверх было бы враньём.
+  if (settings.instruction) return settings.instruction;
   return modes.instruction(settings.mode, settings.prompt);
 }
 
