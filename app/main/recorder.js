@@ -358,7 +358,15 @@ class Recorder extends EventEmitter {
    */
   cancelCurrent() {
     if (this.state === 'listening') {
+      // Крестик во время записи — это «передумал». Показывать после него
+      // ещё три секунды надпись «Запись отменена» незачем: человек и так
+      // знает, что нажал, а панель мешает тому, к чему он вернулся.
       this.abort('cancelled', 'Запись отменена');
+      this.cancelHide();
+      this.emit('hide');
+      const keep = this.lastText;
+      this.reset();
+      this.lastText = keep;
       return 'recording';
     }
     if (this.state === 'ai') {

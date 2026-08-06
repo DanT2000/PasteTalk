@@ -17,7 +17,8 @@ html[data-theme="dark"] {
   --ok: #3FB950;
   --warn: #E9A72C;
   --glass: rgba(35,35,41,.88);
-  --shadow: 0 1.25rem 2.5rem rgba(0,0,0,.55), 0 .125rem .5rem rgba(0,0,0,.4);
+  --shadow: 0 .125rem .5rem rgba(0,0,0,.35);
+  --halo: rgba(0,0,0,.5);
 }
 html[data-theme="light"] {
   --card-hover: #F0F0F4;
@@ -30,7 +31,8 @@ html[data-theme="light"] {
   --ok: #237A32;
   --warn: #8A5A00;
   --glass: rgba(250,250,252,.92);
-  --shadow: 0 1.25rem 2.5rem rgba(30,34,48,.3), 0 .125rem .5rem rgba(30,34,48,.16);
+  --shadow: 0 .125rem .5rem rgba(30,34,48,.16);
+  --halo: rgba(30,34,48,.22);
 }
 
 html, body {
@@ -50,6 +52,18 @@ body { display: grid; place-items: center; padding: .5rem; }
   border: 1px solid var(--stroke-strong); border-radius: .875rem;
   box-shadow: var(--shadow); padding: .75rem .875rem .625rem;
   display: flex; flex-direction: column; gap: .5rem;
+}
+
+/*
+ * Ореол под панелью. Тень рисует ровный тёмный прямоугольник с чёткой
+ * границей — на светлом рабочем столе она видна как грязное пятно.
+ * Мягкое пятно, сходящее к краям в ноль, границы не имеет вовсе.
+ */
+.capsule::before {
+  content: ''; position: absolute; inset: -1.5rem -2rem -2rem;
+  border-radius: 50%; z-index: -1; pointer-events: none;
+  background: radial-gradient(60% 55% at 50% 55%, var(--halo) 0%,
+    color-mix(in srgb, var(--halo) 45%, transparent) 45%, transparent 78%);
 }
 /* Компактный вид: остаётся только необходимое — микрофон, уровень,
    улучшение и выход. Возврат к прошлому тексту доступен из настроек. */

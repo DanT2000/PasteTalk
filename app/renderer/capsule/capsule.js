@@ -161,6 +161,7 @@ document.getElementById('mic').addEventListener('click', () =>
   window.capsule.action(isBusy() ? 'cancel' : 'toggle'));
 
 document.getElementById('close').addEventListener('click', () => window.capsule.action('cancel'));
+document.getElementById('prefs').addEventListener('click', () => window.capsule.action('settings'));
 
 // Короткое нажатие — причесать прошлую диктовку, долгое — открыть всю историю.
 const lastBtn = document.getElementById('last');
