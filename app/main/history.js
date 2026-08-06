@@ -17,7 +17,11 @@ const log = require('./logger').scoped('history');
  * Хранится только на этом компьютере, обычным JSON рядом с настройками.
  */
 
-const LIMIT = 50;
+/** Сколько хранить. Человек задаёт сам — «Настройки → История». */
+function limit() {
+  const value = Number(require('./config').get('history.keep', 50));
+  return Number.isFinite(value) && value > 0 ? Math.min(value, 1000) : 50;
+}
 
 let items = null;
 
@@ -29,7 +33,7 @@ function load() {
   if (items) return items;
   try {
     const saved = JSON.parse(fs.readFileSync(file(), 'utf8'));
-    items = Array.isArray(saved) ? saved.slice(0, LIMIT) : [];
+    items = Array.isArray(saved) ? saved.slice(0, limit()) : [];
   } catch {
     items = [];
   }
@@ -77,7 +81,8 @@ function add({ text, improved = false, seconds = 0 }) {
     at: Date.now(),
   };
   items.unshift(entry);
-  if (items.length > LIMIT) items.length = LIMIT;
+  const keep = limit();
+  if (items.length > keep) items.length = keep;
   save();
   return entry;
 }

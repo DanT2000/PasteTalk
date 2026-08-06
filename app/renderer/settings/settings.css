@@ -140,6 +140,9 @@ body {
   }
   .row:has(select, .btn, .field, .slider) select,
   .row:has(.field) .field { flex: 1 1 auto; max-width: 100%; width: auto; }
+  /* Числу растягиваться незачем: «50» в поле на пол-экрана выглядит
+     ошибкой вёрстки, а не настройкой. */
+  .row:has(.field) .field.narrow { flex: 0 0 auto; width: 6rem; }
   .row:has(.slider) .slider { flex: 1 1 auto; width: auto; }
 }
 
@@ -175,6 +178,10 @@ select:disabled { opacity: .5; cursor: default; }
   background: var(--bg); border: 1px solid var(--stroke-strong); border-radius: .25rem;
   padding: .4375rem .625rem; min-height: 2rem; width: 16rem; max-width: 100%; min-width: 0;
 }
+/* Числу шестнадцать рем ни к чему: «50» в поле на пол-экрана выглядит
+   ошибкой вёрстки, а не настройкой. */
+.field.narrow { width: 6rem; }
+
 .field::placeholder { color: var(--dim); }
 .field:focus { border-color: var(--accent); outline: none; }
 .area { display: block; width: 100%; margin-top: .625rem; height: 5rem; resize: vertical;

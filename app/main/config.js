@@ -65,6 +65,10 @@ const DEFAULTS = {
     timeoutMs: 0,           // 0 — считать по длине текста
   },
 
+  // Сколько надиктовок хранить. Лежат на этом компьютере, никуда
+  // не уходят — но и держать их без счёта незачем.
+  history: { keep: 50 },
+
   files: { timestamps: false },
 
   startup: { autoLaunch: true, restartOnCrash: true },
