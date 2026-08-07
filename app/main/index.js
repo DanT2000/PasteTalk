@@ -472,7 +472,9 @@ ipcMain.on('audio:level', (_event, payload) => {
 
 ipcMain.on('audio:error', (_event, payload) => {
   log.error(`микрофон: ${payload.message}`);
-  recorder.abort('micdead', payload.message);
+  // Наговорённое дороже диагностики: если речь уже была, запись
+  // завершается и распознаётся, а не выбрасывается.
+  recorder.micTrouble(payload.message);
 });
 
 // ---------- расшифровка файлов ----------

@@ -72,12 +72,17 @@ class Recorder extends EventEmitter {
   async start(mode = 'plain') {
     if (this.busy || this.state === 'listening') return;
 
+    // Хвост прежней записи не должен дотягиваться до новой. Таймер
+    // «спрятать панель» от только что показанного результата иначе
+    // стрелял бы посреди свежей диктовки и молча гасил её: человек
+    // говорит, а запись уже сброшена — «иногда просто молчит».
+    this.cancelHide();
+
     // Прежняя запись ещё считается, а человек жмёт клавишу снова —
     // «кажется, не сработало». Её ответ принимать уже нельзя: он доведёт
     // дело до reset() и погасит новую запись на полуслове.
     if (this.state === 'thinking' || this.state === 'ai') {
       this.attempt += 1;
-      this.cancelHide();
     }
 
     // Когда считает не эта машина, движок не нужен вовсе: копим звук
@@ -102,6 +107,7 @@ class Recorder extends EventEmitter {
       this.silentSince = Date.now();
       this.lastText = '';
       this.emitState('listening', { elapsedMs: 0 });
+      this.watchStream();
       log.info(`запись начата (${mode}), сессия ${this.sessionId}`);
     } catch (error) {
       log.error(error);
@@ -122,13 +128,38 @@ class Recorder extends EventEmitter {
     this.silentSince = Date.now();
     this.lastText = '';
     this.emitState('listening', { elapsedMs: 0 });
+    this.watchStream();
     log.info(`запись начата (${mode}), считать будет ${remote.where()}`);
+  }
+
+  /**
+   * Сторожок потока: чанки перестали приходить вовсе.
+   *
+   * Мёртвое устройство отдаёт нули — их ловит проверка на peak. Но если
+   * звуковой граф встал целиком, pushAudio просто перестаёт вызываться,
+   * и без сторожка запись висела бы «слушаю» вечно.
+   */
+  watchStream() {
+    clearInterval(this.streamWatch);
+    this.lastChunkAt = Date.now();
+    this.streamWatch = setInterval(() => {
+      if (this.state !== 'listening') {
+        clearInterval(this.streamWatch);
+        return;
+      }
+      if (Date.now() - this.lastChunkAt > 4000) {
+        clearInterval(this.streamWatch);
+        log.warn('звук перестал приходить из окна записи');
+        this.micTrouble('поток звука остановился');
+      }
+    }, 1000);
   }
 
   // ---------- поток звука из окна записи ----------
 
   async pushAudio(chunk, peak) {
     if (this.state !== 'listening') return;
+    this.lastChunkAt = Date.now();
     if (this.chunks) return this.collect(chunk, peak);
     if (!this.sessionId) return;
 
@@ -136,7 +167,7 @@ class Recorder extends EventEmitter {
     // а выключенное или занятое устройство. Об этом лучше сказать прямо.
     if (peak > 0.0005) this.silentSince = Date.now();
     else if (Date.now() - this.silentSince > MIC_DEAD_MS) {
-      await this.abort('micdead');
+      await this.micTrouble();
       return;
     }
 
@@ -186,7 +217,7 @@ class Recorder extends EventEmitter {
       this.silentSince = Date.now();
       this.everSpoke = true;
     } else if (Date.now() - this.silentSince > MIC_DEAD_MS && !this.everSpoke) {
-      this.abort('micdead');
+      this.micTrouble();
       return;
     }
 
@@ -392,6 +423,28 @@ class Recorder extends EventEmitter {
     this.reset();
     this.lastText = keep;
     return 'hidden';
+  }
+
+  /**
+   * Звук пропал: устройство умерло, его забрала игра или поток встал.
+   *
+   * Если человек уже что-то наговорил — наговорённое дороже диагностики:
+   * заканчиваем запись и распознаём, что есть. Раньше здесь была отмена,
+   * и три секунды мёртвого микрофона выбрасывали всю диктовку — панель
+   * говорила «Микрофон молчит», а текст пропадал.
+   */
+  async micTrouble(message = '') {
+    if (this.state === 'listening' && this.everSpoke) {
+      log.warn(`звук пропал после речи (${message || 'ровный ноль'}) — распознаю что есть`);
+      await this.finish('done');
+      return;
+    }
+    // Ошибка могла прийти и до того, как запись успела начаться, — панель
+    // всё равно должна объяснить, что с микрофоном. Но в чужие состояния
+    // (распознавание, улучшение) поздний сигнал лезть не должен.
+    if (this.state === 'listening' || this.state === 'idle') {
+      await this.abort('micdead', message);
+    }
   }
 
   /** Бросить запись, ничего не подкладывая в буфер. */

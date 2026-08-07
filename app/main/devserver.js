@@ -85,6 +85,32 @@ async function feed(query) {
     if (!query.has('fast')) await new Promise((r) => setTimeout(r, 200));
     await recorder.pushAudio(pcm.subarray(at, at + chunk), 0.3);
   }
+
+  // Аварийные сценарии вместо штатного финиша: запись должна сама
+  // завершиться и распознать наговорённое.
+  const waitOutcome = async () => {
+    const until = Date.now() + 30000;
+    while (!['done', 'nospeech', 'micdead', 'engineDown', 'idle'].includes(recorder.state)
+      && Date.now() < until) {
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    return { state: recorder.state, text: recorder.lastText };
+  };
+  if (query.has('deadtail')) {
+    // Микрофон умер: поток продолжает идти, но отдаёт ровный ноль.
+    const zeros = Buffer.alloc(chunk);
+    const until = Date.now() + 15000;
+    while (recorder.state === 'listening' && Date.now() < until) {
+      await recorder.pushAudio(zeros, 0);
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    return waitOutcome();
+  }
+  if (query.has('stall')) {
+    // Поток встал целиком: чанки перестали приходить вовсе.
+    return waitOutcome();
+  }
+
   await recorder.finish('done');
   return { seconds: +(target / 16000).toFixed(2), state: recorder.state, text: recorder.lastText };
 }

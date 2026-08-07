@@ -32,6 +32,14 @@ async function start(options) {
     return;
   }
 
+  // Устройство могут выдернуть или забрать посреди записи — игра, звонок,
+  // смена наушников. Трек тогда кончается молча, поток отдаёт нули, и без
+  // этого сигнала главный процесс три секунды ждал бы у мёртвого микрофона.
+  stream.getTracks().forEach((track) => {
+    track.onended = () => window.recorderBridge
+      .failed('Микрофон отключился или его забрала другая программа');
+  });
+
   try {
     context = new AudioContext({ sampleRate: 16000, latencyHint: 'interactive' });
     await context.audioWorklet.addModule('worklet.js');
@@ -60,7 +68,9 @@ async function stop() {
   try {
     if (node) { node.port.onmessage = null; node.disconnect(); }
     if (source) source.disconnect();
-    if (stream) stream.getTracks().forEach((track) => track.stop());
+    // Сначала снимаем onended: штатная остановка — не авария, и сигналить
+    // о ней главному процессу не нужно, даже если браузер решит иначе.
+    if (stream) stream.getTracks().forEach((track) => { track.onended = null; track.stop(); });
     if (context) await context.close();
   } catch { /* закрываемся молча */ }
   node = null;
