@@ -6,12 +6,12 @@ const { app } = require('electron');
 const log = require('./logger').scoped('updates');
 
 /**
- * Проверка обновлений через GitHub.
+ * Обновления через GitHub.
  *
- * Ничего не скачивает и не ставит само: спрашивает у GitHub последний
- * выпуск и, если он новее, показывает кнопку со ссылкой. Установщик
- * человек запускает сам — тихое самообновление в программе, которая
- * висит в трее и слушает клавиатуру, доверия не прибавляет.
+ * Проверка сама по себе ничего не ставит: спрашивает последний выпуск
+ * и показывает диалог. Скачивание и установка — downloadAndInstall() —
+ * запускаются только после явного «Обновить сейчас»: программа висит в
+ * трее и слушает клавиатуру, обновляться за спиной у человека ей нельзя.
  */
 
 const OWNER = 'DanT2000';
@@ -118,4 +118,42 @@ function scheduleStartupCheck(onFound) {
   }, DELAY_AFTER_START_MS);
 }
 
-module.exports = { check, compare, scheduleStartupCheck };
+/**
+ * Скачать и поставить обновление, не гоняя человека по сайтам.
+ *
+ * electron-updater берёт установщик из того же выпуска GitHub (рядом с
+ * ним лежит latest.yml), ставит его тихо и перезапускает программу.
+ * Работает только в собранном приложении: в разработке файла
+ * app-update.yml нет, и вызов честно упадёт — наверху для этого есть
+ * запасной путь со ссылкой на страницу загрузки.
+ */
+let updaterWired = false;
+
+async function downloadAndInstall(onProgress) {
+  const { autoUpdater } = require('electron-updater');
+  if (!updaterWired) {
+    updaterWired = true;
+    autoUpdater.autoDownload = false;
+    autoUpdater.autoInstallOnAppQuit = false;
+    autoUpdater.logger = null;
+    autoUpdater.on('download-progress', (progress) => {
+      try { module.exports.onProgress?.(progress.percent); } catch { /* прогресс не главное */ }
+    });
+  }
+  module.exports.onProgress = onProgress;
+
+  const found = await autoUpdater.checkForUpdates();
+  const version = found?.updateInfo?.version || '';
+  if (!version || compare(version, app.getVersion()) <= 0) {
+    throw new Error('Обновление не нашлось');
+  }
+  log.info(`скачиваю обновление ${version}`);
+  await autoUpdater.downloadUpdate();
+  log.info('обновление скачано — ставлю и перезапускаюсь');
+  // Тихая установка и запуск свежей версии: человеку не нужно
+  // прокликивать установщик, который он уже прокликивал при первой
+  // установке. Настройки и модели переезжают сами.
+  autoUpdater.quitAndInstall(true, true);
+}
+
+module.exports = { check, compare, scheduleStartupCheck, downloadAndInstall };

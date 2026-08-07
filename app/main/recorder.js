@@ -17,7 +17,13 @@ const log = require('./logger').scoped('record');
  * шаг сверху. Если модель молчит или её нет, человек уже с текстом.
  */
 
-const MIC_DEAD_MS = 3000;      // столько цифровой тишины — и микрофон считаем немым
+// Столько цифровой тишины подряд — и на панели появляется подсказка про
+// микрофон. Именно подсказка, не отмена: микрофон с аппаратным шумодавом
+// отдаёт честный ноль в каждой паузе речи, и рвать запись по нулям значило
+// бы выбрасывать диктовки у всех, у кого такой микрофон. Порог заметно
+// больше обычной паузы в диктовке: подсказка — про умершее устройство,
+// а не про то, что человек задумался.
+const MIC_QUIET_MS = 6000;
 const HIDE_AFTER_MS = 2200;    // сколько панель висит с готовым результатом
 
 /**
@@ -47,6 +53,7 @@ class Recorder extends EventEmitter {
     this.mode = 'plain';
     this.startedAt = 0;
     this.everSpoke = false;
+    this.hadSignal = false;
     this.silentSince = 0;
     this.lastText = '';
     this.busy = false;
@@ -104,6 +111,7 @@ class Recorder extends EventEmitter {
       this.mode = mode;
       this.startedAt = Date.now();
       this.everSpoke = false;
+      this.hadSignal = false;
       this.silentSince = Date.now();
       this.lastText = '';
       this.emitState('listening', { elapsedMs: 0 });
@@ -125,6 +133,7 @@ class Recorder extends EventEmitter {
     this.mode = mode;
     this.startedAt = Date.now();
     this.everSpoke = false;
+    this.hadSignal = false;
     this.silentSince = Date.now();
     this.lastText = '';
     this.emitState('listening', { elapsedMs: 0 });
@@ -163,12 +172,9 @@ class Recorder extends EventEmitter {
     if (this.chunks) return this.collect(chunk, peak);
     if (!this.sessionId) return;
 
-    // Микрофон, который отдаёт ровный ноль, — это не молчащий человек,
-    // а выключенное или занятое устройство. Об этом лучше сказать прямо.
-    if (peak > 0.0005) this.silentSince = Date.now();
-    else if (Date.now() - this.silentSince > MIC_DEAD_MS) {
-      await this.micTrouble();
-      return;
+    if (peak > 0.0005) {
+      this.silentSince = Date.now();
+      this.hadSignal = true;
     }
 
     let reply;
@@ -184,7 +190,7 @@ class Recorder extends EventEmitter {
     if (reply.everSpoke) this.everSpoke = true;
     const elapsedMs = Date.now() - this.startedAt;
     this.emit('partial', { segments: reply.segments || [], elapsedMs });
-    this.emitState('listening', { elapsedMs });
+    this.emitState('listening', { elapsedMs, ...this.quietHint() });
 
     const limits = config.get('limits', {});
 
@@ -194,8 +200,7 @@ class Recorder extends EventEmitter {
       return;
     }
     if (!this.everSpoke && limits.noSpeechCancelMs > 0 && elapsedMs >= limits.noSpeechCancelMs) {
-      log.info('за отведённое время не сказано ни слова — отменяю');
-      await this.abort('nospeech');
+      await this.noSpeechTimeout();
       return;
     }
     if (this.everSpoke && limits.silenceStopMs > 0 && reply.silenceMs >= limits.silenceStopMs) {
@@ -203,6 +208,37 @@ class Recorder extends EventEmitter {
       await this.finish('done');
       return;
     }
+  }
+
+  /**
+   * Подсказка на панель, когда микрофон долго отдаёт ровный ноль.
+   *
+   * Запись при этом идёт: ноль — это и мёртвое устройство, и обычная
+   * пауза у микрофона с аппаратным шумодавом. Человек видит подсказку
+   * прямо во время записи и сам решает, что делать, — а не узнаёт о
+   * проблеме после того, как наговорил десять минут в пустоту.
+   */
+  quietHint() {
+    if (Date.now() - this.silentSince <= MIC_QUIET_MS) return {};
+    return { status: 'Микрофон отдаёт тишину', hint: 'Запись идёт — проверьте устройство' };
+  }
+
+  /**
+   * За отведённое время не распознано ни слова.
+   *
+   * Аварийное правило: если хоть какой-то звук был — пробуем распознать,
+   * а не выбрасываем. Тихий голос, который не разбудил детектор речи, —
+   * не повод терять диктовку. Отмена остаётся только для микрофона,
+   * не давшего ни звука вовсе.
+   */
+  async noSpeechTimeout() {
+    if (this.hadSignal) {
+      log.info('слов не услышал, но сигнал был — распознаю, что есть');
+      await this.finish('done');
+      return;
+    }
+    log.info('за отведённое время — ни звука с микрофона');
+    await this.abort('micdead', 'Не пришло ни звука — проверьте устройство');
   }
 
   /**
@@ -216,14 +252,12 @@ class Recorder extends EventEmitter {
     if (peak > 0.0005) {
       this.silentSince = Date.now();
       this.everSpoke = true;
-    } else if (Date.now() - this.silentSince > MIC_DEAD_MS && !this.everSpoke) {
-      this.micTrouble();
-      return;
+      this.hadSignal = true;
     }
 
     this.chunks.push(Buffer.from(chunk));
     const elapsedMs = Date.now() - this.startedAt;
-    this.emitState('listening', { elapsedMs });
+    this.emitState('listening', { elapsedMs, ...this.quietHint() });
 
     const limits = config.get('limits', {});
     if (elapsedMs >= limits.maxDurationMs) {
@@ -232,8 +266,8 @@ class Recorder extends EventEmitter {
       return;
     }
     if (!this.everSpoke && limits.noSpeechCancelMs > 0 && elapsedMs >= limits.noSpeechCancelMs) {
-      log.info('за отведённое время не сказано ни слова — отменяю');
-      this.abort('nospeech');
+      log.info('за отведённое время — ни звука с микрофона');
+      this.abort('micdead', 'Не пришло ни звука — проверьте устройство');
       return;
     }
     if (this.everSpoke && limits.silenceStopMs > 0

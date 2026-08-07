@@ -81,9 +81,11 @@ async function feed(query) {
   windows.showCapsule();
   await recorder.start(query.get('mode') || 'plain');
   const chunk = 3200 * 2;   // 200 мс, как отдаёт настоящее окно записи
+  // mute — кормить с нулевым пиком, как микрофон, не дающий ни звука.
+  const peak = query.has('mute') ? 0 : 0.3;
   for (let at = 0; at < pcm.length; at += chunk) {
     if (!query.has('fast')) await new Promise((r) => setTimeout(r, 200));
-    await recorder.pushAudio(pcm.subarray(at, at + chunk), 0.3);
+    await recorder.pushAudio(pcm.subarray(at, at + chunk), peak);
   }
 
   // Аварийные сценарии вместо штатного финиша: запись должна сама

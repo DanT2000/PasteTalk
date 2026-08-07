@@ -103,7 +103,7 @@ function apply(payload) {
   const state = STATES[payload.state] || STATES.done;
   cap.dataset.tone = state.tone;
   cap.dataset.wave = state.wave;
-  statusEl.textContent = state.status;
+  statusEl.textContent = payload.status || state.status;
   hintEl.textContent = payload.hint || state.hint;
   timerEl.textContent = payload.elapsedMs ? format(payload.elapsedMs) : '';
   micIcon.innerHTML = ICONS[state.mic];

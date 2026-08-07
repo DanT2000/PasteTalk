@@ -1,7 +1,7 @@
 'use strict';
 
 const path = require('node:path');
-const { app, ipcMain, clipboard, shell, dialog, nativeTheme, systemPreferences } = require('electron');
+const { app, ipcMain, clipboard, shell, dialog, nativeTheme, systemPreferences, Notification } = require('electron');
 
 const config = require('./config');
 const engine = require('./engine');
@@ -95,17 +95,45 @@ async function announceUpdate(release) {
     type: 'info',
     title: 'PasteTalk',
     message: `Вышла версия ${release.latest}`,
-    detail: `У вас ${release.current}. Установщик ставится поверх — настройки, модели и горячие клавиши останутся на месте.`
+    detail: `У вас ${release.current}. Обновление скачается и поставится само — настройки, модели и горячие клавиши останутся на месте.`
       + (release.sizeMb ? `\n\nРазмер: ${release.sizeMb} МБ.` : ''),
-    buttons: ['Скачать', 'Что нового', 'Потом', 'Больше не напоминать'],
+    buttons: ['Обновить сейчас', 'Что нового', 'Потом', 'Больше не напоминать'],
     defaultId: 0,
     cancelId: 2,
     noLink: true,
   });
 
-  if (response === 0) shell.openExternal(release.download);
+  if (response === 0) await selfUpdate(release);
   else if (response === 1) shell.openExternal(release.url);
   else if (response === 3) config.set({ updates: { skipVersion: release.latest } });
+}
+
+/**
+ * Обновиться, не гоняя человека по сайтам: скачать, тихо поставить,
+ * перезапуститься. Ход загрузки виден в подсказке значка в трее.
+ * Не вышло само — открываем страницу загрузки, как раньше.
+ */
+async function selfUpdate(release) {
+  new Notification({
+    title: 'PasteTalk',
+    body: `Скачиваю ${release.latest} — поставлю и перезапущусь сам.`,
+  }).show();
+  try {
+    await updates.downloadAndInstall();
+  } catch (error) {
+    log.error(`самообновление не удалось: ${error.message}`);
+    const { response } = await dialog.showMessageBox({
+      type: 'warning',
+      title: 'PasteTalk',
+      message: 'Само обновиться не вышло',
+      detail: `${error.message}\n\nМожно скачать установщик со страницы выпуска и запустить его поверх.`,
+      buttons: ['Открыть страницу', 'Позже'],
+      defaultId: 0,
+      cancelId: 1,
+      noLink: true,
+    });
+    if (response === 0) shell.openExternal(release.download);
+  }
 }
 
 app.on('window-all-closed', (event) => {
