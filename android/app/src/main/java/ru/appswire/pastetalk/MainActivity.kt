@@ -55,6 +55,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -79,19 +80,19 @@ private val MUTED = Color(0xFFA0A0AC)
 private val RED = Color(0xFFF2686C)
 
 /**
- * Сетевые исключения по-русски.
+ * Сетевые исключения по-человечески.
  *
- * Сообщения Java-исключений английские («Read timed out», «Unable to
- * resolve host…») — показывать их человеку, который и по-русски читает
+ * Сообщения Java-исключений технические («Read timed out», «Unable to
+ * resolve host…») — показывать их человеку, который и обычный текст читает
  * с трудом, нельзя.
  */
-private fun humanError(error: Throwable, fallback: String): String = when (error) {
+private fun humanError(context: Context, error: Throwable, fallback: String): String = when (error) {
     is java.net.SocketTimeoutException ->
-        "Сервер очень долго не отвечает. Попробуйте ещё раз чуть позже"
+        context.getString(R.string.error_timeout)
     is java.net.UnknownHostException, is java.net.ConnectException ->
-        "Нет связи с сервером. Проверьте интернет и адрес сервера"
+        context.getString(R.string.error_no_connection)
     is javax.net.ssl.SSLException ->
-        "Не удалось установить защищённое соединение. Проверьте адрес сервера"
+        context.getString(R.string.error_ssl)
     else -> error.message ?: fallback
 }
 
@@ -102,7 +103,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
         val store = Store(this)
-        val api = Api(store)
+        val api = Api(this, store)
         voice = Voice(this)
 
         setContent {
@@ -177,6 +178,7 @@ private fun ConnectScreen(store: Store, api: Api, onDone: () -> Unit) {
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     Column(
         modifier = Modifier
@@ -186,9 +188,9 @@ private fun ConnectScreen(store: Store, api: Api, onDone: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
         Spacer(Modifier.height(24.dp))
-        Text("PasteTalk", fontSize = 34.sp, fontWeight = FontWeight.Bold)
+        Text(stringResource(R.string.app_name), fontSize = 34.sp, fontWeight = FontWeight.Bold)
         Text(
-            "Чтобы начать, введите код доступа. Его выдаёт владелец сервера.",
+            stringResource(R.string.connect_intro),
             fontSize = 19.sp,
             color = MUTED,
         )
@@ -196,8 +198,8 @@ private fun ConnectScreen(store: Store, api: Api, onDone: () -> Unit) {
         OutlinedTextField(
             value = url,
             onValueChange = { url = it },
-            label = { Text("Адрес сервера", fontSize = 17.sp) },
-            placeholder = { Text("https://ваш-сервер.ru", fontSize = 18.sp, color = MUTED) },
+            label = { Text(stringResource(R.string.server_address_label), fontSize = 17.sp) },
+            placeholder = { Text(stringResource(R.string.server_address_placeholder), fontSize = 18.sp, color = MUTED) },
             textStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = 19.sp),
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
@@ -206,7 +208,7 @@ private fun ConnectScreen(store: Store, api: Api, onDone: () -> Unit) {
         OutlinedTextField(
             value = code,
             onValueChange = { fresh -> code = fresh.filter { it.isDigit() }.take(6) },
-            label = { Text("Код из шести цифр", fontSize = 17.sp) },
+            label = { Text(stringResource(R.string.code_label), fontSize = 17.sp) },
             textStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = 26.sp),
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
@@ -223,13 +225,13 @@ private fun ConnectScreen(store: Store, api: Api, onDone: () -> Unit) {
                 scope.launch {
                     val outcome = runCatching {
                         withContext(Dispatchers.IO) {
-                            api.activate(url, code, Build.MODEL ?: "Телефон")
+                            api.activate(url, code, Build.MODEL ?: context.getString(R.string.device_fallback))
                         }
                     }
                     busy = false
                     outcome.fold(
                         onSuccess = { onDone() },
-                        onFailure = { error = humanError(it, "Не удалось подключиться") },
+                        onFailure = { error = humanError(context, it, context.getString(R.string.connect_failed)) },
                     )
                 }
             },
@@ -238,7 +240,11 @@ private fun ConnectScreen(store: Store, api: Api, onDone: () -> Unit) {
                 .fillMaxWidth()
                 .heightIn(min = 64.dp),
         ) {
-            Text(if (busy) "Проверяю…" else "Подключиться", fontSize = 21.sp)
+            Text(
+                if (busy) stringResource(R.string.connect_checking)
+                else stringResource(R.string.connect_button),
+                fontSize = 21.sp,
+            )
         }
     }
 }
@@ -275,9 +281,9 @@ private fun MainScreen(api: Api, voice: Voice, onSettings: () -> Unit, onRevoked
             deniedForever =
                 activity?.shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO) == false
             note = if (deniedForever) {
-                "Запись запрещена. Нажмите большую кнопку — откроются настройки телефона, там включите «Микрофон»"
+                context.getString(R.string.note_mic_denied_forever)
             } else {
-                "Без микрофона записать не выйдет. Нажмите кнопку ещё раз и разрешите запись"
+                context.getString(R.string.note_mic_denied)
             }
         }
     }
@@ -295,7 +301,7 @@ private fun MainScreen(api: Api, voice: Voice, onSettings: () -> Unit, onRevoked
     DisposableEffect(Unit) {
         MainActivity.onRecordingLost = {
             stage = Stage.IDLE
-            note = "Запись прервалась — приложение уходило в фон"
+            note = context.getString(R.string.note_recording_lost)
         }
         onDispose { MainActivity.onRecordingLost = null }
     }
@@ -321,7 +327,7 @@ private fun MainScreen(api: Api, voice: Voice, onSettings: () -> Unit, onRevoked
         val audio = voice.stop()
         if (audio.isEmpty()) {
             stage = Stage.IDLE
-            note = "Запись не получилась — попробуйте ещё раз"
+            note = context.getString(R.string.note_recording_failed)
             return
         }
         stage = Stage.THINKING
@@ -332,18 +338,18 @@ private fun MainScreen(api: Api, voice: Voice, onSettings: () -> Unit, onRevoked
             outcome.fold(
                 onSuccess = { fresh ->
                     if (fresh.isBlank()) {
-                        note = "Ничего не разобрал"
+                        note = context.getString(R.string.note_nothing_recognized)
                     } else {
                         text = fresh
                         // Кладём в буфер сразу, как на компьютере: не
                         // заставлять человека делать лишнее движение.
                         copy(fresh)
-                        note = "Текст скопирован"
+                        note = context.getString(R.string.note_copied)
                     }
                 },
                 onFailure = { error ->
                     if (error is AccessRevoked) onRevoked()
-                    else note = humanError(error, "Что-то не вышло")
+                    else note = humanError(context, error, context.getString(R.string.error_generic))
                 },
             )
         }
@@ -360,13 +366,16 @@ private fun MainScreen(api: Api, voice: Voice, onSettings: () -> Unit, onRevoked
                 onSuccess = { fresh ->
                     text = fresh
                     copy(fresh)
-                    note = "Готово, скопировано"
+                    note = context.getString(R.string.note_improved)
                 },
                 onFailure = { error ->
                     // Обычный текст остаётся при человеке: улучшение —
                     // надстройка, а не условие.
                     if (error is AccessRevoked) onRevoked()
-                    else note = "Причесать не вышло: ${humanError(error, "сервер не ответил")}"
+                    else note = context.getString(
+                        R.string.improve_failed,
+                        humanError(context, error, context.getString(R.string.error_server_silent)),
+                    )
                 },
             )
         }
@@ -378,7 +387,7 @@ private fun MainScreen(api: Api, voice: Voice, onSettings: () -> Unit, onRevoked
             .padding(20.dp),
     ) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            TextButton(onClick = onSettings) { Text("Настройки", fontSize = 18.sp) }
+            TextButton(onClick = onSettings) { Text(stringResource(R.string.settings), fontSize = 18.sp) }
         }
 
         Column(
@@ -415,7 +424,7 @@ private fun MainScreen(api: Api, voice: Voice, onSettings: () -> Unit, onRevoked
                                 stage = Stage.RECORDING
                                 note = ""
                             }
-                            .onFailure { note = "Микрофон занят другой программой" }
+                            .onFailure { note = context.getString(R.string.note_mic_busy) }
                         else -> Unit
                     }
                 },
@@ -424,12 +433,12 @@ private fun MainScreen(api: Api, voice: Voice, onSettings: () -> Unit, onRevoked
             Text(
                 when {
                     !mayRecord && deniedForever ->
-                        "Микрофон запрещён — кнопка откроет настройки, включите там «Микрофон»"
-                    !mayRecord -> "Нужно разрешить запись"
-                    stage == Stage.RECORDING -> "Идёт запись — нажмите, чтобы закончить"
-                    stage == Stage.THINKING -> "Распознаю…"
-                    stage == Stage.IMPROVING -> "Причёсываю…"
-                    else -> "Нажмите и говорите"
+                        stringResource(R.string.status_mic_denied_forever)
+                    !mayRecord -> stringResource(R.string.status_mic_needed)
+                    stage == Stage.RECORDING -> stringResource(R.string.status_recording)
+                    stage == Stage.THINKING -> stringResource(R.string.status_thinking)
+                    stage == Stage.IMPROVING -> stringResource(R.string.status_improving)
+                    else -> stringResource(R.string.status_idle)
                 },
                 fontSize = 20.sp,
                 textAlign = TextAlign.Center,
@@ -450,7 +459,7 @@ private fun MainScreen(api: Api, voice: Voice, onSettings: () -> Unit, onRevoked
                 busy = stage != Stage.IDLE,
                 onCopy = {
                     copy(text)
-                    note = "Текст скопирован"
+                    note = context.getString(R.string.note_copied)
                 },
                 onImprove = { mode -> improve(mode) },
             )
@@ -474,12 +483,17 @@ private fun RecordButton(stage: Stage, seconds: Int, onClick: () -> Unit) {
         when {
             working -> CircularProgressIndicator(color = DARK, strokeWidth = 5.dp)
             recording -> Text(
-                "$seconds с",
+                stringResource(R.string.record_seconds, seconds),
                 fontSize = 44.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.White,
             )
-            else -> Text("Говорить", fontSize = 30.sp, fontWeight = FontWeight.Bold, color = DARK)
+            else -> Text(
+                stringResource(R.string.record_speak),
+                fontSize = 30.sp,
+                fontWeight = FontWeight.Bold,
+                color = DARK,
+            )
         }
     }
 }
@@ -521,7 +535,7 @@ private fun ResultBlock(
                 .fillMaxWidth()
                 .heightIn(min = 58.dp),
         ) {
-            Text("Копировать", fontSize = 20.sp)
+            Text(stringResource(R.string.copy), fontSize = 20.sp)
         }
 
         // Названия те же, что на компьютере и в боте: одна кнопка не должна
@@ -535,8 +549,8 @@ private fun ResultBlock(
                 .heightIn(min = 58.dp),
         ) {
             Column(Modifier.padding(vertical = 6.dp)) {
-                Text("Почистить", fontSize = 19.sp)
-                Text("Уберёт «эээ», повторы и оговорки", fontSize = 14.sp, color = MUTED)
+                Text(stringResource(R.string.improve_clean), fontSize = 19.sp)
+                Text(stringResource(R.string.improve_clean_hint), fontSize = 14.sp, color = MUTED)
             }
         }
 
@@ -548,8 +562,8 @@ private fun ResultBlock(
                 .heightIn(min = 58.dp),
         ) {
             Column(Modifier.padding(vertical = 6.dp)) {
-                Text("Почистить и переписать", fontSize = 19.sp)
-                Text("Сделает текст письменным: абзацы, связные фразы", fontSize = 14.sp, color = MUTED)
+                Text(stringResource(R.string.improve_both), fontSize = 19.sp)
+                Text(stringResource(R.string.improve_both_hint), fontSize = 14.sp, color = MUTED)
             }
         }
     }
@@ -566,20 +580,24 @@ private fun SettingsScreen(store: Store, onBack: () -> Unit, onForget: () -> Uni
             .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
-        Text("Настройки", fontSize = 30.sp, fontWeight = FontWeight.Bold)
+        Text(stringResource(R.string.settings), fontSize = 30.sp, fontWeight = FontWeight.Bold)
 
         Column {
-            Text("Сервер", fontSize = 17.sp, color = MUTED)
-            Text(store.serverUrl.ifBlank { "не указан" }, fontSize = 20.sp)
+            Text(stringResource(R.string.settings_server), fontSize = 17.sp, color = MUTED)
+            Text(store.serverUrl.ifBlank { stringResource(R.string.settings_server_none) }, fontSize = 20.sp)
         }
 
         Column {
-            Text("Состояние", fontSize = 17.sp, color = MUTED)
-            Text(if (store.connected) "Подключено" else "Не подключено", fontSize = 20.sp)
+            Text(stringResource(R.string.settings_status), fontSize = 17.sp, color = MUTED)
+            Text(
+                if (store.connected) stringResource(R.string.settings_connected)
+                else stringResource(R.string.settings_disconnected),
+                fontSize = 20.sp,
+            )
         }
 
         Column {
-            Text("Версия", fontSize = 17.sp, color = MUTED)
+            Text(stringResource(R.string.settings_version), fontSize = 17.sp, color = MUTED)
             Text(BuildConfig.VERSION_NAME, fontSize = 20.sp)
         }
 
@@ -589,7 +607,7 @@ private fun SettingsScreen(store: Store, onBack: () -> Unit, onForget: () -> Uni
                 .fillMaxWidth()
                 .heightIn(min = 58.dp),
         ) {
-            Text("Отвязать это устройство", fontSize = 19.sp)
+            Text(stringResource(R.string.settings_forget), fontSize = 19.sp)
         }
 
         Button(
@@ -598,7 +616,7 @@ private fun SettingsScreen(store: Store, onBack: () -> Unit, onForget: () -> Uni
                 .fillMaxWidth()
                 .heightIn(min = 58.dp),
         ) {
-            Text("Назад", fontSize = 20.sp)
+            Text(stringResource(R.string.settings_back), fontSize = 20.sp)
         }
     }
 }

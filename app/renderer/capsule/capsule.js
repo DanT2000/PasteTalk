@@ -5,6 +5,10 @@
  * присылает основной процесс, и передаёт обратно нажатия.
  */
 
+// Язык — сразу: подписи статичного HTML переводятся здесь, а строки
+// состояний оборачиваются в t() при каждом показе.
+window.capsule.i18n().then((loc) => window.applyLocale(loc));
+
 const root = document.documentElement;
 const cap = document.getElementById('cap');
 const statusEl = document.getElementById('status');
@@ -103,8 +107,8 @@ function apply(payload) {
   const state = STATES[payload.state] || STATES.done;
   cap.dataset.tone = state.tone;
   cap.dataset.wave = state.wave;
-  statusEl.textContent = payload.status || state.status;
-  hintEl.textContent = payload.hint || state.hint;
+  statusEl.textContent = t(payload.status || state.status);
+  hintEl.textContent = t(payload.hint || state.hint);
   timerEl.textContent = payload.elapsedMs ? format(payload.elapsedMs) : '';
   micIcon.innerHTML = ICONS[state.mic];
   micIcon.style.animation = state.mic === 'spin' ? 'spin 1s linear infinite' : '';
@@ -128,7 +132,7 @@ function syncAiButton(state) {
   const off = !config || config.ai?.enabled === false;
   aiBtn.classList.toggle('is-off', off);
   aiBtn.disabled = !off && !state.ai;
-  aiBtn.title = off ? 'Улучшение текста выключено в настройках' : 'Улучшить текст';
+  aiBtn.title = off ? t('Улучшение текста выключено в настройках') : t('Улучшить текст');
 }
 
 // ---------- связь с приложением ----------
@@ -184,13 +188,13 @@ aiBtn.addEventListener('click', () => {
     // Панель к этому моменту уже могла показывать «Текст в буфере» и
     // вот-вот погаснуть. Перехватываем и подписью, и цветом: короткая
     // серая строка внизу теряется, а её нужно заметить.
-    hintEl.textContent = 'Улучшение текста выключено в настройках';
+    hintEl.textContent = t('Улучшение текста выключено в настройках');
     hintEl.classList.add('is-warning');
     clearTimeout(hintTimer);
     hintTimer = setTimeout(() => {
       hintEl.classList.remove('is-warning');
       const state = STATES[cap.dataset.state] || {};
-      hintEl.textContent = state.hint || '';
+      hintEl.textContent = t(state.hint || '');
     }, 7000);
     return;
   }

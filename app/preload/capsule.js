@@ -7,6 +7,7 @@ const on = (channel) => (handler) => {
 };
 
 contextBridge.exposeInMainWorld('capsule', {
+  i18n: () => ipcRenderer.invoke('i18n:get'),
   onState: on('capsule:state'),
   onCountdown: on('capsule:countdown'),
   onLevel: on('capsule:level'),

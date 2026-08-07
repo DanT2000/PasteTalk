@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Русские строки — исходные тексты приложения. -->
+<resources>
+    <string name="app_name">PasteTalk</string>
+
+    <!-- Экран подключения -->
+    <string name="connect_intro">Чтобы начать, введите код доступа. Его выдаёт владелец сервера.</string>
+    <string name="server_address_label">Адрес сервера</string>
+    <string name="server_address_placeholder">https://ваш-сервер.ru</string>
+    <string name="code_label">Код из шести цифр</string>
+    <string name="connect_checking">Проверяю…</string>
+    <string name="connect_button">Подключиться</string>
+    <string name="connect_failed">Не удалось подключиться</string>
+    <string name="device_fallback">Телефон</string>
+
+    <!-- Главный экран -->
+    <string name="settings">Настройки</string>
+    <string name="note_mic_denied_forever">Запись запрещена. Нажмите большую кнопку — откроются настройки телефона, там включите «Микрофон»</string>
+    <string name="note_mic_denied">Без микрофона записать не выйдет. Нажмите кнопку ещё раз и разрешите запись</string>
+    <string name="note_recording_lost">Запись прервалась — приложение уходило в фон</string>
+    <string name="note_recording_failed">Запись не получилась — попробуйте ещё раз</string>
+    <string name="note_nothing_recognized">Ничего не разобрал</string>
+    <string name="note_copied">Текст скопирован</string>
+    <string name="note_improved">Готово, скопировано</string>
+    <string name="improve_failed">Причесать не вышло: %1$s</string>
+    <string name="error_server_silent">сервер не ответил</string>
+    <string name="note_mic_busy">Микрофон занят другой программой</string>
+    <string name="status_mic_denied_forever">Микрофон запрещён — кнопка откроет настройки, включите там «Микрофон»</string>
+    <string name="status_mic_needed">Нужно разрешить запись</string>
+    <string name="status_recording">Идёт запись — нажмите, чтобы закончить</string>
+    <string name="status_thinking">Распознаю…</string>
+    <string name="status_improving">Причёсываю…</string>
+    <string name="status_idle">Нажмите и говорите</string>
+    <string name="record_seconds">%1$d с</string>
+    <string name="record_speak">Говорить</string>
+    <string name="copy">Копировать</string>
+    <string name="improve_clean">Почистить</string>
+    <string name="improve_clean_hint">Уберёт «эээ», повторы и оговорки</string>
+    <string name="improve_both">Почистить и переписать</string>
+    <string name="improve_both_hint">Сделает текст письменным: абзацы, связные фразы</string>
+
+    <!-- Настройки -->
+    <string name="settings_server">Сервер</string>
+    <string name="settings_server_none">не указан</string>
+    <string name="settings_status">Состояние</string>
+    <string name="settings_connected">Подключено</string>
+    <string name="settings_disconnected">Не подключено</string>
+    <string name="settings_version">Версия</string>
+    <string name="settings_forget">Отвязать это устройство</string>
+    <string name="settings_back">Назад</string>
+
+    <!-- Ошибки: humanError и Api -->
+    <string name="error_generic">Что-то не вышло</string>
+    <string name="error_timeout">Сервер очень долго не отвечает. Попробуйте ещё раз чуть позже</string>
+    <string name="error_no_connection">Нет связи с сервером. Проверьте интернет и адрес сервера</string>
+    <string name="error_ssl">Не удалось установить защищённое соединение. Проверьте адрес сервера</string>
+    <string name="error_access_revoked">Доступ отозван</string>
+    <string name="error_server_unavailable">Сервер сейчас недоступен. Подождите минуту и попробуйте ещё раз</string>
+    <string name="error_server_status">Сервер ответил %1$d</string>
+    <string name="error_server_garbled">Сервер ответил непонятно — возможно, он перезапускается. Попробуйте ещё раз</string>
+    <string name="error_no_token">Сервер не выдал доступ</string>
+</resources>

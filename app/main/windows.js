@@ -4,6 +4,7 @@ const path = require('node:path');
 const { BrowserWindow, screen, nativeTheme } = require('electron');
 
 const config = require('./config');
+const i18n = require('./i18n');
 
 /**
  * Окон три:
@@ -42,7 +43,7 @@ function createSettings() {
     show: false,
     frame: false,
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#1B1B1F' : '#EDEDF1',
-    title: 'PasteTalk — Настройки',
+    title: i18n.tr('PasteTalk — Настройки'),
     icon: path.join(__dirname, '..', '..', 'build', 'icon.ico'),
     webPreferences: {
       preload: path.join(PRELOAD, 'settings.js'),
@@ -223,6 +224,14 @@ function broadcast(channel, payload) {
   for (const name of Object.keys(windows)) send(name, channel, payload);
 }
 
+/** Перечитать HTML всех окон — например, после смены языка интерфейса. */
+function reloadAll() {
+  for (const name of Object.keys(windows)) {
+    const win = windows[name];
+    if (win && !win.isDestroyed()) win.webContents.reload();
+  }
+}
+
 module.exports = {
   windows,
   applyTheme,
@@ -235,4 +244,5 @@ module.exports = {
   createAudio,
   send,
   broadcast,
+  reloadAll,
 };

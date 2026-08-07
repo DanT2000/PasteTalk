@@ -1,4 +1,62 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Английский — язык по умолчанию для всего мира; русский лежит в values-ru. -->
 <resources>
     <string name="app_name">PasteTalk</string>
+
+    <!-- Экран подключения -->
+    <string name="connect_intro">To get started, enter an access code. The server owner can give you one.</string>
+    <string name="server_address_label">Server address</string>
+    <string name="server_address_placeholder">https://your-server.com</string>
+    <string name="code_label">Six-digit code</string>
+    <string name="connect_checking">Checking…</string>
+    <string name="connect_button">Connect</string>
+    <string name="connect_failed">Couldn\'t connect</string>
+    <string name="device_fallback">Phone</string>
+
+    <!-- Главный экран -->
+    <string name="settings">Settings</string>
+    <string name="note_mic_denied_forever">Recording is blocked. Tap the big button to open phone settings, then turn on \"Microphone\"</string>
+    <string name="note_mic_denied">Can\'t record without the microphone. Tap the button again and allow recording</string>
+    <string name="note_recording_lost">Recording stopped — the app went into the background</string>
+    <string name="note_recording_failed">Recording didn\'t work — try again</string>
+    <string name="note_nothing_recognized">Couldn\'t make anything out</string>
+    <string name="note_copied">Text copied</string>
+    <string name="note_improved">Done — copied</string>
+    <string name="improve_failed">Couldn\'t tidy up: %1$s</string>
+    <string name="error_server_silent">the server didn\'t respond</string>
+    <string name="note_mic_busy">The microphone is in use by another app</string>
+    <string name="status_mic_denied_forever">Microphone is blocked — the button opens settings, turn on \"Microphone\" there</string>
+    <string name="status_mic_needed">You\'ll need to allow recording</string>
+    <string name="status_recording">Recording — tap to finish</string>
+    <string name="status_thinking">Transcribing…</string>
+    <string name="status_improving">Tidying up…</string>
+    <string name="status_idle">Tap and speak</string>
+    <string name="record_seconds">%1$d s</string>
+    <string name="record_speak">Speak</string>
+    <string name="copy">Copy</string>
+    <string name="improve_clean">Clean up</string>
+    <string name="improve_clean_hint">Removes \"umms\", repeats, and slips</string>
+    <string name="improve_both">Clean up and rewrite</string>
+    <string name="improve_both_hint">Turns speech into writing: paragraphs, complete sentences</string>
+
+    <!-- Настройки -->
+    <string name="settings_server">Server</string>
+    <string name="settings_server_none">not set</string>
+    <string name="settings_status">Status</string>
+    <string name="settings_connected">Connected</string>
+    <string name="settings_disconnected">Not connected</string>
+    <string name="settings_version">Version</string>
+    <string name="settings_forget">Unlink this device</string>
+    <string name="settings_back">Back</string>
+
+    <!-- Ошибки: humanError и Api -->
+    <string name="error_generic">Something went wrong</string>
+    <string name="error_timeout">The server is taking too long to respond. Try again in a little while</string>
+    <string name="error_no_connection">Can\'t reach the server. Check your internet and the server address</string>
+    <string name="error_ssl">Couldn\'t set up a secure connection. Check the server address</string>
+    <string name="error_access_revoked">Access revoked</string>
+    <string name="error_server_unavailable">The server is unavailable right now. Wait a minute and try again</string>
+    <string name="error_server_status">The server replied with %1$d</string>
+    <string name="error_server_garbled">The server\'s reply didn\'t make sense — it may be restarting. Try again</string>
+    <string name="error_no_token">The server didn\'t grant access</string>
 </resources>

@@ -45,6 +45,10 @@ const DEFAULTS = {
     improveClipboard: 'Control+Alt+I',
   },
 
+  // Язык интерфейса: '' — как в системе, 'ru' | 'en' — явный выбор.
+  ui: {
+    locale: '',
+  },
   appearance: {
     theme: 'system',        // system | dark | light
     scale: 100,             // 100 | 125 | 150

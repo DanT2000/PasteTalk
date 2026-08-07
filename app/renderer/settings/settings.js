@@ -8,6 +8,7 @@
 
 const api = window.pastetalk;
 const root = document.documentElement;
+const t = window.t;
 
 let settings = null;
 let health = null;
@@ -129,18 +130,20 @@ function showEngine(info) {
   dot.className = 'dot';
   if (info.ready || info.state === 'ready') {
     dot.classList.add('is-ok');
-    text.textContent = `Готов · ${settings?.model?.name || ''}`;
+    text.textContent = `${t('Готов')} · ${settings?.model?.name || ''}`;
   } else if (info.state === 'starting') {
     dot.classList.add('is-busy');
-    text.textContent = 'Движок запускается…';
+    text.textContent = t('Движок запускается…');
   } else if (info.state === 'failed') {
     dot.classList.add('is-bad');
-    text.textContent = info.error || 'Движок не запустился';
+    text.textContent = t(info.error || 'Движок не запустился');
   } else {
-    text.textContent = 'Движок остановлен';
+    text.textContent = t('Движок остановлен');
   }
 }
+let lastEngineInfo = null;
 api.engine.onState((info) => {
+  lastEngineInfo = info;
   showEngine(info);
   // Движок поднимается дольше, чем открывается окно: когда он наконец
   // готов, список моделей и устройств надо построить заново — при первом
@@ -178,7 +181,7 @@ async function unlockDeviceNames() {
  * человека. Убираем и то и другое, оставляя само название.
  */
 function prettyDevice(label) {
-  if (!label) return 'Микрофон без названия';
+  if (!label) return t('Микрофон без названия');
   const withoutVendorId = label.replace(/\s*\([0-9a-f]{4}:[0-9a-f]{4}\)\s*$/i, '').trim();
   const inner = /^(?:Микрофон|Microphone|Линейный вход|Line In)\s*\((.+)\)$/i.exec(withoutVendorId);
   return (inner ? inner[1] : withoutVendorId).trim() || label;
@@ -199,7 +202,7 @@ async function loadMicrophones() {
 
   for (const select of [$('mic'), $('welcome-mic')]) {
     const chosen = settings.microphoneId || 'default';
-    select.innerHTML = '<option value="default">По умолчанию в Windows</option>';
+    select.innerHTML = `<option value="default">${t('По умолчанию в Windows')}</option>`;
     real.forEach((device) => {
       const option = document.createElement('option');
       option.value = device.deviceId;
@@ -220,9 +223,9 @@ $('mic-test').addEventListener('click', async () => {
     stream.getTracks().forEach((track) => track.stop());
     await loadMicrophones();
     const count = $('mic').options.length - 1;
-    say(count > 0 ? `Микрофон доступен, устройств найдено: ${count}` : 'Микрофон доступен');
+    say(count > 0 ? `${t('Микрофон доступен, устройств найдено:')} ${count}` : t('Микрофон доступен'));
   } catch (error) {
-    say(`Микрофон недоступен: ${error.message}`);
+    say(`${t('Микрофон недоступен:')} ${t(error.message)}`);
   }
 });
 
@@ -244,14 +247,14 @@ function renderModels() {
     const row = document.createElement('div');
     row.className = `row is-model${item.id === chosen ? ' is-chosen' : ''}`;
     const busy = status.name === item.id && ['downloading', 'loading'].includes(status.state);
-    const size = item.sizeMb >= 1024 ? `${(item.sizeMb / 1024).toFixed(1)} ГБ` : `${item.sizeMb} МБ`;
+    const size = item.sizeMb >= 1024 ? `${(item.sizeMb / 1024).toFixed(1)} ${t('ГБ')}` : `${item.sizeMb} ${t('МБ')}`;
 
     row.innerHTML = `
       <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
         ${item.id === chosen ? '<path d="M20 6 9 17l-5-5"/>' : '<circle cx="12" cy="12" r="9"/>'}
       </svg>
       <div class="row-text">
-        <div class="row-title">${item.title}${item.id === chosen ? ' <span class="pill">Выбрана</span>' : ''}</div>
+        <div class="row-title">${t(item.title)}${item.id === chosen ? ` <span class="pill">${t('Выбрана')}</span>` : ''}</div>
         <div class="row-sub">${describeModel(item, size, status)}</div>
         ${busy ? `<div class="progress"><i style="width:${Math.round((status.progress || 0) * 100)}%"></i></div>` : ''}
       </div>
@@ -259,24 +262,24 @@ function renderModels() {
 
     const controls = row.querySelector('.row-control');
     if (item.id !== chosen) {
-      controls.appendChild(button(item.cached ? 'Выбрать' : 'Скачать', 'btn', async () => {
+      controls.appendChild(button(item.cached ? t('Выбрать') : t('Скачать'), 'btn', async () => {
         await save('model.name', item.id);
         await api.engine.loadModel({ ...settings.model, name: item.id });
-        say(item.cached ? `Переключаюсь на ${item.title}` : `Качаю ${item.title}, ${size}`);
+        say(item.cached ? `${t('Переключаюсь на')} ${item.title}` : `${t('Качаю')} ${item.title}, ${size}`);
         pollModel();
       }));
     } else {
-      controls.appendChild(button('Скачать заново', 'btn', async () => {
+      controls.appendChild(button(t('Скачать заново'), 'btn', async () => {
         await api.engine.deleteModel(item.id);
         await api.engine.loadModel(settings.model);
-        say(`Качаю ${item.title} заново`);
+        say(`${t('Качаю заново')} ${item.title}`);
         pollModel();
       }));
     }
     if (item.cached && item.id !== chosen) {
-      controls.appendChild(button('Удалить', 'btn btn-quiet', async () => {
+      controls.appendChild(button(t('Удалить'), 'btn btn-quiet', async () => {
         const answer = await api.engine.deleteModel(item.id);
-        say(answer?.freedMb ? `Освободилось ${Math.round(answer.freedMb)} МБ` : 'Модель удалена');
+        say(answer?.freedMb ? `${t('Освободилось')} ${Math.round(answer.freedMb)} ${t('МБ')}` : t('Модель удалена'));
         refreshHealth();
       }));
     }
@@ -292,13 +295,13 @@ function describeModel(item, size, status) {
     base: 'Совсем быстрая, ошибается',
     tiny: 'Только чтобы попробовать',
   };
-  const note = notes[item.id] || '';
+  const note = t(notes[item.id] || '');
   if (status.name === item.id && status.state === 'downloading') {
-    return `${note} · качаю, ${Math.round((status.progress || 0) * 100)} % из ${size}`;
+    return `${note} · ${t('качаю')}, ${Math.round((status.progress || 0) * 100)} % ${t('из')} ${size}`;
   }
-  if (status.name === item.id && status.state === 'loading') return `${note} · загружаю в память`;
-  if (status.name === item.id && status.state === 'error') return status.error;
-  return `${note} · ${size}${item.cached ? ' на диске' : ', ещё не скачана'}`;
+  if (status.name === item.id && status.state === 'loading') return `${note} · ${t('загружаю в память')}`;
+  if (status.name === item.id && status.state === 'error') return t(status.error);
+  return `${note} · ${size}${item.cached ? ` ${t('на диске')}` : `, ${t('ещё не скачана')}`}`;
 }
 
 function button(label, className, onClick) {
@@ -318,7 +321,7 @@ function pollModel() {
     renderModels();
     if (['ready', 'error', 'idle'].includes(status.state)) {
       clearInterval(modelTimer);
-      if (status.state === 'error') say(status.error);
+      if (status.state === 'error') say(t(status.error));
       refreshHealth();
     }
   }, 700);
@@ -331,13 +334,13 @@ function renderDevices() {
     devices.forEach((device) => {
       const option = document.createElement('option');
       option.value = device.id;
-      option.textContent = device.title;
+      option.textContent = t(device.title);
       select.appendChild(option);
     });
     select.value = settings.model?.device || devices[0]?.id || 'cpu';
   }
   const gpu = devices.find((device) => device.id === 'cuda');
-  const line = gpu ? `Найдена видеокарта с CUDA${gpu.count > 1 ? ` (${gpu.count} шт.)` : ''}` : 'Видеокарта с CUDA не найдена — считаем на процессоре';
+  const line = gpu ? `${t('Найдена видеокарта с CUDA')}${gpu.count > 1 ? ` (${gpu.count} ${t('шт.')})` : ''}` : t('Видеокарта с CUDA не найдена — считаем на процессоре');
   $('device-sub').textContent = line;
   $('welcome-device-sub').textContent = line;
 }
@@ -345,19 +348,19 @@ function renderDevices() {
 $('device').addEventListener('change', async () => {
   await save('model.device', $('device').value);
   await api.engine.loadModel(settings.model);
-  say('Переключаю вычисления');
+  say(t('Переключаю вычисления'));
   pollModel();
 });
 
 $('bench').addEventListener('click', async () => {
   $('bench').disabled = true;
-  $('bench-sub').textContent = 'Меряю на эталонном отрывке…';
+  $('bench-sub').textContent = t('Меряю на эталонном отрывке…');
   try {
     const result = await api.engine.benchmark();
-    $('bench-sub').textContent = `Минута речи распознаётся за ${result.secondsPerMinute.toFixed(1)} с `
-      + `(${result.device === 'cuda' ? 'видеокарта' : 'процессор'}, ${result.model})`;
+    $('bench-sub').textContent = `${t('Минута речи распознаётся за')} ${result.secondsPerMinute.toFixed(1)} ${t('с')} `
+      + `(${result.device === 'cuda' ? t('видеокарта') : t('процессор')}, ${result.model})`;
   } catch (error) {
-    $('bench-sub').textContent = `Померить не вышло: ${error.message}`;
+    $('bench-sub').textContent = `${t('Померить не вышло:')} ${t(error.message)}`;
   }
   $('bench').disabled = false;
 });
@@ -410,7 +413,7 @@ function keyFromCode(code) {
 const MODIFIER_CODES = /^(Control|Alt|Shift|Meta|OS)(Left|Right)?$/;
 
 function showCombo(accelerator) {
-  if (!accelerator) return '<span class="cap-none">не назначено</span>';
+  if (!accelerator) return `<span class="cap-none">${t('не назначено')}</span>`;
   return accelerator.split('+')
     .map((part) => `<kbd>${SHOWN[part] || part}</kbd>`)
     .join('<span class="plus">+</span>');
@@ -424,19 +427,19 @@ function renderHotkeys() {
     row.className = 'row';
     row.innerHTML = `
       <div class="row-text">
-        <div class="row-title">${item.title}</div>
-        <div class="row-sub">${item.sub}</div>
+        <div class="row-title">${t(item.title)}</div>
+        <div class="row-sub">${t(item.sub)}</div>
       </div>
       <div class="row-control">
         <div class="combo" data-combo>${showCombo(settings.hotkeys?.[item.key])}</div>
-        <button class="btn" data-edit>Изменить</button>
-        <button class="btn btn-quiet" data-clear>Убрать</button>
+        <button class="btn" data-edit>${t('Изменить')}</button>
+        <button class="btn btn-quiet" data-clear>${t('Убрать')}</button>
       </div>`;
     row.querySelector('[data-edit]').addEventListener('click', (event) => beginCapture(item.key, row, event.currentTarget));
     row.querySelector('[data-clear]').addEventListener('click', async () => {
       await save(`hotkeys.${item.key}`, '');
       renderHotkeys();
-      say('Сочетание убрано');
+      say(t('Сочетание убрано'));
     });
     card.appendChild(row);
   }
@@ -449,15 +452,15 @@ function beginCapture(key, row, trigger) {
   const combo = row.querySelector('[data-combo]');
   capture = { key, combo, trigger, previous: combo.innerHTML, keys: [] };
   combo.classList.add('is-capturing');
-  combo.innerHTML = '<span class="capture-hint">Нажмите клавиши…</span>';
-  trigger.textContent = 'Отмена';
+  combo.innerHTML = `<span class="capture-hint">${t('Нажмите клавиши…')}</span>`;
+  trigger.textContent = t('Отмена');
 }
 
 function endCapture(commit) {
   if (!capture) return;
   const { combo, trigger, previous } = capture;
   combo.classList.remove('is-capturing');
-  trigger.textContent = 'Изменить';
+  trigger.textContent = t('Изменить');
   if (!commit) combo.innerHTML = previous;
   capture = null;
 }
@@ -468,13 +471,13 @@ async function commitCapture() {
   const free = await api.hotkeys.isFree(accelerator);
   if (!free) {
     capture.combo.classList.add('is-clash');
-    say(`${accelerator} не подошло: занято другой программой или Windows`);
+    say(`${accelerator} ${t('не подошло: занято другой программой или Windows')}`);
     return;
   }
   endCapture(true);
   await save(`hotkeys.${key}`, accelerator);
   renderHotkeys();
-  say('Сочетание сохранено');
+  say(t('Сочетание сохранено'));
 }
 
 window.addEventListener('keydown', async (event) => {
@@ -488,7 +491,7 @@ window.addEventListener('keydown', async (event) => {
     && !event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey;
   if (wantsSave) {
     if (capture.keys.length) await commitCapture();
-    else say('Сначала нажмите сочетание');
+    else say(t('Сначала нажмите сочетание'));
     return;
   }
 
@@ -505,13 +508,13 @@ window.addEventListener('keydown', async (event) => {
   const ready = Boolean(main);
   capture.combo.innerHTML = capture.keys.length
     ? showCombo(capture.keys.join('+'))
-      + `<span class="capture-hint">${ready ? 'Enter — сохранить' : 'и саму клавишу'}</span>`
-    : '<span class="capture-hint">Нажмите клавиши…</span>';
+      + `<span class="capture-hint">${ready ? t('Enter — сохранить') : t('и саму клавишу')}</span>`
+    : `<span class="capture-hint">${t('Нажмите клавиши…')}</span>`;
 });
 
 api.hotkeys.onConflict((failed) => {
   if (!failed?.length) return;
-  say(`Заняты другой программой: ${failed.map((item) => item.accelerator).join(', ')}`);
+  say(`${t('Заняты другой программой:')} ${failed.map((item) => item.accelerator).join(', ')}`);
 });
 
 // ---------- улучшение текста ----------
@@ -524,7 +527,7 @@ function renderProviders() {
   for (const [id, preset] of Object.entries(providers)) {
     const option = document.createElement('option');
     option.value = id;
-    option.textContent = preset.title;
+    option.textContent = t(preset.title);
     select.appendChild(option);
   }
   select.value = settings.ai?.provider || 'lmstudio';
@@ -540,19 +543,19 @@ function syncProvider() {
   $('row-key').classList.toggle('is-hidden', isCli || !preset.needsKey);
   $('row-model').classList.remove('is-hidden');
   $('ai-refresh').classList.toggle('is-hidden', isCli);
-  $('provider-sub').textContent = preset.hint
-    || (isCli ? 'Работает через вашу подписку — ключ не нужен' : 'Сервер с OpenAI-совместимым API');
+  $('provider-sub').textContent = t(preset.hint
+    || (isCli ? 'Работает через вашу подписку — ключ не нужен' : 'Сервер с OpenAI-совместимым API'));
 
   if (isCli) {
     // У агента список моделей свой и заранее известен — спрашивать некого.
-    fillModels((preset.models || []).map((item) => ({ value: item.id, label: item.title })));
-    $('model-sub').textContent = 'Модель полегче отвечает быстрее и стоит дешевле. Что именно доступно — зависит от вашей подписки';
+    fillModels((preset.models || []).map((item) => ({ value: item.id, label: t(item.title) })));
+    $('model-sub').textContent = t('Модель полегче отвечает быстрее и стоит дешевле. Что именно доступно — зависит от вашей подписки');
   } else {
     $('baseurl').placeholder = preset.baseUrl || 'http://localhost:1234/v1';
     $('apikey').value = settings.ai?.keys?.[id] || '';
-    $('model-sub').textContent = id === 'lmstudio'
+    $('model-sub').textContent = t(id === 'lmstudio'
       ? 'Для чистки речи хватает модели уровня Gemma 3 4B и выше — задача простая. Крупные умнее, но заставляют ждать'
-      : 'Нажмите «Обновить», чтобы получить список с сервера';
+      : 'Нажмите «Обновить», чтобы получить список с сервера');
   }
   $('row-prompt').classList.toggle('is-hidden', $('ai-mode').value !== 'custom');
 }
@@ -590,12 +593,12 @@ const MODE_HINTS = {
 };
 
 function syncModeHint() {
-  $('ai-mode-sub').textContent = MODE_HINTS[$('ai-mode').value] || '';
+  $('ai-mode-sub').textContent = t(MODE_HINTS[$('ai-mode').value] || '');
   // Подпись должна говорить о текущем положении переключателя, а не
   // висеть одним и тем же текстом при любом.
-  $('ai-enabled-sub').textContent = $('ai-enabled').checked
+  $('ai-enabled-sub').textContent = t($('ai-enabled').checked
     ? 'Кнопка ИИ на панели записи работает, а Ctrl+Alt+Enter заканчивает запись сразу улучшением'
-    : 'Пока выключено: кнопка ИИ на панели записи не работает';
+    : 'Пока выключено: кнопка ИИ на панели записи не работает');
 }
 
 $('ai-enabled').addEventListener('change', syncModeHint);
@@ -609,7 +612,7 @@ $('apikey').addEventListener('input', () => {
 
 $('ai-refresh').addEventListener('click', async () => {
   $('ai-refresh').disabled = true;
-  $('model-sub').textContent = 'Спрашиваю сервер…';
+  $('model-sub').textContent = t('Спрашиваю сервер…');
   const answer = await api.llm.models({
     provider: $('provider').value,
     baseUrl: $('baseurl').value,
@@ -617,17 +620,17 @@ $('ai-refresh').addEventListener('click', async () => {
   });
   $('ai-refresh').disabled = false;
 
-  if (!answer.ok) { $('model-sub').textContent = answer.error; return; }
+  if (!answer.ok) { $('model-sub').textContent = t(answer.error); return; }
   fillModels(answer.models.map((name) => ({ value: name, label: name })));
   if ($('ai-model').value !== settings.ai?.model) save('ai.model', $('ai-model').value);
-  $('model-sub').textContent = `Сервер отдал моделей: ${answer.models.length}`;
+  $('model-sub').textContent = `${t('Сервер отдал моделей:')} ${answer.models.length}`;
 });
 
 $('ai-check').addEventListener('click', async () => {
   $('ai-check').disabled = true;
   $('ai-status').className = 'pill pill-muted';
-  $('ai-status').textContent = 'проверяю';
-  $('ai-check-sub').textContent = 'Прогоняю короткую фразу…';
+  $('ai-status').textContent = t('проверяю');
+  $('ai-check-sub').textContent = t('Прогоняю короткую фразу…');
 
   const answer = await api.llm.check({
     provider: $('provider').value,
@@ -639,12 +642,12 @@ $('ai-check').addEventListener('click', async () => {
   $('ai-check').disabled = false;
   if (answer.ok) {
     $('ai-status').className = 'pill pill-ok';
-    $('ai-status').textContent = `${answer.ms} мс`;
-    $('ai-check-sub').textContent = `${answer.provider} ответил: «${answer.sample}»`;
+    $('ai-status').textContent = `${answer.ms} ${t('мс')}`;
+    $('ai-check-sub').textContent = `${answer.provider} ${t('ответил:')} ${t('«')}${answer.sample}${t('»')}`;
   } else {
     $('ai-status').className = 'pill pill-bad';
-    $('ai-status').textContent = 'не вышло';
-    $('ai-check-sub').textContent = answer.error;
+    $('ai-status').textContent = t('не вышло');
+    $('ai-check-sub').textContent = t(answer.error);
   }
 });
 
@@ -665,7 +668,7 @@ async function startFile(path) {
   $('drop').classList.add('is-hidden');
   $('file-result').classList.remove('is-hidden');
   $('file-name').textContent = path.split(/[\\/]/).pop();
-  $('file-info').textContent = 'Достаю звук…';
+  $('file-info').textContent = t('Достаю звук…');
   $('file-text').textContent = '';
   $('file-progress').style.display = 'block';
   $('file-progress').querySelector('i').style.width = '0';
@@ -681,8 +684,8 @@ async function startFile(path) {
     });
   } catch (error) {
     $('file-info').textContent = error.message === 'MODEL_NOT_READY'
-      ? 'Модель ещё не готова — подождите, пока она загрузится'
-      : error.message;
+      ? t('Модель ещё не готова — подождите, пока она загрузится')
+      : t(error.message);
     $('file-progress').style.display = 'none';
     return;
   }
@@ -696,28 +699,28 @@ async function startFile(path) {
     if (status.state === 'done') {
       clearInterval(jobTimer);
       $('file-progress').style.display = 'none';
-      $('file-info').textContent = `${formatDuration(status.durationS)} · готово`;
+      $('file-info').textContent = `${formatDuration(status.durationS)} · ${t('готово')}`;
       $('file-save').disabled = false;
       $('file-copy').disabled = false;
     } else if (status.state === 'error') {
       clearInterval(jobTimer);
       $('file-progress').style.display = 'none';
       $('file-info').textContent = status.error === 'FFMPEG_MISSING'
-        ? 'Нужен FFmpeg — без него звук из видео не достать'
-        : status.error;
+        ? t('Нужен FFmpeg — без него звук из видео не достать')
+        : t(status.error);
     } else if (status.state === 'working') {
-      $('file-info').textContent = `${formatDuration(status.durationS)} · распознаю, ${Math.round(status.progress * 100)} %`;
+      $('file-info').textContent = `${formatDuration(status.durationS)} · ${t('распознаю')}, ${Math.round(status.progress * 100)} %`;
     } else if (status.state === 'switching') {
-      $('file-info').textContent = 'Готовлю выбранную модель…';
+      $('file-info').textContent = t('Готовлю выбранную модель…');
     } else if (status.state === 'decoding') {
-      $('file-info').textContent = 'Достаю звук из файла…';
+      $('file-info').textContent = t('Достаю звук из файла…');
     }
   }, 600);
 }
 
 function formatDuration(seconds) {
   const total = Math.round(seconds || 0);
-  return total >= 60 ? `${Math.floor(total / 60)} мин ${String(total % 60).padStart(2, '0')} с` : `${total} с`;
+  return total >= 60 ? `${Math.floor(total / 60)} ${t('мин')} ${String(total % 60).padStart(2, '0')} ${t('с')}` : `${total} ${t('с')}`;
 }
 
 $('file-pick').addEventListener('click', async () => {
@@ -741,7 +744,7 @@ function renderFileModels() {
   (health?.catalog || []).forEach((item) => {
     const option = document.createElement('option');
     option.value = item.id;
-    option.textContent = item.cached ? item.title : `${item.title} — скачается при первом запуске`;
+    option.textContent = item.cached ? t(item.title) : `${t(item.title)} — ${t('скачается при первом запуске')}`;
     select.appendChild(option);
   });
   select.value = [...select.options].some((o) => o.value === chosen) ? chosen : (settings.model?.name || 'large-v3');
@@ -759,30 +762,30 @@ drop.addEventListener('drop', (event) => {
   if (!file) return;
   const path = api.files.pathOf(file);
   if (path) startFile(path);
-  else say('Не удалось получить путь к файлу — выберите его кнопкой');
+  else say(t('Не удалось получить путь к файлу — выберите его кнопкой'));
 });
 
 $('file-copy').addEventListener('click', async () => {
   await api.clipboard.write($('file-text').textContent);
-  say('Текст скопирован');
+  say(t('Текст скопирован'));
 });
 $('file-save').addEventListener('click', async () => {
   const saved = await api.files.save({
     text: $('file-text').textContent,
     name: `${$('file-name').textContent.replace(/\.[^.]+$/, '')}.txt`,
   });
-  if (saved) say(`Сохранил: ${saved}`);
+  if (saved) say(`${t('Сохранил:')} ${saved}`);
 });
 
 // ---------- история ----------
 
 function whenSaid(stamp) {
   const minutes = Math.round((Date.now() - stamp) / 60000);
-  if (minutes < 1) return 'только что';
-  if (minutes < 60) return `${minutes} мин назад`;
+  if (minutes < 1) return t('только что');
+  if (minutes < 60) return `${minutes} ${t('мин назад')}`;
   const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours} ч назад`;
-  return new Date(stamp).toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
+  if (hours < 24) return `${hours} ${t('ч назад')}`;
+  return new Date(stamp).toLocaleString(t('ru-RU'), { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
 }
 
 async function refreshHistory() {
@@ -795,8 +798,8 @@ function renderHistory(list) {
 
   if (!list.length) {
     card.innerHTML = '<div class="row"><div class="row-text">'
-      + '<div class="row-title">Пока пусто</div>'
-      + '<div class="row-sub">Здесь будет всё, что вы надиктовали — по горячей клавише или через панель записи</div>'
+      + `<div class="row-title">${t('Пока пусто')}</div>`
+      + `<div class="row-sub">${t('Здесь будет всё, что вы надиктовали — по горячей клавише или через панель записи')}</div>`
       + '</div></div>';
     return;
   }
@@ -806,39 +809,39 @@ function renderHistory(list) {
     row.className = 'row row-stack';
     const shown = item.improved || item.text;
     row.innerHTML = `
-      <div class="row-sub">${whenSaid(item.at)}${item.seconds ? ` · ${item.seconds} с речи` : ''}`
-      + `${item.improved ? ' · <span class="pill">причёсано</span>' : ''}</div>
+      <div class="row-sub">${whenSaid(item.at)}${item.seconds ? ` · ${item.seconds} ${t('с речи')}` : ''}`
+      + `${item.improved ? ` · <span class="pill">${t('причёсано')}</span>` : ''}</div>
       <div class="history-text">${escapeHtml(shown)}</div>
       <div class="under-card" style="margin-bottom:0;"></div>`;
 
     const buttons = row.querySelector('.under-card');
-    buttons.appendChild(button('Копировать', 'btn', async () => {
+    buttons.appendChild(button(t('Копировать'), 'btn', async () => {
       await api.history.copy(item.id, Boolean(item.improved));
-      say('Скопировано');
+      say(t('Скопировано'));
     }));
 
     if (item.improved) {
-      buttons.appendChild(button('Копировать оригинал', 'btn', async () => {
+      buttons.appendChild(button(t('Копировать оригинал'), 'btn', async () => {
         await api.history.copy(item.id, false);
-        say('Скопирован оригинал');
+        say(t('Скопирован оригинал'));
       }));
     } else {
-      const improve = button('Причесать', 'btn btn-accent', async () => {
+      const improve = button(t('Причесать'), 'btn btn-accent', async () => {
         improve.disabled = true;
-        improve.textContent = 'Думает…';
+        improve.textContent = t('Думает…');
         try {
           await api.history.improve(item.id);
-          say('Готово, текст в буфере обмена');
+          say(t('Готово, текст в буфере обмена'));
         } catch (error) {
-          say(error.message.replace(/^Error invoking remote method '[^']+': Error: /, ''));
+          say(t(error.message.replace(/^Error invoking remote method '[^']+': Error: /, '')));
           improve.disabled = false;
-          improve.textContent = 'Причесать';
+          improve.textContent = t('Причесать');
         }
       });
       buttons.appendChild(improve);
     }
 
-    buttons.appendChild(button('Убрать', 'btn btn-quiet', async () => {
+    buttons.appendChild(button(t('Убрать'), 'btn btn-quiet', async () => {
       renderHistory(await api.history.remove(item.id));
     }));
 
@@ -849,7 +852,7 @@ function renderHistory(list) {
 $('history-refresh').addEventListener('click', refreshHistory);
 $('history-clear').addEventListener('click', async () => {
   renderHistory(await api.history.clear());
-  say('История очищена');
+  say(t('История очищена'));
 });
 api.history.onChanged(renderHistory);
 
@@ -858,16 +861,16 @@ api.history.onChanged(renderHistory);
 async function refreshLogs() {
   const lines = await api.app.logs();
   const box = $('logs');
-  box.textContent = lines.join('\n') || 'Пока пусто';
+  box.textContent = lines.join('\n') || t('Пока пусто');
   box.scrollTop = box.scrollHeight;
   refreshErrors();
 }
 
 function whenText(stamp) {
   const minutes = Math.round((Date.now() - stamp) / 60000);
-  if (minutes < 1) return 'только что';
-  if (minutes < 60) return `${minutes} мин назад`;
-  return `${Math.round(minutes / 60)} ч назад`;
+  if (minutes < 1) return t('только что');
+  if (minutes < 60) return `${minutes} ${t('мин назад')}`;
+  return `${Math.round(minutes / 60)} ${t('ч назад')}`;
 }
 
 /** Ошибки показываем свёрнутыми: одна строка на беду, с числом повторов. */
@@ -878,8 +881,8 @@ async function refreshErrors() {
 
   if (!list.length) {
     card.innerHTML = '<div class="row"><div class="row-text">'
-      + '<div class="row-title">За сутки ошибок не было</div>'
-      + '<div class="row-sub">Если что-то пойдёт не так, оно появится здесь</div></div></div>';
+      + `<div class="row-title">${t('За сутки ошибок не было')}</div>`
+      + `<div class="row-sub">${t('Если что-то пойдёт не так, оно появится здесь')}</div></div></div>`;
     return;
   }
 
@@ -891,8 +894,8 @@ async function refreshErrors() {
         <path d="M12 8v5M12 17h.01"/><path d="M12 3 2 20h20z"/>
       </svg>
       <div class="row-text">
-        <div class="row-title">${escapeHtml(item.message).slice(0, 300)}</div>
-        <div class="row-sub">${item.scope} · ${whenText(item.last)}${item.count > 1 ? ` · повторилось ${item.count} раз` : ''}</div>
+        <div class="row-title">${escapeHtml(t(item.message)).slice(0, 300)}</div>
+        <div class="row-sub">${item.scope} · ${whenText(item.last)}${item.count > 1 ? ` · ${t('повторилось')} ${item.count} ${t('раз')}` : ''}</div>
       </div>`;
     row.querySelector('.row-icon').style.color = 'var(--live)';
     card.appendChild(row);
@@ -914,13 +917,13 @@ let updateLink = '';
 $('update-check').addEventListener('click', async () => {
   $('update-check').disabled = true;
   $('update-pill').classList.add('is-hidden');
-  $('update-sub').textContent = 'Спрашиваю GitHub…';
+  $('update-sub').textContent = t('Спрашиваю GitHub…');
 
   const answer = await api.app.checkUpdates();
   $('update-check').disabled = false;
 
   if (!answer.ok) {
-    $('update-sub').textContent = `Проверить не вышло: ${answer.error}`;
+    $('update-sub').textContent = `${t('Проверить не вышло:')} ${t(answer.error)}`;
     $('update-get').style.display = 'none';
     return;
   }
@@ -930,15 +933,15 @@ $('update-check').addEventListener('click', async () => {
   if (answer.newer) {
     updateLink = answer.download;
     pill.className = 'pill';
-    pill.textContent = `есть ${answer.latest}`;
-    $('update-sub').textContent = `У вас ${answer.current}, на GitHub ${answer.latest}`
-      + (answer.sizeMb ? ` — установщик ${answer.sizeMb} МБ` : '')
-      + '. Скачайте и запустите поверх, настройки сохранятся';
+    pill.textContent = `${t('есть')} ${answer.latest}`;
+    $('update-sub').textContent = `${t('У вас')} ${answer.current}, ${t('на GitHub')} ${answer.latest}`
+      + (answer.sizeMb ? ` — ${t('установщик')} ${answer.sizeMb} ${t('МБ')}` : '')
+      + t('. Скачайте и запустите поверх, настройки сохранятся');
     $('update-get').style.display = '';
   } else {
     pill.className = 'pill pill-ok';
-    pill.textContent = 'последняя';
-    $('update-sub').textContent = `У вас ${answer.current} — новее пока нет`;
+    pill.textContent = t('последняя');
+    $('update-sub').textContent = `${t('У вас')} ${answer.current} — ${t('новее пока нет')}`;
     $('update-get').style.display = 'none';
   }
 });
@@ -946,7 +949,7 @@ $('update-get').addEventListener('click', () => {
   if (updateLink) api.app.openExternal(updateLink);
 });
 $('engine-restart').addEventListener('click', async () => {
-  say('Перезапускаю движок');
+  say(t('Перезапускаю движок'));
   await api.engine.restart();
   setTimeout(refreshHealth, 1500);
 });
@@ -955,15 +958,15 @@ async function showClipboardHistory() {
   const { enabled, unknown } = await api.app.clipboardHistory();
   const pill = $('clip-pill');
   pill.className = `pill ${enabled ? 'pill-ok' : 'pill-muted'}`;
-  pill.textContent = unknown ? 'не знаю' : (enabled ? 'включён' : 'выключен');
-  $('clip-sub').textContent = enabled
+  pill.textContent = unknown ? t('не знаю') : (enabled ? t('включён') : t('выключен'));
+  $('clip-sub').textContent = t(enabled
     ? 'Включён. Обычный и улучшенный текст лежат рядом — вызывайте по Win+V и выбирайте любой'
-    : 'Рекомендуем включить: хранит несколько последних текстов, вызывается по Win+V. Без него улучшенный текст затрёт обычный';
+    : 'Рекомендуем включить: хранит несколько последних текстов, вызывается по Win+V. Без него улучшенный текст затрёт обычный');
 }
 
 $('clip-how').addEventListener('click', async () => {
   api.app.openExternal('ms-settings:clipboard');
-  say('Открыл параметры Windows — раздел «Журнал буфера обмена»');
+  say(t('Открыл параметры Windows — раздел «Журнал буфера обмена»'));
   // Человек мог переключить его прямо сейчас — перепроверим через паузу.
   setTimeout(showClipboardHistory, 4000);
 });
@@ -974,7 +977,7 @@ $('ffmpeg-how').addEventListener('click', () =>
 // Порт меняется только вместе с перезапуском движка — иначе настройка
 // сохранится, а работать всё будет по-старому до следующего запуска.
 $('engine-port-apply').addEventListener('click', async () => {
-  say('Перезапускаю движок на новом порту');
+  say(t('Перезапускаю движок на новом порту'));
   await api.engine.restart();
   setTimeout(refreshHealth, 2000);
 });
@@ -990,7 +993,7 @@ function setupWelcome() {
   (health?.catalog || []).forEach((item) => {
     const option = document.createElement('option');
     option.value = item.id;
-    option.textContent = `${item.title} — ${item.sizeMb >= 1024 ? `${(item.sizeMb / 1024).toFixed(1)} ГБ` : `${item.sizeMb} МБ`}`;
+    option.textContent = `${t(item.title)} — ${item.sizeMb >= 1024 ? `${(item.sizeMb / 1024).toFixed(1)} ${t('ГБ')}` : `${item.sizeMb} ${t('МБ')}`}`;
     select.appendChild(option);
   });
   select.value = settings.model?.name || 'large-v3';
@@ -1006,7 +1009,7 @@ $('welcome-done').addEventListener('click', async () => {
   await api.engine.loadModel(settings.model);
   goto('model');
   pollModel();
-  say('Качаю модель — это разово');
+  say(t('Качаю модель — это разово'));
 });
 $('welcome-skip').addEventListener('click', async () => {
   await api.config.set({ firstRun: false });
@@ -1025,16 +1028,22 @@ async function refreshHealth() {
     renderFileModels();
     setupWelcome();
     $('ffmpeg-pill').className = health.ffmpeg ? 'pill pill-ok' : 'pill pill-bad';
-    $('ffmpeg-pill').textContent = health.ffmpeg ? 'на месте' : 'не найден';
-    $('ffmpeg-sub').textContent = health.ffmpeg
+    $('ffmpeg-pill').textContent = health.ffmpeg ? t('на месте') : t('не найден');
+    $('ffmpeg-sub').textContent = t(health.ffmpeg
       ? 'Достаёт звук из видео. Найден в системе'
-      : 'Достаёт звук из видео. Без него читаются только аудиофайлы';
-    $('engine-line').textContent = `Движок ${health.version} · модель ${health.model?.title || '—'} · ${health.model?.device === 'cuda' ? 'видеокарта' : 'процессор'}`;
+      : 'Достаёт звук из видео. Без него читаются только аудиофайлы');
+    $('engine-line').textContent = `${t('Движок')} ${health.version} · ${t('модель')} ${health.model?.title || '—'} · ${health.model?.device === 'cuda' ? t('видеокарта') : t('процессор')}`;
     if (['downloading', 'loading'].includes(health.model?.state)) pollModel();
   }
 }
 
 async function start() {
+  // Язык — раньше всего остального: applyLocale переводит готовый DOM,
+  // а всё, что строится дальше, переводит себя через t().
+  window.applyLocale(await api.i18n.get());
+  // Состояние движка могло прилететь до применения языка — перерисуем.
+  if (lastEngineInfo) showEngine(lastEngineInfo);
+
   settings = await api.config.all();
   providers = await api.llm.providers();
   const state = await api.app.state();
@@ -1077,7 +1086,7 @@ function showWhere() {
   const where = select.value || 'local';
 
   const sub = $('where-sub');
-  if (sub) sub.textContent = WHERE_WORDS[where] || '';
+  if (sub) sub.textContent = t(WHERE_WORDS[where] || '');
 
   // Местные модели и выбор видеокарты незачем показывать тому, кто
   // считает не у себя: это лишние вопросы без единого ответа.
@@ -1104,7 +1113,7 @@ async function fillCloudProviders() {
   for (const [id, preset] of Object.entries(cloudPresets)) {
     const option = document.createElement('option');
     option.value = id;
-    option.textContent = preset.title;
+    option.textContent = t(preset.title);
     select.appendChild(option);
   }
   // Значение из настроек ставим после того, как список построен.
@@ -1115,9 +1124,9 @@ function showCloudHints() {
   const preset = cloudPresets[$('rec-cloud')?.value];
   if (!preset) return;
   const hint = $('cloud-hint');
-  if (hint) hint.textContent = preset.hint || '';
+  if (hint) hint.textContent = t(preset.hint || '');
   const model = $('cloud-model-sub');
-  if (model) model.textContent = `Пусто — возьмём ${preset.defaultModel}`;
+  if (model) model.textContent = `${t('Пусто — возьмём')} ${preset.defaultModel}`;
 }
 
 $('rec-where')?.addEventListener('change', showWhere);
@@ -1132,13 +1141,13 @@ $('rec-pair')?.addEventListener('click', async () => {
   const code = field.value.trim();
   const sub = $('rec-check-sub');
   if (!/^\d{6}$/.test(code)) {
-    if (sub) sub.textContent = 'Код — это ровно шесть цифр';
+    if (sub) sub.textContent = t('Код — это ровно шесть цифр');
     return;
   }
   button.disabled = true;
   const result = await api.recognition.pair(code);
   button.disabled = false;
-  if (sub) sub.textContent = result.ok ? 'Код принят, сервер подключён' : result.error;
+  if (sub) sub.textContent = result.ok ? t('Код принят, сервер подключён') : t(result.error);
   if (result.ok) field.value = '';
 });
 
@@ -1146,13 +1155,13 @@ $('rec-check')?.addEventListener('click', async () => {
   const button = $('rec-check');
   const sub = $('rec-check-sub');
   button.disabled = true;
-  if (sub) sub.textContent = 'Проверяю…';
+  if (sub) sub.textContent = t('Проверяю…');
   const result = await api.recognition.check();
   button.disabled = false;
   if (sub) {
     sub.textContent = result.ok
-      ? 'Связь есть — можно диктовать'
-      : `Не вышло: ${result.error}`;
+      ? t('Связь есть — можно диктовать')
+      : `${t('Не вышло:')} ${t(result.error)}`;
   }
 });
 
@@ -1169,14 +1178,14 @@ const RELAY_WORDS = {
 function showRelay(state) {
   const where = $('relay-state');
   if (!where) return;
-  const word = RELAY_WORDS[state.status] || state.status;
-  where.textContent = state.hint ? `${word} — ${state.hint}` : word;
+  const word = t(RELAY_WORDS[state.status] || state.status);
+  where.textContent = state.hint ? `${word} — ${t(state.hint)}` : word;
 
   const local = $('relay-local');
   if (local && state.enginePort !== undefined) {
     local.textContent = state.enginePort
       ? `localhost:${state.enginePort}`
-      : 'движок ещё не запустился';
+      : t('движок ещё не запустился');
   }
 }
 
@@ -1187,19 +1196,19 @@ $('relay-pair')?.addEventListener('click', async () => {
   const button = $('relay-pair');
   const key = field.value.trim();
   if (!key) {
-    $('relay-state').textContent = 'Вставьте ключ из раздела «Компьютеры»';
+    $('relay-state').textContent = t('Вставьте ключ из раздела «Компьютеры»');
     return;
   }
   button.disabled = true;
-  $('relay-state').textContent = 'Подключаюсь…';
+  $('relay-state').textContent = t('Подключаюсь…');
   const result = await api.relay.pair(key);
   button.disabled = false;
   if (result.ok) {
     field.value = '';
     $('relay-enabled').checked = true;
-    $('relay-state').textContent = 'Ключ принят, подключаюсь…';
+    $('relay-state').textContent = t('Ключ принят, подключаюсь…');
   } else {
-    $('relay-state').textContent = result.error;
+    $('relay-state').textContent = t(result.error);
   }
 });
 
@@ -1223,7 +1232,7 @@ async function fillDisplays() {
     for (const display of displays) {
       const option = document.createElement('option');
       option.value = display.id;
-      option.textContent = display.title;
+      option.textContent = t(display.title);
       select.appendChild(option);
     }
     const saved = String(settings.appearance?.capsuleDisplay || 'cursor');
@@ -1233,7 +1242,7 @@ async function fillDisplays() {
       // сохранённое значение, и без такого пункта селект просто пустел.
       const gone = document.createElement('option');
       gone.value = saved;
-      gone.textContent = 'Экран отключён — панель там, где курсор';
+      gone.textContent = t('Экран отключён — панель там, где курсор');
       select.appendChild(gone);
     }
     select.value = saved;
@@ -1255,11 +1264,11 @@ start()
     showWhere();
   })
   .then(() => api.relay?.state().then(showRelay))
-  .catch((error) => say(`Не удалось открыть настройки: ${error.message}`));
+  .catch((error) => say(`${t('Не удалось открыть настройки:')} ${t(error.message)}`));
 
 // Молчаливая смерть скрипта — худшее, что может случиться с окном: оно
 // выглядит рабочим, но ничего не делает. Пусть ошибка будет видна.
 window.addEventListener('error', (event) => {
-  say(`Сбой в окне настроек: ${event.message}`);
+  say(`${t('Сбой в окне настроек:')} ${event.message}`);
   $('state-text').textContent = event.message;
 });

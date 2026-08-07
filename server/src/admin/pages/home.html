@@ -32,6 +32,12 @@ header b { font-size: 1.25rem; }
 header nav { margin-left: auto; display: flex; gap: 1rem; flex-wrap: wrap; }
 header nav a { color: var(--muted); text-decoration: none; }
 header nav a:hover { color: var(--fg); }
+/* Переключатель языка — той же тихой серости, что и ссылки рядом. */
+button.lang {
+  font: inherit; font-size: 0.875rem; padding: 0.15rem 0.7rem; border-radius: 999px;
+  border: 1px solid var(--line); background: transparent; color: var(--muted); cursor: pointer;
+}
+button.lang:hover { color: var(--fg); }
 
 h1 { font-size: clamp(1.75rem, 5vw, 2.75rem); line-height: 1.15; margin: 0 0 1rem; }
 .lede { font-size: 1.125rem; color: var(--muted); margin: 0 0 2rem; max-width: 34rem; }
@@ -76,6 +82,7 @@ footer a { color: var(--muted); }
   <nav>
     <a href="https://github.com/DanT2000/PasteTalk">GitHub</a>
     <a href="/admin/">Админка</a>
+    <button class="lang" type="button">EN</button>
   </nav>
 </header>
 
@@ -128,5 +135,83 @@ footer a { color: var(--muted); }
 </footer>
 
 </div>
+<script src="/admin/i18n-en.js"></script>
+<script>
+'use strict';
+
+/**
+ * Перевод страницы на английский — по образцу десктопного i18n.js.
+ *
+ * Русский HTML — источник. При английском языке обходим готовый DOM и
+ * заменяем тексты по словарю window.PASTETALK_EN. Язык хранится в
+ * localStorage('pastetalk-lang'); по умолчанию берётся язык браузера.
+ */
+(function initLang() {
+  const saved = localStorage.getItem('pastetalk-lang');
+  const lang = saved === 'ru' || saved === 'en'
+    ? saved
+    : (/^ru/i.test(navigator.language || '') ? 'ru' : 'en');
+  const dict = (lang === 'en' && window.PASTETALK_EN) || {};
+
+  function translate(text) {
+    if (lang !== 'en') return text;
+    // Ключ — текст с нормализованными пробелами: в HTML внутри абзаца
+    // живут переносы строк и отступы, без нормализации многострочный
+    // текст не совпал бы со словарём.
+    const key = text.replace(/\s+/g, ' ').trim();
+    if (!key) return text;
+    const found = dict[key];
+    if (!found) return text;
+    // Пробелы по краям сохраняем: в текстовых узлах они значимы.
+    const lead = text.match(/^\s*/)[0];
+    const tail = text.match(/\s*$/)[0];
+    return lead + found + tail;
+  }
+
+  function walk(root) {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    for (const node of nodes) {
+      // Внутри script/style текст не трогаем.
+      const parent = node.parentElement;
+      if (!parent || parent.tagName === 'SCRIPT' || parent.tagName === 'STYLE') continue;
+      const fresh = translate(node.nodeValue);
+      if (fresh !== node.nodeValue) node.nodeValue = fresh;
+    }
+    for (const el of root.querySelectorAll('[placeholder], [title], [aria-label]')) {
+      for (const attr of ['placeholder', 'title', 'aria-label']) {
+        const value = el.getAttribute(attr);
+        if (value) {
+          const fresh = translate(value);
+          if (fresh !== value) el.setAttribute(attr, fresh);
+        }
+      }
+    }
+  }
+
+  /** Перевод для строк, собираемых в JS. */
+  window.t = (text) => translate(String(text == null ? '' : text));
+  window.PASTETALK_LANG = lang;
+
+  if (lang === 'en') {
+    document.documentElement.lang = 'en';
+    walk(document.body);
+    // Заголовок и описание живут в head — обходом body их не достать.
+    document.title = translate(document.title);
+    const meta = document.querySelector('meta[name="description"]');
+    if (meta) meta.setAttribute('content', translate(meta.getAttribute('content') || ''));
+  }
+
+  // Кнопка показывает язык, НА который переключит.
+  document.querySelectorAll('button.lang').forEach((button) => {
+    button.textContent = lang === 'en' ? 'RU' : 'EN';
+    button.addEventListener('click', () => {
+      localStorage.setItem('pastetalk-lang', lang === 'en' ? 'ru' : 'en');
+      location.reload();
+    });
+  });
+})();
+</script>
 </body>
 </html>

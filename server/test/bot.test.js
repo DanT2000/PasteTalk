@@ -38,11 +38,16 @@ const okQueue = {
   improve: async () => ({ text: 'Сказанное вслух.', executedBy: 'agent', model: 'gemma3:12b', tokensIn: 0, tokensOut: 0 }),
 };
 
+// language_code: 'ru' — как у настоящего русского Telegram; без него бот
+// по праву ответил бы по-английски, и проверки русских текстов бы врали.
 const voice = (from) => ({
-  message: { message_id: 7, chat: { id: from }, from: { id: from }, voice: { file_id: 'f1', duration: 4 } },
+  message: {
+    message_id: 7, chat: { id: from }, from: { id: from, language_code: 'ru' },
+    voice: { file_id: 'f1', duration: 4 },
+  },
 });
 const said = (from, text) => ({
-  message: { message_id: 7, chat: { id: from }, from: { id: from }, text },
+  message: { message_id: 7, chat: { id: from }, from: { id: from, language_code: 'ru' }, text },
 });
 
 test.beforeEach(() => { db.close(); db.open(':memory:'); keys.forgetMisses(); });
@@ -138,7 +143,7 @@ test('улучшение приходит отдельным сообщение�
 
   await bot.handle({
     callback_query: {
-      id: 'cb1', data: 'clean', from: { id: 555 },
+      id: 'cb1', data: 'clean', from: { id: 555, language_code: 'ru' },
       message: { message_id: 101, chat: { id: 555 }, text: 'сказанное вслух' },
     },
   }, { tg, queue: okQueue });
@@ -168,7 +173,7 @@ test('улучшение не вышло — текст остаётся при 
 
   await bot.handle({
     callback_query: {
-      id: 'cb1', data: 'both', from: { id: 555 },
+      id: 'cb1', data: 'both', from: { id: 555, language_code: 'ru' },
       message: { message_id: 101, chat: { id: 555 }, text: 'сказанное вслух' },
     },
   }, { tg, queue: { improve: async () => { throw new Error('модель молчит'); } } });
@@ -189,7 +194,7 @@ test('не ушло даже «Чищу…» — кнопки всё равно 
 
   await assert.rejects(bot.handle({
     callback_query: {
-      id: 'cb1', data: 'clean', from: { id: 555 },
+      id: 'cb1', data: 'clean', from: { id: 555, language_code: 'ru' },
       message: { message_id: 101, chat: { id: 555 }, text: 'сказанное вслух' },
     },
   }, { tg, queue: okQueue }), /сеть моргнула/);
@@ -215,7 +220,7 @@ test('слишком длинная запись отсекается до ск�
 
   await bot.handle({
     message: {
-      message_id: 7, chat: { id: 555 }, from: { id: 555 },
+      message_id: 7, chat: { id: 555 }, from: { id: 555, language_code: 'ru' },
       voice: { file_id: 'f1', duration: bot.MAX_SECONDS + 1 },
     },
   }, { tg, queue: okQueue });
@@ -239,6 +244,47 @@ test('мусор и чужие сообщения бот молча пропус
   await bot.handle({}, { tg, queue: okQueue });
   await bot.handle({ message: { chat: { id: 1 }, from: { id: 1 }, sticker: {} } }, { tg, queue: okQueue });
   assert.strictEqual(tg.sent.length, 0);
+});
+
+test('без language_code бот отвечает по-английски', async () => {
+  const tg = fakeTelegram();
+
+  await bot.handle({
+    message: { message_id: 7, chat: { id: 777 }, from: { id: 777 }, text: '/start' },
+  }, { tg, queue: okQueue });
+
+  assert.match(tg.sent[0].text, /access code/i);
+  assert.doesNotMatch(tg.sent[0].text, /[а-яё]/i, 'русских букв быть не должно');
+});
+
+test('английский пользователь получает английские тексты и кнопки', async () => {
+  const key = keys.issue('Мама');
+  keys.bind(key.id, 'telegram', '777', 'Mom');
+  const tg = fakeTelegram();
+
+  await bot.handle({
+    message: {
+      message_id: 7, chat: { id: 777 }, from: { id: 777, language_code: 'en' },
+      voice: { file_id: 'f1', duration: 4 },
+    },
+  }, { tg, queue: okQueue });
+
+  assert.match(tg.sent[0].text, /Transcribing/);
+  // Распознанный текст остаётся как распознан, а вот подписи кнопок — английские.
+  const buttons = tg.sent[1].extra.reply_markup.inline_keyboard.flat();
+  assert.deepStrictEqual(buttons.map((b) => b.text), ['Clean up', 'Clean up and rewrite']);
+  assert.deepStrictEqual(buttons.map((b) => b.callback_data), ['clean', 'both']);
+});
+
+test('английскому пользователю и ошибки привязки приходят по-английски', async () => {
+  keys.issue('Мама');
+  const tg = fakeTelegram();
+
+  await bot.handle({
+    message: { message_id: 7, chat: { id: 777 }, from: { id: 777, language_code: 'en' }, text: '000000' },
+  }, { tg, queue: okQueue });
+
+  assert.match(tg.sent[0].text, /no such code/i);
 });
 
 test('без токена опрос не поднимается', () => {

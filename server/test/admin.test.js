@@ -287,6 +287,11 @@ test('витрина не выдаёт посторонним, включён л
   // за ним на витрине быть не должно.
   assert.ok(!/agentOnline/.test(page), 'состояние агента не должно попадать на витрину');
   assert.ok(!/v1\/state|api\/agent/.test(page), 'витрина не должна спрашивать состояние');
-  assert.ok(!/<script/i.test(page), 'витрине не нужен код: ей нечего показывать живого');
+  // Код на витрине есть — перевод на английский. Но живого он ничего не
+  // показывает: сходить в сеть за состоянием ему нечем.
+  const scripts = [...page.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi)];
+  for (const [, code] of scripts) {
+    assert.ok(!/fetch\(|XMLHttpRequest|WebSocket/.test(code), 'скрипты витрины не должны ходить в сеть');
+  }
   await app.close();
 });

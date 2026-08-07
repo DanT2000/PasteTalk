@@ -37,6 +37,14 @@ body {
   border: 1px solid var(--line); color: var(--muted);
 }
 .pill.on { color: var(--local); border-color: currentColor; }
+/* Переключатель языка — той же формы, что и значки-таблетки рядом. */
+button.lang {
+  font: inherit; font-size: 0.8125rem; padding: 0.25rem 0.7rem; border-radius: 999px;
+  border: 1px solid var(--line); background: transparent; color: var(--muted);
+  cursor: pointer; margin-left: auto;
+}
+button.lang:hover { color: var(--fg); }
+.top button.lang { flex: none; }
 
 nav { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 1.5rem; }
 nav button {
@@ -128,6 +136,7 @@ label.field .why { display: block; margin-top: 0.3rem; font-size: 0.8125rem; }
       <rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v4"/>
     </svg>
     <b>PasteTalk</b>
+    <button class="lang" type="button">EN</button>
   </div>
   <div class="card">
     <h2>Вход в панель</h2>
@@ -143,6 +152,7 @@ label.field .why { display: block; margin-top: 0.3rem; font-size: 0.8125rem; }
       <rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v4"/>
     </svg>
     <b>PasteTalk</b>
+    <button class="lang" type="button">EN</button>
   </div>
   <div class="card">
     <h2>Придумайте пароль</h2>
@@ -163,6 +173,7 @@ label.field .why { display: block; margin-top: 0.3rem; font-size: 0.8125rem; }
     <span class="grow"></span>
     <span class="pill" id="pill-agent">компьютер: …</span>
     <span class="pill" id="pill-bot">бот: …</span>
+    <button class="lang" type="button">EN</button>
   </div>
 
   <nav>
@@ -180,10 +191,89 @@ label.field .why { display: block; margin-top: 0.3rem; font-size: 0.8125rem; }
 </main>
 
 </div>
+<script src="/admin/i18n-en.js"></script>
+<script>
+'use strict';
+
+/**
+ * Перевод панели на английский — по образцу десктопного i18n.js.
+ *
+ * Русский HTML и строки в JS — источник. При английском языке статичный
+ * DOM обходится и заменяется по словарю window.PASTETALK_EN, а строки,
+ * собираемые в JS на лету, оборачиваются в t(). Язык хранится в
+ * localStorage('pastetalk-lang'); по умолчанию берётся язык браузера.
+ */
+(function initLang() {
+  const saved = localStorage.getItem('pastetalk-lang');
+  const lang = saved === 'ru' || saved === 'en'
+    ? saved
+    : (/^ru/i.test(navigator.language || '') ? 'ru' : 'en');
+  const dict = (lang === 'en' && window.PASTETALK_EN) || {};
+
+  function translate(text) {
+    if (lang !== 'en') return text;
+    // Ключ — текст с нормализованными пробелами: в HTML внутри абзаца
+    // живут переносы строк и отступы, без нормализации многострочный
+    // текст не совпал бы со словарём.
+    const key = text.replace(/\s+/g, ' ').trim();
+    if (!key) return text;
+    const found = dict[key];
+    if (!found) return text;
+    // Пробелы по краям сохраняем: в текстовых узлах они значимы.
+    const lead = text.match(/^\s*/)[0];
+    const tail = text.match(/\s*$/)[0];
+    return lead + found + tail;
+  }
+
+  function walk(root) {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    for (const node of nodes) {
+      // Внутри script/style текст не трогаем.
+      const parent = node.parentElement;
+      if (!parent || parent.tagName === 'SCRIPT' || parent.tagName === 'STYLE') continue;
+      const fresh = translate(node.nodeValue);
+      if (fresh !== node.nodeValue) node.nodeValue = fresh;
+    }
+    for (const el of root.querySelectorAll('[placeholder], [title], [aria-label]')) {
+      for (const attr of ['placeholder', 'title', 'aria-label']) {
+        const value = el.getAttribute(attr);
+        if (value) {
+          const fresh = translate(value);
+          if (fresh !== value) el.setAttribute(attr, fresh);
+        }
+      }
+    }
+  }
+
+  /** Перевод для строк, собираемых в JS. */
+  window.t = (text) => translate(String(text == null ? '' : text));
+  window.PASTETALK_LANG = lang;
+
+  if (lang === 'en') {
+    document.documentElement.lang = 'en';
+    walk(document.body);
+    // Заголовок вкладки живёт в head — обходом body его не достать.
+    document.title = translate(document.title);
+  }
+
+  // Кнопка показывает язык, НА который переключит.
+  document.querySelectorAll('button.lang').forEach((button) => {
+    button.textContent = lang === 'en' ? 'RU' : 'EN';
+    button.addEventListener('click', () => {
+      localStorage.setItem('pastetalk-lang', lang === 'en' ? 'ru' : 'en');
+      location.reload();
+    });
+  });
+})();
+</script>
 <script>
 'use strict';
 
 const $ = (id) => document.getElementById(id);
+// Даты показываем в том же языке, что и всю панель.
+const LOCALE = window.PASTETALK_LANG === 'en' ? 'en' : 'ru';
 let session = sessionStorage.getItem('pastetalk-admin') || '';
 
 /**
@@ -210,10 +300,10 @@ async function api(url, options = {}) {
     session = '';
     $('app').hidden = true;
     $('gate').hidden = false;
-    $('gate-err').textContent = 'Сессия истекла, войдите заново';
-    throw new Error('Нужно войти заново');
+    $('gate-err').textContent = t('Сессия истекла, войдите заново');
+    throw new Error(t('Нужно войти заново'));
   }
-  if (!response.ok) throw new Error(data.error || 'Сервер ответил ' + response.status);
+  if (!response.ok) throw new Error(t(data.error) || t('Сервер ответил ') + response.status);
   return data;
 }
 
@@ -224,14 +314,14 @@ function money(value) {
 
 function minutes(value) {
   const n = Math.round(Number(value || 0));
-  if (n < 60) return n + ' мин';
+  if (n < 60) return n + t(' мин');
   const hours = Math.floor(n / 60);
   const rest = n % 60;
-  return rest ? hours + ' ч ' + rest + ' мин' : hours + ' ч';
+  return rest ? hours + t(' ч ') + rest + t(' мин') : hours + t(' ч');
 }
 
 function when(ms) {
-  return ms ? new Date(ms).toLocaleString('ru') : '—';
+  return ms ? new Date(ms).toLocaleString(LOCALE) : '—';
 }
 
 /** Сколько осталось коду жить, словами. */
@@ -240,7 +330,7 @@ function left(until) {
   if (ms <= 0) return '';
   const min = Math.floor(ms / 60000);
   const sec = Math.floor((ms % 60000) / 1000);
-  return min > 0 ? min + ' мин ' + sec + ' с' : sec + ' с';
+  return min > 0 ? min + t(' мин ') + sec + t(' с') : sec + t(' с');
 }
 
 // ---------- вход ----------
@@ -309,7 +399,7 @@ document.querySelectorAll('nav button').forEach((button) => {
  * зависимости, которая ещё и не загрузится, если сервер закрыт от сети.
  */
 function chart(days) {
-  if (!days.length) return '<p class="muted">Пока не о чем рисовать.</p>';
+  if (!days.length) return '<p class="muted">' + t('Пока не о чем рисовать.') + '</p>';
   const top = Math.max(0.1, ...days.map((d) => d.agentMinutes + d.cloudMinutes));
   const step = 100 / days.length;
   const width = step * 0.7;
@@ -318,8 +408,8 @@ function chart(days) {
     const x = index * step + (step - width) / 2;
     const agent = (day.agentMinutes / top) * 100;
     const cloud = (day.cloudMinutes / top) * 100;
-    const title = new Date(day.at).toLocaleDateString('ru')
-      + ': свой ' + day.agentMinutes + ' мин, облако ' + day.cloudMinutes + ' мин';
+    const title = new Date(day.at).toLocaleDateString(LOCALE)
+      + t(': свой ') + day.agentMinutes + t(' мин, облако ') + day.cloudMinutes + t(' мин');
     let out = '<g><title>' + safe(title) + '</title>';
     if (cloud > 0) {
       out += '<rect x="' + x + '" y="' + (100 - agent - cloud) + '" width="' + width
@@ -333,18 +423,18 @@ function chart(days) {
   }).join('');
 
   return '<svg class="chart" viewBox="0 0 100 100" preserveAspectRatio="none" role="img"'
-    + ' aria-label="Минуты диктовки по дням за последний месяц">' + columns + '</svg>';
+    + ' aria-label="' + t('Минуты диктовки по дням за последний месяц') + '">' + columns + '</svg>';
 }
 
 function modelBars(byModel) {
-  if (!byModel.length) return '<p class="muted">Облаком пока не пользовались — платить не за что.</p>';
+  if (!byModel.length) return '<p class="muted">' + t('Облаком пока не пользовались — платить не за что.') + '</p>';
   const top = Math.max(...byModel.map((row) => row.rub), 0.01);
   return '<div class="bars">' + byModel.map((row) =>
     '<div class="bar-row">'
     + '<span class="bar-name" title="' + safe(row.model) + '">' + safe(row.model) + '</span>'
     + '<span class="bar-track"><span class="bar-fill" style="width:'
       + Math.max(2, (row.rub / top) * 100) + '%"></span></span>'
-    + '<span class="bar-val">' + money(row.rub) + ' · ' + row.count + ' обр.</span>'
+    + '<span class="bar-val">' + money(row.rub) + ' · ' + row.count + t(' обр.') + '</span>'
     + '</div>').join('') + '</div>';
 }
 
@@ -355,26 +445,26 @@ async function drawSpend() {
 
   $('spend').innerHTML =
     '<div class="tiles">'
-    + '<div class="tile local"><div class="label">Через свой компьютер</div>'
+    + '<div class="tile local"><div class="label">' + t('Через свой компьютер') + '</div>'
       + '<div class="value">' + minutes(data.agentMinutes) + '</div>'
-      + '<div class="under">бесплатно</div></div>'
-    + '<div class="tile cloud"><div class="label">Через облако</div>'
+      + '<div class="under">' + t('бесплатно') + '</div></div>'
+    + '<div class="tile cloud"><div class="label">' + t('Через облако') + '</div>'
       + '<div class="value">' + minutes(data.cloudMinutes) + '</div>'
       + '<div class="under">' + money(data.rub) + '</div></div>'
-    + '<div class="tile"><div class="label">Своим железом</div>'
+    + '<div class="tile"><div class="label">' + t('Своим железом') + '</div>'
       + '<div class="value">' + saved + ' %</div>'
-      + '<div class="under">от всей диктовки за месяц</div></div>'
+      + '<div class="under">' + t('от всей диктовки за месяц') + '</div></div>'
     + '</div>'
 
-    + '<div class="card"><h2>По дням</h2>' + chart(data.daily || [])
+    + '<div class="card"><h2>' + t('По дням') + '</h2>' + chart(data.daily || [])
     + '<div class="legend">'
-      + '<span><i style="background:var(--local)"></i>свой компьютер</span>'
-      + '<span><i style="background:var(--cloud)"></i>облако</span>'
-      + '<span>за последние 30 дней</span>'
+      + '<span><i style="background:var(--local)"></i>' + t('свой компьютер') + '</span>'
+      + '<span><i style="background:var(--cloud)"></i>' + t('облако') + '</span>'
+      + '<span>' + t('за последние 30 дней') + '</span>'
     + '</div></div>'
 
-    + '<div class="card"><h2>По моделям за месяц</h2>' + modelBars(data.byModel || [])
-    + '<p class="muted" style="margin:1rem 0 0">' + safe(data.note) + '</p></div>';
+    + '<div class="card"><h2>' + t('По моделям за месяц') + '</h2>' + modelBars(data.byModel || [])
+    + '<p class="muted" style="margin:1rem 0 0">' + safe(t(data.note)) + '</p></div>';
 }
 
 // ---------- люди ----------
@@ -391,25 +481,25 @@ const DEVICE_WORDS = { telegram: 'Telegram', android: 'Телефон', desktop:
 function showCode(key) {
   const bot = window.location.hostname === 'pastetalk.dev.appswire.ru'
     ? 'https://t.me/PasteTalk_bot' : '';
-  const parts = ['Вот код доступа к PasteTalk: ' + key.code];
+  const parts = [t('Вот код доступа к PasteTalk: ') + key.code];
   if (bot) {
-    parts.push('В Telegram: откройте ' + bot
-      + ', нажмите «Начать» и пришлите этот код одним сообщением.');
+    parts.push(t('В Telegram: откройте ') + bot
+      + t(', нажмите «Начать» и пришлите этот код одним сообщением.'));
   }
-  parts.push('В приложении на телефоне: адрес сервера ' + window.location.origin
-    + ', ниже этот код, кнопка «Подключиться».');
-  parts.push('Код одноразовый и действует ограниченное время — если не успеете, попросите новый.');
+  parts.push(t('В приложении на телефоне: адрес сервера ') + window.location.origin
+    + t(', ниже этот код, кнопка «Подключиться».'));
+  parts.push(t('Код одноразовый и действует ограниченное время — если не успеете, попросите новый.'));
   const howto = parts.join('\n\n');
 
-  $('made').innerHTML = 'Код для «' + safe(key.name) + '»: <span class="code">' + safe(key.code)
-    + '</span> <button class="btn ghost tiny" id="copy-code">скопировать код</button>'
-    + '<button class="btn ghost tiny" id="copy-howto">скопировать инструкцию</button>'
-    + '<div class="muted" style="margin-top:0.5rem">Второй раз он не покажется — передайте сейчас.</div>';
+  $('made').innerHTML = t('Код для «') + safe(key.name) + t('»: ') + '<span class="code">' + safe(key.code)
+    + '</span> <button class="btn ghost tiny" id="copy-code">' + t('скопировать код') + '</button>'
+    + '<button class="btn ghost tiny" id="copy-howto">' + t('скопировать инструкцию') + '</button>'
+    + '<div class="muted" style="margin-top:0.5rem">' + t('Второй раз он не покажется — передайте сейчас.') + '</div>';
 
   const said = (button, text) => {
     navigator.clipboard.writeText(text).then(() => {
       const was = button.textContent;
-      button.textContent = 'скопировано';
+      button.textContent = t('скопировано');
       setTimeout(() => { button.textContent = was; }, 2000);
     });
   };
@@ -422,9 +512,9 @@ function codeCell(person) {
   const alive = person.code && person.codeUntil > Date.now();
   if (alive) {
     return '<div><span class="code">' + safe(person.code) + '</span></div>'
-      + '<div class="muted" data-until="' + person.codeUntil + '">действует ещё ' + left(person.codeUntil) + '</div>';
+      + '<div class="muted" data-until="' + person.codeUntil + '">' + t('действует ещё ') + left(person.codeUntil) + '</div>';
   }
-  return '<span class="muted">' + (person.devices.length ? 'использован' : 'устарел') + '</span>';
+  return '<span class="muted">' + t(person.devices.length ? 'использован' : 'устарел') + '</span>';
 }
 
 async function drawPeople() {
@@ -433,46 +523,46 @@ async function drawPeople() {
   const rows = people.map((person) => {
     const devices = person.devices.length
       ? '<div class="devices">' + person.devices.map((device) =>
-          '<div class="row-actions"><span>' + (DEVICE_WORDS[device.kind] || safe(device.kind))
+          '<div class="row-actions"><span>' + (DEVICE_WORDS[device.kind] ? t(DEVICE_WORDS[device.kind]) : safe(device.kind))
           + ': ' + safe(device.title || '—') + '</span>'
-          + '<button class="btn ghost tiny" data-device="' + device.id + '">отвязать</button></div>').join('')
+          + '<button class="btn ghost tiny" data-device="' + device.id + '">' + t('отвязать') + '</button></div>').join('')
         + '</div>'
-      : '<span class="muted">никто ещё не вошёл</span>';
+      : '<span class="muted">' + t('никто ещё не вошёл') + '</span>';
 
     return '<tr>'
-      + '<td><div>' + safe(person.name) + (person.revoked ? ' <span class="muted">(отозван)</span>' : '') + '</div>'
+      + '<td><div>' + safe(person.name) + (person.revoked ? ' <span class="muted">' + t('(отозван)') + '</span>' : '') + '</div>'
         + '<td>' + codeCell(person) + '</td>'
       + '<td class="num">' + minutes(person.minutes) + '</td>'
       + '<td class="num">' + money(person.rub) + '</td>'
       + '<td>' + devices + '</td>'
       + '<td><div class="row-actions">'
-        + (person.revoked ? '' : '<button class="btn ghost tiny" data-code="' + person.id + '">новый код</button>'
-          + '<button class="btn ghost tiny" data-bind="' + person.id + '">телеграм вручную</button>'
-          + '<button class="btn ghost tiny" data-key="' + person.id + '">удалить</button>')
+        + (person.revoked ? '' : '<button class="btn ghost tiny" data-code="' + person.id + '">' + t('новый код') + '</button>'
+          + '<button class="btn ghost tiny" data-bind="' + person.id + '">' + t('телеграм вручную') + '</button>'
+          + '<button class="btn ghost tiny" data-key="' + person.id + '">' + t('удалить') + '</button>')
       + '</div></td>'
       + '</tr>';
   }).join('');
 
   $('people').innerHTML =
-    '<div class="card"><h2>Выдать доступ</h2>'
-    + '<p class="muted">Здесь только люди. Компьютеры, которые считают за других, живут во вкладке «Компьютеры». Код одноразовый: сработал — исчез. Одно устройство — один профиль, чтобы потом было видно, откуда пришёл доступ. Нужны телефон и телеграм — заведите «Мама, телефон» и «Мама, телеграм».</p>'
+    '<div class="card"><h2>' + t('Выдать доступ') + '</h2>'
+    + '<p class="muted">' + t('Здесь только люди. Компьютеры, которые считают за других, живут во вкладке «Компьютеры». Код одноразовый: сработал — исчез. Одно устройство — один профиль, чтобы потом было видно, откуда пришёл доступ. Нужны телефон и телеграм — заведите «Мама, телефон» и «Мама, телеграм».') + '</p>'
     + '<div class="row-actions" style="margin-top:1rem">'
-      + '<input id="new-name" placeholder="Мама, телефон" style="flex:1 1 12rem;max-width:20rem">'
+      + '<input id="new-name" placeholder="' + t('Мама, телефон') + '" style="flex:1 1 12rem;max-width:20rem">'
       + '<select id="new-ttl">'
-        + '<option value="600000">действует 10 минут</option>'
-        + '<option value="1800000">30 минут</option>'
-        + '<option value="3600000">1 час</option>'
-        + '<option value="86400000">сутки</option>'
+        + '<option value="600000">' + t('действует 10 минут') + '</option>'
+        + '<option value="1800000">' + t('30 минут') + '</option>'
+        + '<option value="3600000">' + t('1 час') + '</option>'
+        + '<option value="86400000">' + t('сутки') + '</option>'
       + '</select>'
-      + '<button class="btn" id="make-key">Выдать код</button>'
+      + '<button class="btn" id="make-key">' + t('Выдать код') + '</button>'
     + '</div>'
     + '<p id="made" class="ok" style="margin-bottom:0"></p></div>'
 
-    + '<div class="card"><h2>Кто пользуется</h2>'
+    + '<div class="card"><h2>' + t('Кто пользуется') + '</h2>'
     + (people.length
-      ? '<div class="wrap-x"><table><tr><th>Профиль</th><th>Код</th><th class="num">За месяц</th><th class="num">Расход</th>'
-        + '<th>Устройства</th><th></th></tr>' + rows + '</table></div>'
-      : '<p class="empty">Пока никого. Выдайте первый код выше.</p>')
+      ? '<div class="wrap-x"><table><tr><th>' + t('Профиль') + '</th><th>' + t('Код') + '</th><th class="num">' + t('За месяц') + '</th><th class="num">' + t('Расход') + '</th>'
+        + '<th>' + t('Устройства') + '</th><th></th></tr>' + rows + '</table></div>'
+      : '<p class="empty">' + t('Пока никого. Выдайте первый код выше.') + '</p>')
     + '</div>';
 
   $('make-key').addEventListener('click', async () => {
@@ -504,7 +594,7 @@ async function drawPeople() {
 
   $('people').querySelectorAll('[data-key]').forEach((button) => {
     button.addEventListener('click', async () => {
-      if (!confirm('Удалить профиль? Все его устройства перестанут работать сразу.')) return;
+      if (!confirm(t('Удалить профиль? Все его устройства перестанут работать сразу.'))) return;
       await api('/admin/api/keys/' + button.dataset.key, { method: 'DELETE' });
       drawPeople();
     });
@@ -517,7 +607,7 @@ async function drawPeople() {
   });
   $('people').querySelectorAll('[data-bind]').forEach((button) => {
     button.addEventListener('click', async () => {
-      const id = prompt('Номер человека в Telegram. Он узнаёт его командой /id в самом боте.');
+      const id = prompt(t('Номер человека в Telegram. Он узнаёт его командой /id в самом боте.'));
       if (!id) return;
       try {
         await api('/admin/api/keys/' + button.dataset.bind + '/bind', {
@@ -536,7 +626,7 @@ async function drawPeople() {
 setInterval(() => {
   document.querySelectorAll('[data-until]').forEach((node) => {
     const rest = left(Number(node.dataset.until));
-    node.textContent = rest ? 'действует ещё ' + rest : 'код устарел';
+    node.textContent = rest ? t('действует ещё ') + rest : t('код устарел');
   });
 }, 1000);
 
@@ -547,36 +637,36 @@ async function drawAgent() {
 
   const rows = machines.map((m, index) =>
     '<tr>'
-    + '<td><div>' + safe(m.name) + '</div><div class="muted">порядок ' + m.priority + '</div></td>'
-    + '<td>' + (m.online ? '<span class="ok">на связи</span>' : '<span class="muted">не на связи</span>') + '</td>'
+    + '<td><div>' + safe(m.name) + '</div><div class="muted">' + t('порядок ') + m.priority + '</div></td>'
+    + '<td>' + (m.online ? '<span class="ok">' + t('на связи') + '</span>' : '<span class="muted">' + t('не на связи') + '</span>') + '</td>'
     + '<td class="num">' + when(m.lastSeen) + '</td>'
     + '<td class="num">' + m.jobsDone + '</td>'
     + '<td><div class="row-actions">'
-      + '<button class="btn ghost tiny" data-mping="' + m.id + '">пинг</button>'
-      + (index > 0 ? '<button class="btn ghost tiny" data-up="' + m.id + '">выше</button>' : '')
-      + (index < machines.length - 1 ? '<button class="btn ghost tiny" data-down="' + m.id + '">ниже</button>' : '')
-      + '<button class="btn ghost tiny" data-mkey="' + m.id + '">новый ключ</button>'
-      + '<button class="btn ghost tiny" data-mdel="' + m.id + '">удалить</button>'
+      + '<button class="btn ghost tiny" data-mping="' + m.id + '">' + t('пинг') + '</button>'
+      + (index > 0 ? '<button class="btn ghost tiny" data-up="' + m.id + '">' + t('выше') + '</button>' : '')
+      + (index < machines.length - 1 ? '<button class="btn ghost tiny" data-down="' + m.id + '">' + t('ниже') + '</button>' : '')
+      + '<button class="btn ghost tiny" data-mkey="' + m.id + '">' + t('новый ключ') + '</button>'
+      + '<button class="btn ghost tiny" data-mdel="' + m.id + '">' + t('удалить') + '</button>'
     + '</div><div class="muted" data-mres="' + m.id + '"></div></td>'
     + '</tr>').join('');
 
   $('agent').innerHTML =
-    '<div class="card"><h2>Добавить компьютер</h2>'
-    + '<p class="muted">Компьютер — не человек: у него постоянный ключ, а не разовый код. Задача уходит первой машине по порядку; не взялась за полминуты — следующей, и только потом в облако.</p>'
+    '<div class="card"><h2>' + t('Добавить компьютер') + '</h2>'
+    + '<p class="muted">' + t('Компьютер — не человек: у него постоянный ключ, а не разовый код. Задача уходит первой машине по порядку; не взялась за полминуты — следующей, и только потом в облако.') + '</p>'
     + '<div class="row-actions" style="margin-top:1rem">'
-      + '<input id="new-agent" placeholder="Домашний ПК" style="flex:1 1 12rem;max-width:20rem">'
-      + '<button class="btn" id="make-agent">Добавить</button>'
+      + '<input id="new-agent" placeholder="' + t('Домашний ПК') + '" style="flex:1 1 12rem;max-width:20rem">'
+      + '<button class="btn" id="make-agent">' + t('Добавить') + '</button>'
     + '</div><p id="agent-made" class="ok" style="margin-bottom:0"></p></div>'
 
-    + '<div class="card"><h2>Машины</h2>'
+    + '<div class="card"><h2>' + t('Машины') + '</h2>'
     + (machines.length
-      ? '<div class="wrap-x"><table><tr><th>Имя</th><th>Состояние</th><th class="num">Последний отклик</th>'
-        + '<th class="num">Задач</th><th></th></tr>' + rows + '</table></div>'
-      : '<p class="empty">Пока ни одной. Добавьте выше — получите ключ для PasteTalk.</p>')
+      ? '<div class="wrap-x"><table><tr><th>' + t('Имя') + '</th><th>' + t('Состояние') + '</th><th class="num">' + t('Последний отклик') + '</th>'
+        + '<th class="num">' + t('Задач') + '</th><th></th></tr>' + rows + '</table></div>'
+      : '<p class="empty">' + t('Пока ни одной. Добавьте выше — получите ключ для PasteTalk.') + '</p>')
     + '</div>'
 
-    + '<div class="card"><h2>Как подключить</h2>'
-    + '<p class="muted">На компьютере: PasteTalk → Настройки → Интеграция. Адрес этого сервера, ключ из списка выше, включить «Работать как агент сервера».</p></div>';
+    + '<div class="card"><h2>' + t('Как подключить') + '</h2>'
+    + '<p class="muted">' + t('На компьютере: PasteTalk → Настройки → Интеграция. Адрес этого сервера, ключ из списка выше, включить «Работать как агент сервера».') + '</p></div>';
 
   $('make-agent').addEventListener('click', async () => {
     try {
@@ -594,10 +684,10 @@ async function drawAgent() {
 
   $('agent').querySelectorAll('[data-mping]').forEach((b) => b.addEventListener('click', async () => {
     const out = document.querySelector('[data-mres="' + b.dataset.mping + '"]');
-    out.textContent = 'Спрашиваю…';
+    out.textContent = t('Спрашиваю…');
     try {
       const r = await api('/admin/api/agents/' + b.dataset.mping + '/ping', { method: 'POST' });
-      out.textContent = r.ok ? 'Ответил за ' + r.ms + ' мс' : r.error;
+      out.textContent = r.ok ? t('Ответил за ') + r.ms + t(' мс') : t(r.error);
     } catch (error) {
       out.textContent = error.message;
     }
@@ -609,13 +699,13 @@ async function drawAgent() {
     api('/admin/api/agents/' + b.dataset.down + '/move', { method: 'POST', body: JSON.stringify({ up: false }) })
       .then(drawAgent).catch(complain)));
   $('agent').querySelectorAll('[data-mkey]').forEach((b) => b.addEventListener('click', async () => {
-    if (!confirm('Выпустить новый ключ? Прежний перестанет работать сразу.')) return;
+    if (!confirm(t('Выпустить новый ключ? Прежний перестанет работать сразу.'))) return;
     try {
       showAgentKey(await api('/admin/api/agents/' + b.dataset.mkey + '/key', { method: 'POST' }));
     } catch (error) { complain(error); }
   }));
   $('agent').querySelectorAll('[data-mdel]').forEach((b) => b.addEventListener('click', async () => {
-    if (!confirm('Удалить компьютер? Он отключится сразу.')) return;
+    if (!confirm(t('Удалить компьютер? Он отключится сразу.'))) return;
     try {
       await api('/admin/api/agents/' + b.dataset.mdel, { method: 'DELETE' });
       drawAgent();
@@ -625,11 +715,11 @@ async function drawAgent() {
 
 function showAgentKey(made) {
   const box = $('agent-made');
-  box.innerHTML = 'Ключ для «' + safe(made.name) + '»: <span class="code" style="font-size:0.9375rem">'
-    + safe(made.key) + '</span> <button class="btn ghost tiny" id="copy-agent-key">скопировать</button>'
-    + '<div class="muted" style="margin-top:0.5rem">Показывается один раз — вставьте его в PasteTalk сейчас.</div>';
+  box.innerHTML = t('Ключ для «') + safe(made.name) + t('»: ') + '<span class="code" style="font-size:0.9375rem">'
+    + safe(made.key) + '</span> <button class="btn ghost tiny" id="copy-agent-key">' + t('скопировать') + '</button>'
+    + '<div class="muted" style="margin-top:0.5rem">' + t('Показывается один раз — вставьте его в PasteTalk сейчас.') + '</div>';
   $('copy-agent-key').addEventListener('click', (event) => {
-    navigator.clipboard.writeText(made.key).then(() => { event.target.textContent = 'скопировано'; });
+    navigator.clipboard.writeText(made.key).then(() => { event.target.textContent = t('скопировано'); });
   });
 }
 
@@ -652,37 +742,37 @@ function providerBlock(id, p, get, prices) {
   const sttPrice = prices.stt?.[sttUsed];
   const llmPrice = prices.llm?.[llmUsed] || {};
 
-  let out = '<h3>' + safe(p.title) + ' — ' + (p.stt ? 'речь и текст' : 'только текст') + '</h3>';
+  let out = '<h3>' + safe(p.title) + ' — ' + t(p.stt ? 'речь и текст' : 'только текст') + '</h3>';
   // Ключ показываем и «своему» провайдеру: многие OpenAI-совместимые
   // сервисы тоже ходят по токену, просто без ключа мы не ругаемся.
   if (p.needsKey || id === 'custom') {
-    out += keyField('Ключ', 'key.' + id, get('key.' + id, ''),
-      p.needsKey
+    out += keyField(t('Ключ'), 'key.' + id, get('key.' + id, ''),
+      t(p.needsKey
         ? 'Берётся в личном кабинете провайдера. Минус — стереть'
-        : 'Если сервис работает без ключа — оставьте пустым. Минус — стереть');
+        : 'Если сервис работает без ключа — оставьте пустым. Минус — стереть'));
   }
   if (id === 'custom') {
-    out += '<label class="field">Адрес сервера'
-      + '<input data-set="url.custom" value="' + safe(get('url.custom', '')) + '" placeholder="https://адрес/v1">'
-      + '<span class="why muted">OpenAI-совместимый. Пусто — провайдер не используется</span></label>';
+    out += '<label class="field">' + t('Адрес сервера')
+      + '<input data-set="url.custom" value="' + safe(get('url.custom', '')) + '" placeholder="' + t('https://адрес/v1') + '">'
+      + '<span class="why muted">' + t('OpenAI-совместимый. Пусто — провайдер не используется') + '</span></label>';
   }
   if (p.stt) {
     out += '<div class="pair">'
-      + '<label class="field">Модель распознавания'
-      + '<input data-set="model.stt.' + id + '" value="' + safe(sttModel) + '" placeholder="' + safe(p.defaultSttModel || 'имя модели') + '">'
+      + '<label class="field">' + t('Модель распознавания')
+      + '<input data-set="model.stt.' + id + '" value="' + safe(sttModel) + '" placeholder="' + safe(p.defaultSttModel || t('имя модели')) + '">'
       + '</label>'
-      + '<label class="field narrow">₽ за минуту звука'
+      + '<label class="field narrow">' + t('₽ за минуту звука')
       + '<input data-price-stt="' + id + '" type="number" step="0.01" min="0" value="' + (sttPrice ?? '') + '">'
       + '</label></div>';
   }
   out += '<div class="pair">'
-    + '<label class="field">Модель текста'
-    + '<input data-set="model.llm.' + id + '" value="' + safe(llmModel) + '" placeholder="' + safe(p.defaultModel || 'имя модели') + '">'
+    + '<label class="field">' + t('Модель текста')
+    + '<input data-set="model.llm.' + id + '" value="' + safe(llmModel) + '" placeholder="' + safe(p.defaultModel || t('имя модели')) + '">'
     + '</label>'
-    + '<label class="field narrow">₽ вход, 1 млн ток.'
+    + '<label class="field narrow">' + t('₽ вход, 1 млн ток.')
     + '<input data-price-in="' + id + '" type="number" step="0.01" min="0" value="' + (llmPrice.in ?? '') + '">'
     + '</label>'
-    + '<label class="field narrow">₽ выход, 1 млн ток.'
+    + '<label class="field narrow">' + t('₽ выход, 1 млн ток.')
     + '<input data-price-out="' + id + '" type="number" step="0.01" min="0" value="' + (llmPrice.out ?? '') + '">'
     + '</label></div>';
   return out;
@@ -692,7 +782,7 @@ function providerBlock(id, p, get, prices) {
 function chainSelect(label, kind, index, options, chosen) {
   return '<label class="field">' + label
     + '<select data-chain="' + kind + '-' + index + '">'
-    + '<option value=""' + (chosen ? '' : ' selected') + '>— никто —</option>'
+    + '<option value=""' + (chosen ? '' : ' selected') + '>' + t('— никто —') + '</option>'
     + options.map(([id, title]) =>
       '<option value="' + id + '"' + (chosen === id ? ' selected' : '') + '>' + safe(title) + '</option>').join('')
     + '</select></label>';
@@ -707,7 +797,7 @@ function chainRow(title, kind, options, chain) {
   const slots = Math.max(2, (chain || []).length);
   let out = '';
   for (let i = 0; i < slots; i++) {
-    const label = title + ' — ' + (i === 0 ? 'основной' : (slots > 2 ? 'запасной ' + i : 'запасной'));
+    const label = title + ' — ' + (i === 0 ? t('основной') : (slots > 2 ? t('запасной ') + i : t('запасной')));
     out += chainSelect(label, kind, i, options, (chain || [])[i] || '');
   }
   return out;
@@ -723,14 +813,14 @@ function promptField(label, key, def, saved, why) {
     + '<textarea data-set="' + key + '" rows="6">' + safe(value) + '</textarea>'
     + '<span class="why muted">' + why + '</span></label>'
     + '<div class="row-actions" style="margin-bottom:1rem">'
-    + '<button class="btn ghost tiny" data-prompt-reset="' + key + '">Вернуть стандартный</button></div>';
+    + '<button class="btn ghost tiny" data-prompt-reset="' + key + '">' + t('Вернуть стандартный') + '</button></div>';
 }
 
 function keyField(label, key, value, why) {
   const filled = value === '***';
   return '<label class="field">' + label
     + '<input data-set="' + key + '" type="password" value="" placeholder="'
-      + (filled ? 'ключ задан — оставьте пустым, чтобы не менять' : 'не задан') + '">'
+      + t(filled ? 'ключ задан — оставьте пустым, чтобы не менять' : 'не задан') + '">'
     + '<span class="why muted">' + why + '</span></label>';
 }
 
@@ -749,59 +839,59 @@ async function drawSettings() {
   const llmOptions = Object.entries(providers).map(([id, p]) => [id, p.title]);
 
   $('settings').innerHTML =
-    '<div class="card"><h2>Telegram-бот</h2>'
+    '<div class="card"><h2>' + t('Telegram-бот') + '</h2>'
     + '<p class="muted">' + (data.botRunning
-      ? '<span class="ok">Бот опрашивает Telegram.</span> Люди с кодом могут присылать ему голосовые.'
-      : 'Бот выключен. Впишите токен от @BotFather — он начнёт отвечать сразу, перезапуск не нужен.') + '</p>'
-    + keyField('Токен бота', 'bot.token', get('bot.token', ''), 'Берётся у @BotFather. Чтобы выключить бота — впишите минус и сохраните')
-    + '<div class="row-actions"><button class="btn ghost tiny" id="bot-restart">Перезапустить бота</button>'
+      ? '<span class="ok">' + t('Бот опрашивает Telegram.') + '</span> ' + t('Люди с кодом могут присылать ему голосовые.')
+      : t('Бот выключен. Впишите токен от @BotFather — он начнёт отвечать сразу, перезапуск не нужен.')) + '</p>'
+    + keyField(t('Токен бота'), 'bot.token', get('bot.token', ''), t('Берётся у @BotFather. Чтобы выключить бота — впишите минус и сохраните'))
+    + '<div class="row-actions"><button class="btn ghost tiny" id="bot-restart">' + t('Перезапустить бота') + '</button>'
       + '<span id="bot-restart-res" class="muted"></span></div>'
     + '</div>'
 
-    + '<div class="card"><h2>Прокси</h2>'
-    + '<p class="muted">Нужен, если отсюда не достучаться до Telegram: без прокси опрос падает с «fetch failed», и бот молчит. Поддерживается HTTP-прокси; логин и пароль вписываются прямо в адрес.</p>'
-    + keyField('Адрес прокси', 'proxy.url', get('proxy.url', ''),
-      'Например, http://логин:пароль@1.vpn.appswire.ru:8080. Минус — выключить')
-    + '<label class="field">Что пускать через прокси'
+    + '<div class="card"><h2>' + t('Прокси') + '</h2>'
+    + '<p class="muted">' + t('Нужен, если отсюда не достучаться до Telegram: без прокси опрос падает с «fetch failed», и бот молчит. Поддерживается HTTP-прокси; логин и пароль вписываются прямо в адрес.') + '</p>'
+    + keyField(t('Адрес прокси'), 'proxy.url', get('proxy.url', ''),
+      t('Например, http://логин:пароль@1.vpn.appswire.ru:8080. Минус — выключить'))
+    + '<label class="field">' + t('Что пускать через прокси')
       + '<select data-set="proxy.scope">'
-        + '<option value="telegram"' + (get('proxy.scope', 'telegram') === 'all' ? '' : ' selected') + '>только Telegram</option>'
-        + '<option value="all"' + (get('proxy.scope', 'telegram') === 'all' ? ' selected' : '') + '>Telegram и облачных провайдеров</option>'
+        + '<option value="telegram"' + (get('proxy.scope', 'telegram') === 'all' ? '' : ' selected') + '>' + t('только Telegram') + '</option>'
+        + '<option value="all"' + (get('proxy.scope', 'telegram') === 'all' ? ' selected' : '') + '>' + t('Telegram и облачных провайдеров') + '</option>'
       + '</select>'
-      + '<span class="why muted">Гонять через чужой канал звук людей без нужды не стоит: AITunnel и так доступен напрямую</span></label>'
-    + '<div class="row-actions"><button class="btn ghost tiny" id="check-proxy">Проверить прокси</button>'
+      + '<span class="why muted">' + t('Гонять через чужой канал звук людей без нужды не стоит: AITunnel и так доступен напрямую') + '</span></label>'
+    + '<div class="row-actions"><button class="btn ghost tiny" id="check-proxy">' + t('Проверить прокси') + '</button>'
       + '<span id="proxy-res" class="muted"></span></div>'
     + '</div>'
 
-    + '<div class="card"><h2>Облако: провайдеры, модели и цены</h2>'
-    + '<p class="muted">Облако подхватывает работу, когда домашний компьютер выключен или занят — пока он на связи, платные провайдеры не трогаются. У каждого провайдера здесь всё своё: ключ, модели и цены. По этим ценам считается расход — сам провайдер стоимость не присылает, цифры берутся из его тарифов. Пустая модель — стандартная, пустая цена — расход по этой модели считается нулём. Работа домашнего компьютера бесплатна, её модели в ценах не нуждаются — поэтому они видны в расходе, но не здесь.</p>'
+    + '<div class="card"><h2>' + t('Облако: провайдеры, модели и цены') + '</h2>'
+    + '<p class="muted">' + t('Облако подхватывает работу, когда домашний компьютер выключен или занят — пока он на связи, платные провайдеры не трогаются. У каждого провайдера здесь всё своё: ключ, модели и цены. По этим ценам считается расход — сам провайдер стоимость не присылает, цифры берутся из его тарифов. Пустая модель — стандартная, пустая цена — расход по этой модели считается нулём. Работа домашнего компьютера бесплатна, её модели в ценах не нуждаются — поэтому они видны в расходе, но не здесь.') + '</p>'
     + Object.entries(providers).map(([id, p]) => providerBlock(id, p, get, priceTable)).join('<hr class="sep">')
     + '</div>'
 
-    + '<div class="card"><h2>Кого спрашивать в облаке</h2>'
-    + '<p class="muted">Порядок на случай сбоя: задача идёт основному провайдеру, не ответил — запасному. «Никто» в основном — облака для этой работы нет вовсе, сервер будет ждать домашний компьютер.</p>'
-    + chainRow('Распознавание речи', 'stt', sttOptions, chainStt)
-    + chainRow('Улучшение текста', 'llm', llmOptions, chainLlm)
+    + '<div class="card"><h2>' + t('Кого спрашивать в облаке') + '</h2>'
+    + '<p class="muted">' + t('Порядок на случай сбоя: задача идёт основному провайдеру, не ответил — запасному. «Никто» в основном — облака для этой работы нет вовсе, сервер будет ждать домашний компьютер.') + '</p>'
+    + chainRow(t('Распознавание речи'), 'stt', sttOptions, chainStt)
+    + chainRow(t('Улучшение текста'), 'llm', llmOptions, chainLlm)
     + '</div>'
 
-    + '<div class="card"><h2>Промпты улучшения</h2>'
-    + '<p class="muted">Это действующие промпты кнопок «Почистить» и «Почистить и переписать» — везде: в боте, с телефона и на домашнем компьютере, когда задача пришла с сервера. Правьте текст прямо здесь — копируйте, дописывайте, переделывайте. Хвост «'
-      + safe(data.prompts?.tail || '') + '» сервер дописывает сам к любому варианту.</p>'
-    + promptField('Почистить', 'prompt.clean', promptDefaults['prompt.clean'], get('prompt.clean', ''),
-      'Осторожная правка: убрать паразитов и ошибки, ничего не переписывая')
-    + promptField('Почистить и переписать', 'prompt.both', promptDefaults['prompt.both'], get('prompt.both', ''),
-      'Полная переработка: собрать мысли и сделать текст письменным')
+    + '<div class="card"><h2>' + t('Промпты улучшения') + '</h2>'
+    + '<p class="muted">' + t('Это действующие промпты кнопок «Почистить» и «Почистить и переписать» — везде: в боте, с телефона и на домашнем компьютере, когда задача пришла с сервера. Правьте текст прямо здесь — копируйте, дописывайте, переделывайте. Хвост «')
+      + safe(data.prompts?.tail || '') + t('» сервер дописывает сам к любому варианту.') + '</p>'
+    + promptField(t('Почистить'), 'prompt.clean', promptDefaults['prompt.clean'], get('prompt.clean', ''),
+      t('Осторожная правка: убрать паразитов и ошибки, ничего не переписывая'))
+    + promptField(t('Почистить и переписать'), 'prompt.both', promptDefaults['prompt.both'], get('prompt.both', ''),
+      t('Полная переработка: собрать мысли и сделать текст письменным'))
     + '</div>'
 
-    + '<div class="card"><h2>Когда домашний компьютер занят</h2>'
-    + '<label class="field"><span>Ждать очереди или уходить в облако</span>'
+    + '<div class="card"><h2>' + t('Когда домашний компьютер занят') + '</h2>'
+    + '<label class="field"><span>' + t('Ждать очереди или уходить в облако') + '</span>'
       + '<select data-set="spillToCloud">'
-        + '<option value="true"' + (get('spillToCloud', true) === false ? '' : ' selected') + '>ждать 30 секунд, потом в облако</option>'
-        + '<option value="false"' + (get('spillToCloud', true) === false ? ' selected' : '') + '>всегда ждать компьютер, денег не тратить</option>'
+        + '<option value="true"' + (get('spillToCloud', true) === false ? '' : ' selected') + '>' + t('ждать 30 секунд, потом в облако') + '</option>'
+        + '<option value="false"' + (get('spillToCloud', true) === false ? ' selected' : '') + '>' + t('всегда ждать компьютер, денег не тратить') + '</option>'
       + '</select>'
-      + '<span class="why muted">Облако стоит копейки, но избавляет от «оно висит». Второй вариант — если платить не хочется совсем</span></label>'
+      + '<span class="why muted">' + t('Облако стоит копейки, но избавляет от «оно висит». Второй вариант — если платить не хочется совсем') + '</span></label>'
     + '</div>'
 
-    + '<div class="row-actions"><button class="btn" id="save-settings">Сохранить</button>'
+    + '<div class="row-actions"><button class="btn" id="save-settings">' + t('Сохранить') + '</button>'
     + '<span id="settings-note" class="muted"></span></div>';
 
   // «Вернуть стандартный» — подставляет исходный текст промпта в поле;
@@ -913,11 +1003,11 @@ async function drawSettings() {
   $('bot-restart')?.addEventListener('click', async () => {
     const out = $('bot-restart-res');
     out.className = 'muted';
-    out.textContent = 'Перезапускаю…';
+    out.textContent = t('Перезапускаю…');
     try {
       const r = await api('/admin/api/bot/restart', { method: 'POST' });
       out.className = r.running ? 'ok' : 'err';
-      out.textContent = r.running ? 'Бот перезапущен и опрашивает' : 'Бот выключен: токен не задан';
+      out.textContent = t(r.running ? 'Бот перезапущен и опрашивает' : 'Бот выключен: токен не задан');
     } catch (error) {
       out.className = 'err';
       out.textContent = error.message;
@@ -927,14 +1017,14 @@ async function drawSettings() {
   $('check-proxy')?.addEventListener('click', async () => {
     const out = $('proxy-res');
     out.className = 'muted';
-    out.textContent = 'Проверяю…';
+    out.textContent = t('Проверяю…');
     $('check-proxy').disabled = true;
     try {
       const result = await api('/admin/api/proxy/check', { method: 'POST' });
       out.className = result.ok ? 'ok' : 'err';
       out.textContent = result.ok
-        ? 'Telegram отвечает через прокси за ' + result.ms + ' мс'
-        : result.error;
+        ? t('Telegram отвечает через прокси за ') + result.ms + t(' мс')
+        : t(result.error);
     } catch (error) {
       out.className = 'err';
       out.textContent = error.message;
@@ -945,7 +1035,7 @@ async function drawSettings() {
   $('save-settings').addEventListener('click', async () => {
     const note = $('settings-note');
     note.className = 'muted';
-    note.textContent = 'Сохраняю…';
+    note.textContent = t('Сохраняю…');
     // body.prices заполняется ниже из рабочей копии таблицы цен.
     const body = { settings: {}, prices: null };
 
@@ -996,12 +1086,12 @@ async function drawSettings() {
     try {
       const result = await api('/admin/api/settings', { method: 'POST', body: JSON.stringify(body) });
       note.className = 'ok';
-      note.textContent = result.botRunning ? 'Сохранено, бот опрашивает' : 'Сохранено';
+      note.textContent = t(result.botRunning ? 'Сохранено, бот опрашивает' : 'Сохранено');
       await drawSettings();
       badges();
     } catch (error) {
       note.className = 'err';
-      note.textContent = 'Не сохранилось: ' + error.message;
+      note.textContent = t('Не сохранилось: ') + error.message;
     }
   });
 }
@@ -1012,13 +1102,13 @@ async function badges() {
   try {
     const agent = await api('/admin/api/agent');
     const pill = $('pill-agent');
-    pill.textContent = 'компьютер: ' + (agent.online ? 'на связи' : 'не на связи');
+    pill.textContent = t('компьютер: ') + t(agent.online ? 'на связи' : 'не на связи');
     pill.className = 'pill' + (agent.online ? ' on' : '');
   } catch { /* значок не главное */ }
   try {
     const conf = await api('/admin/api/settings');
     const pill = $('pill-bot');
-    pill.textContent = 'бот: ' + (conf.botRunning ? 'работает' : 'выключен');
+    pill.textContent = t('бот: ') + t(conf.botRunning ? 'работает' : 'выключен');
     pill.className = 'pill' + (conf.botRunning ? ' on' : '');
   } catch { /* значок не главное */ }
 }

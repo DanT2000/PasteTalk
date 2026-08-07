@@ -1,5 +1,6 @@
 package ru.appswire.pastetalk
 
+import android.content.Context
 import android.util.Base64
 import org.json.JSONException
 import org.json.JSONObject
@@ -15,10 +16,11 @@ import java.net.URL
  */
 
 /** Ключ отозвали. Отдельный тип, потому что на него надо не ругаться, а
- *  возвращать человека на экран подключения. */
-class AccessRevoked : IOException("Доступ отозван")
+ *  возвращать человека на экран подключения. Текст приходит снаружи:
+ *  строки живут в ресурсах, а ресурсы — у контекста. */
+class AccessRevoked(message: String) : IOException(message)
 
-class Api(private val store: Store) {
+class Api(private val context: Context, private val store: Store) {
 
     /**
      * Привести адрес к виду, с которым соединение вообще возможно.
@@ -65,15 +67,15 @@ class Api(private val store: Store) {
             JSONObject()
         }
 
-        if (code == 401) throw AccessRevoked()
+        if (code == 401) throw AccessRevoked(context.getString(R.string.error_access_revoked))
         if (code !in 200..299) {
             throw IOException(json.optString("error").ifBlank {
-                if (code in 500..599) "Сервер сейчас недоступен. Подождите минуту и попробуйте ещё раз"
-                else "Сервер ответил $code"
+                if (code in 500..599) context.getString(R.string.error_server_unavailable)
+                else context.getString(R.string.error_server_status, code)
             })
         }
         if (text.isNotBlank() && json.length() == 0) {
-            throw IOException("Сервер ответил непонятно — возможно, он перезапускается. Попробуйте ещё раз")
+            throw IOException(context.getString(R.string.error_server_garbled))
         }
         return json
     }
@@ -92,7 +94,7 @@ class Api(private val store: Store) {
                 .put("title", title),
         )
         val token = answer.optString("token")
-        if (token.isBlank()) throw IOException("Сервер не выдал доступ")
+        if (token.isBlank()) throw IOException(context.getString(R.string.error_no_token))
         store.token = token
         return token
     }

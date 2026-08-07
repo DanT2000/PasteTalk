@@ -7,6 +7,7 @@ const config = require('./config');
 const engine = require('./engine');
 const history = require('./history');
 const hotkeys = require('./hotkeys');
+const i18n = require('./i18n');
 const llm = require('./llm');
 const logger = require('./logger');
 const paste = require('./paste');
@@ -19,6 +20,7 @@ const watchdog = require('./watchdog');
 const windows = require('./windows');
 
 const log = logger.scoped('app');
+const { tr } = i18n;
 
 // Одна копия на систему: вторая перехватила бы горячие клавиши у первой.
 if (!app.requestSingleInstanceLock()) {
@@ -94,10 +96,10 @@ async function announceUpdate(release) {
   const { response } = await dialog.showMessageBox({
     type: 'info',
     title: 'PasteTalk',
-    message: `Вышла версия ${release.latest}`,
-    detail: `У вас ${release.current}. Обновление скачается и поставится само — настройки, модели и горячие клавиши останутся на месте.`
-      + (release.sizeMb ? `\n\nРазмер: ${release.sizeMb} МБ.` : ''),
-    buttons: ['Обновить сейчас', 'Что нового', 'Потом', 'Больше не напоминать'],
+    message: `${tr('Вышла версия')} ${release.latest}`,
+    detail: `${tr('У вас')} ${release.current}. ${tr('Обновление скачается и поставится само — настройки, модели и горячие клавиши останутся на месте.')}`
+      + (release.sizeMb ? `\n\n${tr('Размер:')} ${release.sizeMb} ${tr('МБ.')}` : ''),
+    buttons: [tr('Обновить сейчас'), tr('Что нового'), tr('Потом'), tr('Больше не напоминать')],
     defaultId: 0,
     cancelId: 2,
     noLink: true,
@@ -116,7 +118,7 @@ async function announceUpdate(release) {
 async function selfUpdate(release) {
   new Notification({
     title: 'PasteTalk',
-    body: `Скачиваю ${release.latest} — поставлю и перезапущусь сам.`,
+    body: `${tr('Скачиваю')} ${release.latest} — ${tr('поставлю и перезапущусь сам.')}`,
   }).show();
   try {
     await updates.downloadAndInstall();
@@ -125,9 +127,9 @@ async function selfUpdate(release) {
     const { response } = await dialog.showMessageBox({
       type: 'warning',
       title: 'PasteTalk',
-      message: 'Само обновиться не вышло',
-      detail: `${error.message}\n\nМожно скачать установщик со страницы выпуска и запустить его поверх.`,
-      buttons: ['Открыть страницу', 'Позже'],
+      message: tr('Само обновиться не вышло'),
+      detail: `${tr(error.message)}\n\n${tr('Можно скачать установщик со страницы выпуска и запустить его поверх.')}`,
+      buttons: [tr('Открыть страницу'), tr('Позже')],
       defaultId: 0,
       cancelId: 1,
       noLink: true,
@@ -248,7 +250,7 @@ async function improveClipboard() {
   if (!text) {
     recorder.cancelHide();
     windows.showCapsule();
-    windows.send('capsule', 'capsule:state', { state: 'aierror', hint: 'Улучшать пока нечего' });
+    windows.send('capsule', 'capsule:state', { state: 'aierror', hint: tr('Улучшать пока нечего') });
     recorder.scheduleHide(2600);
     return;
   }
@@ -264,7 +266,7 @@ async function improveLast() {
   recorder.cancelHide();
   windows.showCapsule();
   if (!last) {
-    windows.send('capsule', 'capsule:state', { state: 'aierror', hint: 'История пока пуста' });
+    windows.send('capsule', 'capsule:state', { state: 'aierror', hint: tr('История пока пуста') });
     recorder.scheduleHide(2600);
     return;
   }
@@ -319,9 +321,18 @@ ipcMain.handle('config:set', (_event, patch) => {
   if (patch.model && (patch.model.name !== before.model.name || patch.model.device !== before.model.device)) {
     engine.loadModel(after.model).catch((error) => log.error(error));
   }
+  // Язык интерфейса меняется живьём: окна перечитывают свой HTML заново,
+  // трей перестраивает меню. Без перезагрузки страницы пришлось бы уметь
+  // переводить уже переведённое обратно.
+  if (patch.ui && 'locale' in patch.ui) {
+    windows.reloadAll();
+    tray.refresh();
+  }
   windows.broadcast('config:changed', after);
   return after;
 });
+
+ipcMain.handle('i18n:get', () => i18n.forRenderer());
 
 ipcMain.handle('engine:health', async () => {
   if (!engine.isReady) return { ok: false, state: engine.state, error: engine.lastError };
@@ -356,8 +367,8 @@ ipcMain.handle('app:displays', () => {
   const primary = screen.getPrimaryDisplay();
   return screen.getAllDisplays().map((d, i) => ({
     id: String(d.id),
-    title: `Экран ${i + 1} — ${d.size.width}×${d.size.height}`
-      + (d.id === primary.id ? ' (основной)' : ''),
+    title: `${tr('Экран')} ${i + 1} — ${d.size.width}×${d.size.height}`
+      + (d.id === primary.id ? ` (${tr('основной')})` : ''),
   }));
 });
 
@@ -379,7 +390,7 @@ ipcMain.handle('relay:refresh', () => {
 
 ipcMain.handle('relay:pair', async (_event, code) => {
   const url = String(config.get('relay.url', '')).trim().replace(/\/+$/, '');
-  if (!url) return { ok: false, error: 'Сначала укажите адрес сервера' };
+  if (!url) return { ok: false, error: tr('Сначала укажите адрес сервера') };
 
   // Ключ компьютера кладётся как есть: обменивать его не на что, он и
   // есть постоянный доступ. Шесть цифр — прежний путь через код человека.
@@ -388,7 +399,7 @@ ipcMain.handle('relay:pair', async (_event, code) => {
     // Обрезанный или захвативший лишнее ключ лучше отвергнуть сейчас,
     // чем сказать «принят» и молча не подключиться.
     if (!/^pt_[A-Za-z0-9_-]{20,}$/.test(clean)) {
-      return { ok: false, error: 'Ключ выглядит неполным — скопируйте его из админки целиком' };
+      return { ok: false, error: tr('Ключ выглядит неполным — скопируйте его из админки целиком') };
     }
     config.set({ relay: { token: clean, enabled: true } });
     relay.refresh();
@@ -410,14 +421,14 @@ ipcMain.handle('relay:pair', async (_event, code) => {
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      return { ok: false, error: data.error || `Сервер ответил ${response.status}` };
+      return { ok: false, error: data.error || `${tr('Сервер ответил')} ${response.status}` };
     }
     // config.set сливает вглубь, поэтому адрес и имя останутся как были.
     config.set({ relay: { token: data.token, enabled: true } });
     relay.refresh();
     return { ok: true };
   } catch (error) {
-    return { ok: false, error: `Не достучались до сервера: ${error.message}` };
+    return { ok: false, error: `${tr('Не достучались до сервера:')} ${error.message}` };
   }
 });
 
@@ -510,11 +521,11 @@ ipcMain.on('audio:error', (_event, payload) => {
 ipcMain.handle('files:pick', async (event) => {
   const win = event.sender.getOwnerBrowserWindow();
   const result = await dialog.showOpenDialog(win, {
-    title: 'Выберите запись',
+    title: tr('Выберите запись'),
     properties: ['openFile'],
     filters: [
-      { name: 'Видео и аудио', extensions: ['mp4', 'mkv', 'mov', 'avi', 'webm', 'mp3', 'wav', 'm4a', 'ogg', 'flac', 'aac'] },
-      { name: 'Все файлы', extensions: ['*'] },
+      { name: tr('Видео и аудио'), extensions: ['mp4', 'mkv', 'mov', 'avi', 'webm', 'mp3', 'wav', 'm4a', 'ogg', 'flac', 'aac'] },
+      { name: tr('Все файлы'), extensions: ['*'] },
     ],
   });
   return result.canceled ? null : result.filePaths[0];
@@ -526,9 +537,9 @@ ipcMain.handle('files:cancel', (_event, id) => engine.cancelFile(id));
 ipcMain.handle('files:save', async (event, payload) => {
   const win = event.sender.getOwnerBrowserWindow();
   const result = await dialog.showSaveDialog(win, {
-    title: 'Сохранить текст',
+    title: tr('Сохранить текст'),
     defaultPath: payload.name || 'расшифровка.txt',
-    filters: [{ name: 'Текст', extensions: ['txt'] }],
+    filters: [{ name: tr('Текст'), extensions: ['txt'] }],
   });
   if (result.canceled) return null;
   require('node:fs').writeFileSync(result.filePath, payload.text, 'utf8');

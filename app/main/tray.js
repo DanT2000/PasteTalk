@@ -8,6 +8,7 @@ const config = require('./config');
 const engine = require('./engine');
 const logger = require('./logger');
 const hotkeys = require('./hotkeys');
+const { tr } = require('./i18n');
 
 /**
  * Значок рядом с часами — единственное постоянное место программы.
@@ -35,12 +36,12 @@ function iconPath() {
 }
 
 function stateLine() {
-  if (paused) return 'На паузе';
+  if (paused) return tr('На паузе');
   switch (engine.state) {
-    case 'ready': return `Готов · ${config.get('model.name', 'large-v3')}`;
-    case 'starting': return 'Движок запускается…';
-    case 'failed': return `Сбой: ${engine.lastError}`;
-    default: return 'Движок остановлен';
+    case 'ready': return `${tr('Готов')} · ${config.get('model.name', 'large-v3')}`;
+    case 'starting': return tr('Движок запускается…');
+    case 'failed': return `${tr('Сбой:')} ${tr(engine.lastError)}`;
+    default: return tr('Движок остановлен');
   }
 }
 
@@ -51,21 +52,21 @@ function build() {
     { label: stateLine(), enabled: false },
     { type: 'separator' },
     {
-      label: `Начать запись\t${hotkeys.label(map.record)}`,
+      label: `${tr('Начать запись')}\t${hotkeys.label(map.record)}`,
       enabled: !paused && engine.isReady,
       click: () => actions.record(),
     },
     {
-      label: paused ? 'Снять с паузы' : 'Поставить на паузу',
+      label: paused ? tr('Снять с паузы') : tr('Поставить на паузу'),
       click: () => actions.setPaused(!paused),
     },
     { type: 'separator' },
-    { label: 'Настройки…', click: () => actions.settings() },
-    { label: 'Журнал работы', click: () => shell.openPath(logger.logFile()) },
-    { label: 'Папка с настройками', click: () => shell.openPath(app.getPath('userData')) },
+    { label: tr('Настройки…'), click: () => actions.settings() },
+    { label: tr('Журнал работы'), click: () => shell.openPath(logger.logFile()) },
+    { label: tr('Папка с настройками'), click: () => shell.openPath(app.getPath('userData')) },
     { type: 'separator' },
-    { label: 'Перезапустить движок', click: () => actions.restartEngine() },
-    { label: 'Выйти из PasteTalk', click: () => actions.quit() },
+    { label: tr('Перезапустить движок'), click: () => actions.restartEngine() },
+    { label: tr('Выйти из PasteTalk'), click: () => actions.quit() },
   ]);
   if (tray) {
     tray.setContextMenu(menu);

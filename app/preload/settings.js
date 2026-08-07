@@ -10,6 +10,9 @@ const on = (channel) => (handler) => {
 };
 
 contextBridge.exposeInMainWorld('pastetalk', {
+  i18n: {
+    get: () => ipcRenderer.invoke('i18n:get'),
+  },
   config: {
     all: () => ipcRenderer.invoke('config:all'),
     set: (patch) => ipcRenderer.invoke('config:set', patch),

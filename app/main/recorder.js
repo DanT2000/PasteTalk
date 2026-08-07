@@ -4,6 +4,7 @@ const { EventEmitter } = require('node:events');
 
 const config = require('./config');
 const engine = require('./engine');
+const { tr } = require('./i18n');
 const llm = require('./llm');
 const paste = require('./paste');
 const remote = require('./remote');
@@ -98,7 +99,7 @@ class Recorder extends EventEmitter {
     if (remote.isRemote()) return this.startRemote(mode);
 
     if (!engine.isReady) {
-      this.emitState('engineDown', { hint: engine.lastError || 'Движок ещё запускается' });
+      this.emitState('engineDown', { hint: tr(engine.lastError || 'Движок ещё запускается') });
       this.scheduleHide(3000);
       return;
     }
@@ -119,7 +120,7 @@ class Recorder extends EventEmitter {
       log.info(`запись начата (${mode}), сессия ${this.sessionId}`);
     } catch (error) {
       log.error(error);
-      this.emitState('engineDown', { hint: error.code === 'MODEL_NOT_READY' ? 'Модель ещё грузится' : error.message });
+      this.emitState('engineDown', { hint: tr(error.code === 'MODEL_NOT_READY' ? 'Модель ещё грузится' : error.message) });
       this.scheduleHide(3000);
     } finally {
       this.busy = false;
@@ -220,7 +221,7 @@ class Recorder extends EventEmitter {
    */
   quietHint() {
     if (Date.now() - this.silentSince <= MIC_QUIET_MS) return {};
-    return { status: 'Микрофон отдаёт тишину', hint: 'Запись идёт — проверьте устройство' };
+    return { status: tr('Микрофон отдаёт тишину'), hint: tr('Запись идёт — проверьте устройство') };
   }
 
   /**
@@ -296,7 +297,7 @@ class Recorder extends EventEmitter {
     } catch (error) {
       if (attempt !== this.attempt) return;
       log.warn(`распознать снаружи не вышло: ${error.message}`);
-      this.emitState('engineDown', { hint: error.message });
+      this.emitState('engineDown', { hint: tr(error.message) });
       this.scheduleHide(3600);
     }
   }
@@ -318,7 +319,7 @@ class Recorder extends EventEmitter {
       result = await engine.stopSession(id);
     } catch (error) {
       log.error(error);
-      this.emitState('engineDown', { hint: error.message });
+      this.emitState('engineDown', { hint: tr(error.message) });
       this.scheduleHide(3000);
       return;
     }
@@ -372,12 +373,12 @@ class Recorder extends EventEmitter {
   async improve(source, autoPaste = config.get('text.autoPaste', true)) {
     const text = source || this.lastText;
     if (!text) {
-      this.emitState('aierror', { hint: 'Улучшать пока нечего' });
+      this.emitState('aierror', { hint: tr('Улучшать пока нечего') });
       this.scheduleHide(2400);
       return;
     }
     if (!config.get('ai.enabled', false)) {
-      this.emitState('aierror', { hint: 'Улучшение выключено в настройках' });
+      this.emitState('aierror', { hint: tr('Улучшение выключено в настройках') });
       this.scheduleHide(3000);
       return;
     }
@@ -404,12 +405,12 @@ class Recorder extends EventEmitter {
       if (attempt !== this.attempt) return;
       if (llm.isCancelled(error)) {
         log.info('улучшение отменено человеком');
-        this.emitState('cancelled', { hint: 'Обычный текст остался в буфере' });
+        this.emitState('cancelled', { hint: tr('Обычный текст остался в буфере') });
         this.scheduleHide(2400);
         return;
       }
       log.warn(`ИИ не справился: ${error.message}`);
-      this.emitState('aierror', { hint: error.message });
+      this.emitState('aierror', { hint: tr(error.message) });
       this.scheduleHide(3600);
     }
   }
@@ -437,7 +438,7 @@ class Recorder extends EventEmitter {
     if (this.state === 'ai') {
       this.attempt += 1;
       llm.cancel();
-      this.emitState('cancelled', { hint: 'Обычный текст остался в буфере' });
+      this.emitState('cancelled', { hint: tr('Обычный текст остался в буфере') });
       this.scheduleHide(2400);
       return 'ai';
     }
@@ -448,7 +449,7 @@ class Recorder extends EventEmitter {
       this.attempt += 1;
       this.chunks = null;
       this.sessionId = null;
-      this.emitState('cancelled', { hint: 'Распознавание брошено' });
+      this.emitState('cancelled', { hint: tr('Распознавание брошено') });
       this.scheduleHide(2000);
       return 'thinking';
     }
@@ -487,7 +488,7 @@ class Recorder extends EventEmitter {
     this.sessionId = null;
     this.chunks = null;
     if (id) engine.cancelSession(id).catch(() => {});
-    this.emitState(reason, { hint });
+    this.emitState(reason, { hint: tr(hint) });
     this.scheduleHide(reason === 'nospeech' ? 1800 : 3600);
   }
 

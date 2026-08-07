@@ -653,6 +653,20 @@
             </div>
           </div>
           <div class="row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z"/><path d="M3.6 9h16.8M3.6 15h16.8M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg>
+            <div class="row-text">
+              <div class="row-title">Язык интерфейса</div>
+              <div class="row-sub">Interface language. Меняется всё: окна, панель записи, меню в трее</div>
+            </div>
+            <div class="row-control">
+              <select data-cfg="ui.locale">
+                <option value="">Как в системе — system</option>
+                <option value="en">English</option>
+                <option value="ru">Русский</option>
+              </select>
+            </div>
+          </div>
+          <div class="row">
             <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="4" width="9" height="7" rx="1"/><rect x="13" y="4" width="9" height="7" rx="1"/><path d="M6.5 14v3M17.5 14v3M4 20h17"/></svg>
             <div class="row-text">
               <div class="row-title">На каком экране</div>
@@ -911,6 +925,7 @@
   </div>
 </div>
 
+<script src="../shared/i18n.js"></script>
 <script src="../shared/sounds.js"></script>
 <script src="settings.js"></script>
 </body>
