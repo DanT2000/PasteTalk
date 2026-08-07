@@ -1,5 +1,7 @@
 <div align="center">
 
+🇷🇺 Русский · **[🇬🇧 English](README.en.md)**
+
 <img src="build/icon.png" width="112" alt="PasteTalk">
 
 # PasteTalk
