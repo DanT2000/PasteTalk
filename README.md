@@ -20,6 +20,12 @@
 [![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-8A8A94?style=flat-square)](#)
 [![Звёзды](https://img.shields.io/github/stars/DanT2000/PasteTalk?label=звёзды&color=E9A72C&style=flat-square)](https://github.com/DanT2000/PasteTalk/stargazers)
 
+<br>
+
+<img src="docs/demo.gif" width="720" alt="Диктовка: запись с живыми волнами, распознавание, текст в буфере">
+
+<sub>Нажали клавишу → сказали → текст уже в буфере обмена.</sub>
+
 </div>
 
 <br>
