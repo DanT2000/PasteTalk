@@ -25,8 +25,8 @@ android {
         // свежую систему от человека, которому нужна одна кнопка, незачем.
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "2.7.2"
+        versionCode = 4
+        versionName = "2.9.0"
     }
 
     signingConfigs {
