@@ -35,6 +35,20 @@ function who(from) {
   return keys.byExternal('telegram', String(from));
 }
 
+/**
+ * Гость открытого бота. Пока тумблер в админке включён, любой может
+ * пользоваться ботом без кода; расход пишется в профиль «Гости бота».
+ * Привязка не создаётся нарочно: выключили тумблер — гости отвалились
+ * в ту же секунду, а привязанные по коду продолжают работать.
+ */
+function guest(from) {
+  if (require('../settings').get('access.botOpen', false) !== true) return null;
+  // «Удалить» у владельца значит «забанить», а не «перевести в гости»:
+  // отозванный номер в гости не пускаем даже при открытом боте.
+  if (keys.wasRevoked('telegram', String(from))) return null;
+  return { keyId: keys.guestKeyId(), kind: 'telegram', guest: true };
+}
+
 /** Шесть цифр и ничего кроме — это попытка привязаться. */
 function looksLikeCode(text) {
   return /^\d{6}$/.test(String(text || '').trim());
@@ -158,7 +172,7 @@ async function handle(update, deps) {
   const { tg } = deps;
 
   if (update.callback_query) {
-    const device = who(update.callback_query.from.id);
+    const device = who(update.callback_query.from.id) || guest(update.callback_query.from.id);
     if (!device) {
       await tg.answerCallback(update.callback_query.id, t(langOf(update.callback_query.from), 'revoked'));
       return;
@@ -180,12 +194,16 @@ async function handle(update, deps) {
     return;
   }
 
-  const device = who(message.from.id);
+  let device = who(message.from.id);
 
+  // Код проверяется до гостевого входа: даже при открытом боте человек
+  // с кодом должен получить свою личную привязку, а не гостевую.
   if (!device && looksLikeCode(text)) {
     await onCode(update, deps, text);
     return;
   }
+
+  if (!device) device = guest(message.from.id);
 
   if (!device) {
     // Отвечаем только на осмысленные обращения: молчаливый бот в чате

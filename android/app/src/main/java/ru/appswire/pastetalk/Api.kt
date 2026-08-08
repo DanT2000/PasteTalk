@@ -69,6 +69,11 @@ class Api(private val context: Context, private val store: Store) {
 
         if (code == 401) throw AccessRevoked(context.getString(R.string.error_access_revoked))
         if (code !in 200..299) {
+            // Машинный код сервер шлёт затем, чтобы текст был на языке
+            // человека, а не на языке владельца сервера.
+            if (json.optString("code") == "newCodesClosed") {
+                throw IOException(context.getString(R.string.error_new_codes_closed))
+            }
             throw IOException(json.optString("error").ifBlank {
                 if (code in 500..599) context.getString(R.string.error_server_unavailable)
                 else context.getString(R.string.error_server_status, code)
@@ -121,6 +126,86 @@ class Api(private val context: Context, private val store: Store) {
                 .put("seconds", seconds),
         )
         return answer.optString("text").trim()
+    }
+
+    /**
+     * Распознавание напрямую в облаке по своему ключу — без сервера
+     * PasteTalk вовсе. Любой сервис с /audio/transcriptions: multipart
+     * собирается руками, потому что HttpURLConnection сам не умеет, а
+     * тянуть библиотеку ради одного запроса — против всей затеи.
+     */
+    fun transcribeCloud(audio: ByteArray): String {
+        val base = normalize(store.cloudUrl).trimEnd('/')
+        val boundary = "pastetalk${System.currentTimeMillis()}"
+        val connection = (URL("$base/audio/transcriptions").openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            doOutput = true
+            connectTimeout = 15_000
+            readTimeout = 300_000
+            setRequestProperty("Authorization", "Bearer ${store.cloudKey}")
+            setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
+        }
+
+        java.io.DataOutputStream(connection.outputStream).use { out ->
+            fun field(name: String, value: String) {
+                out.writeBytes("--$boundary\r\n")
+                out.writeBytes("Content-Disposition: form-data; name=\"$name\"\r\n\r\n")
+                out.write(value.toByteArray(Charsets.UTF_8))
+                out.writeBytes("\r\n")
+            }
+            field("model", store.cloudModel.ifBlank { "whisper-large-v3-turbo" })
+            field("response_format", "json")
+            out.writeBytes("--$boundary\r\n")
+            out.writeBytes("Content-Disposition: form-data; name=\"file\"; filename=\"voice.m4a\"\r\n")
+            out.writeBytes("Content-Type: audio/mp4\r\n\r\n")
+            out.write(audio)
+            out.writeBytes("\r\n--$boundary--\r\n")
+            out.flush()
+        }
+
+        val code = connection.responseCode
+        val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+        val text = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() } ?: ""
+        val json = if (text.isBlank()) JSONObject() else try {
+            JSONObject(text)
+        } catch (broken: JSONException) {
+            JSONObject()
+        }
+
+        // 401 здесь — неверный ключ, а не отозванный доступ: человек сам
+        // его вписал, пусть сам и поправит, разлогинивать его незачем.
+        if (code == 401 || code == 403) {
+            throw IOException(context.getString(R.string.error_cloud_key))
+        }
+        if (code !in 200..299) {
+            // Строку показываем только если она строка: сериализованный
+            // JSON-объект человеку со слабым зрением читать нельзя.
+            val detail = json.optJSONObject("error")?.optString("message")
+                ?.ifBlank { null } ?: (json.opt("error") as? String)?.ifBlank { null }
+            throw IOException(detail ?: context.getString(R.string.error_server_status, code))
+        }
+        if (text.isNotBlank() && json.length() == 0) {
+            throw IOException(context.getString(R.string.error_server_garbled))
+        }
+        return json.optString("text").trim()
+    }
+
+    /**
+     * Быстрая проверка облачных доступов перед сохранением: неверный ключ
+     * должен всплыть сейчас, а не после первой наговорённой минуты.
+     * Сервисы без /models отвечают 404/405 — это не отказ ключу.
+     */
+    fun checkCloud(url: String, key: String) {
+        val base = normalize(url).trimEnd('/')
+        val connection = (URL("$base/models").openConnection() as HttpURLConnection).apply {
+            connectTimeout = 15_000
+            readTimeout = 15_000
+            setRequestProperty("Authorization", "Bearer ${key.trim()}")
+        }
+        val code = connection.responseCode
+        if (code == 401 || code == 403) {
+            throw IOException(context.getString(R.string.error_cloud_key))
+        }
     }
 
     /** Причесать уже полученный текст. Сервер его у себя не хранит, поэтому

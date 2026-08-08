@@ -76,6 +76,7 @@ function register(app) {
       people: keys.list().map((key) => ({
         id: key.id,
         name: key.name,
+        guest: key.name === keys.GUEST_NAME,
         code: key.code,
         codeUntil: key.code_until,
         mayServe: Boolean(key.may_serve),

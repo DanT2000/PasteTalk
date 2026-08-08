@@ -14,6 +14,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -155,6 +156,7 @@ private fun Root(store: Store, api: Api, voice: Voice) {
             },
         )
         else -> MainScreen(
+            store = store,
             api = api,
             voice = voice,
             onSettings = { inSettings = true },
@@ -168,13 +170,51 @@ private fun Root(store: Store, api: Api, voice: Voice) {
 
 // ---------- подключение ----------
 
+/** Наш сервер — чтобы обычному человеку хватило одного кода. */
+private const val OFFICIAL_SERVER = "https://pastetalk.dev.appswire.ru"
+
+private enum class Provider { OURS, CUSTOM, CLOUD }
+
+@Composable
+private fun ProviderOption(title: Int, hint: Int, selected: Boolean, onClick: () -> Unit) {
+    Surface(
+        color = if (selected) Color(0xFF2B2B33) else Color(0xFF232329),
+        shape = MaterialTheme.shapes.medium,
+        border = if (selected) BorderStroke(2.dp, ORANGE) else null,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.medium)
+            .clickable(onClick = onClick),
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Text(
+                stringResource(title),
+                fontSize = 19.sp,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+            )
+            Text(stringResource(hint), fontSize = 15.sp, color = MUTED)
+        }
+    }
+}
+
 @Composable
 private fun ConnectScreen(store: Store, api: Api, onDone: () -> Unit) {
-    // Адрес берём из памяти: если ключ отозвали, человек возвращается сюда,
-    // и заставлять его набирать тот же адрес заново — издевательство.
-    // В первый раз он пуст, и там подсказка, а не подставленный чужой адрес.
-    var url by remember { mutableStateOf(store.serverUrl) }
+    // Прошлые ответы берём из памяти: если ключ отозвали, человек
+    // возвращается сюда, и набирать всё заново — издевательство.
+    var provider by remember {
+        mutableStateOf(
+            when {
+                store.mode == "cloud" && store.cloudUrl.isNotBlank() -> Provider.CLOUD
+                store.serverUrl.isNotBlank() && store.serverUrl != OFFICIAL_SERVER -> Provider.CUSTOM
+                else -> Provider.OURS
+            },
+        )
+    }
+    var url by remember { mutableStateOf(if (store.serverUrl == OFFICIAL_SERVER) "" else store.serverUrl) }
     var code by remember { mutableStateOf("") }
+    var cloudUrl by remember { mutableStateOf(store.cloudUrl) }
+    var cloudKey by remember { mutableStateOf("") }
+    var cloudModel by remember { mutableStateOf(store.cloudModel) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
@@ -185,37 +225,83 @@ private fun ConnectScreen(store: Store, api: Api, onDone: () -> Unit) {
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(16.dp))
         Text(stringResource(R.string.app_name), fontSize = 34.sp, fontWeight = FontWeight.Bold)
-        Text(
-            stringResource(R.string.connect_intro),
-            fontSize = 19.sp,
-            color = MUTED,
-        )
 
-        OutlinedTextField(
-            value = url,
-            onValueChange = { url = it },
-            label = { Text(stringResource(R.string.server_address_label), fontSize = 17.sp) },
-            placeholder = { Text(stringResource(R.string.server_address_placeholder), fontSize = 18.sp, color = MUTED) },
-            textStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = 19.sp),
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
+        // Провайдер — как в Bitwarden: по умолчанию наш сервер, и обычному
+        // человеку хватает одного кода. Свой сервер и облако — ниже.
+        Text(stringResource(R.string.provider_title), fontSize = 17.sp, color = MUTED)
+        ProviderOption(R.string.provider_ours, R.string.provider_ours_hint, provider == Provider.OURS) {
+            provider = Provider.OURS; error = ""
+        }
+        ProviderOption(R.string.provider_custom, R.string.provider_custom_hint, provider == Provider.CUSTOM) {
+            provider = Provider.CUSTOM; error = ""
+        }
+        ProviderOption(R.string.provider_cloud, R.string.provider_cloud_hint, provider == Provider.CLOUD) {
+            provider = Provider.CLOUD; error = ""
+        }
 
-        OutlinedTextField(
-            value = code,
-            onValueChange = { fresh -> code = fresh.filter { it.isDigit() }.take(6) },
-            label = { Text(stringResource(R.string.code_label), fontSize = 17.sp) },
-            textStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = 26.sp),
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
+        if (provider == Provider.CLOUD) {
+            Text(stringResource(R.string.connect_intro_cloud), fontSize = 17.sp, color = MUTED)
+            OutlinedTextField(
+                value = cloudUrl,
+                onValueChange = { cloudUrl = it },
+                label = { Text(stringResource(R.string.cloud_url_label), fontSize = 17.sp) },
+                placeholder = { Text("https://api.aitunnel.ru/v1", fontSize = 18.sp, color = MUTED) },
+                textStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = 19.sp),
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = cloudKey,
+                onValueChange = { cloudKey = it },
+                label = { Text(stringResource(R.string.cloud_key_label), fontSize = 17.sp) },
+                textStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = 19.sp),
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = cloudModel,
+                onValueChange = { cloudModel = it },
+                label = { Text(stringResource(R.string.cloud_model_label), fontSize = 17.sp) },
+                placeholder = { Text("whisper-large-v3-turbo", fontSize = 18.sp, color = MUTED) },
+                textStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = 19.sp),
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        } else {
+            Text(stringResource(R.string.connect_intro), fontSize = 17.sp, color = MUTED)
+            if (provider == Provider.CUSTOM) {
+                OutlinedTextField(
+                    value = url,
+                    onValueChange = { url = it },
+                    label = { Text(stringResource(R.string.server_address_label), fontSize = 17.sp) },
+                    placeholder = { Text(stringResource(R.string.server_address_placeholder), fontSize = 18.sp, color = MUTED) },
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = 19.sp),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            OutlinedTextField(
+                value = code,
+                onValueChange = { fresh -> code = fresh.filter { it.isDigit() }.take(6) },
+                label = { Text(stringResource(R.string.code_label), fontSize = 17.sp) },
+                textStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = 26.sp),
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
 
         if (error.isNotEmpty()) {
             Text(error, fontSize = 18.sp, color = RED)
+        }
+
+        val ready = when (provider) {
+            Provider.OURS -> code.length == 6
+            Provider.CUSTOM -> code.length == 6 && url.isNotBlank()
+            Provider.CLOUD -> cloudUrl.isNotBlank() && cloudKey.isNotBlank()
         }
 
         Button(
@@ -225,7 +311,20 @@ private fun ConnectScreen(store: Store, api: Api, onDone: () -> Unit) {
                 scope.launch {
                     val outcome = runCatching {
                         withContext(Dispatchers.IO) {
-                            api.activate(url, code, Build.MODEL ?: context.getString(R.string.device_fallback))
+                            if (provider == Provider.CLOUD) {
+                                // Сначала проверка, потом сохранение: опечатка
+                                // в ключе должна всплыть здесь, а не после
+                                // первой наговорённой минуты.
+                                api.checkCloud(cloudUrl, cloudKey)
+                                store.cloudUrl = cloudUrl
+                                store.cloudKey = cloudKey
+                                store.cloudModel = cloudModel
+                                store.mode = "cloud"
+                            } else {
+                                val target = if (provider == Provider.OURS) OFFICIAL_SERVER else url
+                                api.activate(target, code, Build.MODEL ?: context.getString(R.string.device_fallback))
+                                store.mode = "server"
+                            }
                         }
                     }
                     busy = false
@@ -235,14 +334,17 @@ private fun ConnectScreen(store: Store, api: Api, onDone: () -> Unit) {
                     )
                 }
             },
-            enabled = !busy && code.length == 6 && url.isNotBlank(),
+            enabled = !busy && ready,
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = 64.dp),
         ) {
             Text(
-                if (busy) stringResource(R.string.connect_checking)
-                else stringResource(R.string.connect_button),
+                when {
+                    busy -> stringResource(R.string.connect_checking)
+                    provider == Provider.CLOUD -> stringResource(R.string.cloud_save)
+                    else -> stringResource(R.string.connect_button)
+                },
                 fontSize = 21.sp,
             )
         }
@@ -254,7 +356,7 @@ private fun ConnectScreen(store: Store, api: Api, onDone: () -> Unit) {
 private enum class Stage { IDLE, RECORDING, THINKING, IMPROVING }
 
 @Composable
-private fun MainScreen(api: Api, voice: Voice, onSettings: () -> Unit, onRevoked: () -> Unit) {
+private fun MainScreen(store: Store, api: Api, voice: Voice, onSettings: () -> Unit, onRevoked: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -333,7 +435,12 @@ private fun MainScreen(api: Api, voice: Voice, onSettings: () -> Unit, onRevoked
         stage = Stage.THINKING
         note = ""
         scope.launch {
-            val outcome = runCatching { withContext(Dispatchers.IO) { api.transcribe(audio, recorded) } }
+            val outcome = runCatching {
+                withContext(Dispatchers.IO) {
+                    if (store.mode == "cloud") api.transcribeCloud(audio)
+                    else api.transcribe(audio, recorded)
+                }
+            }
             stage = Stage.IDLE
             outcome.fold(
                 onSuccess = { fresh ->
@@ -457,6 +564,9 @@ private fun MainScreen(api: Api, voice: Voice, onSettings: () -> Unit, onRevoked
                 // наперегонки с первым, и свежая диктовка молча заменялась
                 // причёсанной старой.
                 busy = stage != Stage.IDLE,
+                // Улучшение делает сервер PasteTalk; в облачном режиме его
+                // нет — и кнопки, которые не работают, честнее не показывать.
+                showImprove = store.mode != "cloud",
                 onCopy = {
                     copy(text)
                     note = context.getString(R.string.note_copied)
@@ -502,6 +612,7 @@ private fun RecordButton(stage: Stage, seconds: Int, onClick: () -> Unit) {
 private fun ResultBlock(
     text: String,
     busy: Boolean,
+    showImprove: Boolean,
     onCopy: () -> Unit,
     onImprove: (String) -> Unit,
 ) {
@@ -541,29 +652,31 @@ private fun ResultBlock(
         // Названия те же, что на компьютере и в боте: одна кнопка не должна
         // в трёх местах называться по-разному. Пояснения под ними — потому
         // что «Почистить» само по себе ничего не говорит.
-        OutlinedButton(
-            onClick = { onImprove("clean") },
-            enabled = !busy,
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 58.dp),
-        ) {
-            Column(Modifier.padding(vertical = 6.dp)) {
-                Text(stringResource(R.string.improve_clean), fontSize = 19.sp)
-                Text(stringResource(R.string.improve_clean_hint), fontSize = 14.sp, color = MUTED)
+        if (showImprove) {
+            OutlinedButton(
+                onClick = { onImprove("clean") },
+                enabled = !busy,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 58.dp),
+            ) {
+                Column(Modifier.padding(vertical = 6.dp)) {
+                    Text(stringResource(R.string.improve_clean), fontSize = 19.sp)
+                    Text(stringResource(R.string.improve_clean_hint), fontSize = 14.sp, color = MUTED)
+                }
             }
-        }
 
-        OutlinedButton(
-            onClick = { onImprove("both") },
-            enabled = !busy,
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 58.dp),
-        ) {
-            Column(Modifier.padding(vertical = 6.dp)) {
-                Text(stringResource(R.string.improve_both), fontSize = 19.sp)
-                Text(stringResource(R.string.improve_both_hint), fontSize = 14.sp, color = MUTED)
+            OutlinedButton(
+                onClick = { onImprove("both") },
+                enabled = !busy,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 58.dp),
+            ) {
+                Column(Modifier.padding(vertical = 6.dp)) {
+                    Text(stringResource(R.string.improve_both), fontSize = 19.sp)
+                    Text(stringResource(R.string.improve_both_hint), fontSize = 14.sp, color = MUTED)
+                }
             }
         }
     }
@@ -583,8 +696,28 @@ private fun SettingsScreen(store: Store, onBack: () -> Unit, onForget: () -> Uni
         Text(stringResource(R.string.settings), fontSize = 30.sp, fontWeight = FontWeight.Bold)
 
         Column {
-            Text(stringResource(R.string.settings_server), fontSize = 17.sp, color = MUTED)
-            Text(store.serverUrl.ifBlank { stringResource(R.string.settings_server_none) }, fontSize = 20.sp)
+            Text(stringResource(R.string.settings_provider), fontSize = 17.sp, color = MUTED)
+            Text(
+                when {
+                    store.mode == "cloud" -> stringResource(R.string.provider_cloud)
+                    store.serverUrl == OFFICIAL_SERVER -> stringResource(R.string.provider_ours)
+                    else -> stringResource(R.string.provider_custom)
+                },
+                fontSize = 20.sp,
+            )
+        }
+
+        Column {
+            Text(
+                stringResource(if (store.mode == "cloud") R.string.cloud_url_label else R.string.settings_server),
+                fontSize = 17.sp,
+                color = MUTED,
+            )
+            Text(
+                (if (store.mode == "cloud") store.cloudUrl else store.serverUrl)
+                    .ifBlank { stringResource(R.string.settings_server_none) },
+                fontSize = 20.sp,
+            )
         }
 
         Column {

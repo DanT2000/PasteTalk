@@ -32,6 +32,11 @@ contextBridge.exposeInMainWorld('pastetalk', {
     models: (overrides) => ipcRenderer.invoke('llm:models', overrides),
     providers: () => ipcRenderer.invoke('llm:providers'),
   },
+  models: {
+    dir: () => ipcRenderer.invoke('models:dir'),
+    pickDir: () => ipcRenderer.invoke('models:pickDir'),
+    changeDir: (target) => ipcRenderer.invoke('models:changeDir', target),
+  },
   hotkeys: {
     isFree: (accelerator) => ipcRenderer.invoke('hotkeys:isFree', accelerator),
     onConflict: on('hotkeys:conflict'),

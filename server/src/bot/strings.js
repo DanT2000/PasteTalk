@@ -114,6 +114,10 @@ const ACTIVATE_ERRORS = [
     part: 'устройств на этот код не привязать',
     en: (message) => `This code can't take more than ${firstNumber(message)} devices`,
   },
+  {
+    part: 'Новые подключения закрыты',
+    en: () => 'The server owner is not accepting new connections right now',
+  },
 ];
 
 /** Перевод ошибки привязки: для русского — как пришла, для английского — по словарю. */

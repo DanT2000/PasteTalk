@@ -4,6 +4,21 @@
     <string name="app_name">PasteTalk</string>
 
     <!-- Экран подключения -->
+    <string name="provider_title">Provider</string>
+    <string name="provider_ours">PasteTalk</string>
+    <string name="provider_ours_hint">The author\'s server — all you need is a code</string>
+    <string name="provider_custom">My own server</string>
+    <string name="provider_custom_hint">A PasteTalk server you host yourself</string>
+    <string name="provider_cloud">Cloud with my key</string>
+    <string name="provider_cloud_hint">Straight to any speech API — no server at all</string>
+    <string name="connect_intro_cloud">Voice goes directly to the API you specify. Works with any OpenAI-compatible service. The address must start with https:// — plain http is blocked for safety.</string>
+    <string name="error_new_codes_closed">The server owner is not accepting new connections right now</string>
+    <string name="cloud_url_label">API address</string>
+    <string name="cloud_key_label">API key</string>
+    <string name="cloud_model_label">Model (optional)</string>
+    <string name="cloud_save">Save and start</string>
+    <string name="error_cloud_key">The service didn\'t accept the key</string>
+    <string name="settings_provider">Provider</string>
     <string name="connect_intro">To get started, enter an access code. The server owner can give you one.</string>
     <string name="server_address_label">Server address</string>
     <string name="server_address_placeholder">https://your-server.com</string>

@@ -275,4 +275,16 @@ window.PASTETALK_EN = {
     'Computers have their own section now — add the machine there',
   'Не указан номер в телеграме': 'No Telegram ID given',
   'Не удалось подобрать свободный код': "Couldn't find a free code",
+  'Доступ': 'Access',
+  'Telegram-бот': 'Telegram bot',
+  'только по коду': 'code holders only',
+  'открыт для всех': 'open to everyone',
+  '«Открыт для всех» — любой пишет боту без кода, расход гостей виден в профиле «Гости бота». Выключили — гости теряют доступ сразу, привязанные по коду остаются':
+    '"Open to everyone" — anyone can message the bot without a code; guest spending shows up under the "Гости бота" profile. Turn it off and guests lose access instantly, code holders keep working',
+  'Новые привязки по коду': 'New code sign-ups',
+  'разрешены': 'allowed',
+  'закрыты': 'closed',
+  '«Закрыты» — коды не принимаются ни в приложениях, ни в боте. Все, кто уже привязан, продолжают работать как раньше':
+    '"Closed" — codes are rejected in the apps and the bot alike. Everyone already linked keeps working as before',
+  '(служебный: расход открытого бота)': '(service profile: open-bot spending)',
 };

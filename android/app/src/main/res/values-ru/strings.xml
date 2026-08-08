@@ -4,6 +4,21 @@
     <string name="app_name">PasteTalk</string>
 
     <!-- Экран подключения -->
+    <string name="provider_title">Провайдер</string>
+    <string name="provider_ours">PasteTalk</string>
+    <string name="provider_ours_hint">Сервер автора — достаточно одного кода</string>
+    <string name="provider_custom">Свой сервер</string>
+    <string name="provider_custom_hint">Сервер PasteTalk, который вы подняли сами</string>
+    <string name="provider_cloud">Облако по своему ключу</string>
+    <string name="provider_cloud_hint">Напрямую в любой речевой API — вообще без сервера</string>
+    <string name="connect_intro_cloud">Голос уходит напрямую в указанный API. Подойдёт любой OpenAI-совместимый сервис. Адрес должен начинаться с https:// — обычный http закрыт ради безопасности.</string>
+    <string name="error_new_codes_closed">Владелец сервера сейчас не принимает новые подключения</string>
+    <string name="cloud_url_label">Адрес API</string>
+    <string name="cloud_key_label">Ключ API</string>
+    <string name="cloud_model_label">Модель (не обязательно)</string>
+    <string name="cloud_save">Сохранить и диктовать</string>
+    <string name="error_cloud_key">Сервис не принял ключ</string>
+    <string name="settings_provider">Провайдер</string>
     <string name="connect_intro">Чтобы начать, введите код доступа. Его выдаёт владелец сервера.</string>
     <string name="server_address_label">Адрес сервера</string>
     <string name="server_address_placeholder">https://ваш-сервер.ru</string>

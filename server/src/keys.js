@@ -77,6 +77,7 @@ function issue(name, ttlMs = DEFAULT_CODE_TTL_MS) {
 function reissue(id, ttlMs = DEFAULT_CODE_TTL_MS) {
   const database = db.open();
   sweepExpired(database);
+  if (isGuest(id)) throw new Error('Это служебный профиль гостей — коды к нему не выдаются');
   const key = database.prepare('SELECT * FROM keys WHERE id = ? AND revoked_at IS NULL').get(id);
   if (!key) throw new Error('Такого профиля нет');
   const code = freeCode(database);
@@ -93,6 +94,9 @@ function list() {
 }
 
 function revoke(id) {
+  // Гостевой профиль не отзывается: его выключает тумблер в настройках,
+  // а отозванный дубль тут же пересоздался бы с расщеплённой историей.
+  if (isGuest(id)) throw new Error('Это служебный профиль гостей — он выключается тумблером «Доступ»');
   const info = db.open()
     .prepare('UPDATE keys SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL')
     .run(Date.now(), id);
@@ -134,6 +138,11 @@ function attach(keyId, kind, externalId, title) {
 }
 
 function activate(code, kind, externalId, title, source = '') {
+  // Тумблер в админке: владелец может закрыть новые привязки — например,
+  // после публичного теста. Уже привязанные работают: у них есть токен.
+  if (require('./settings').get('access.newCodes', true) === false) {
+    throw new Error('Новые подключения закрыты владельцем сервера');
+  }
   const database = db.open();
   const now = Date.now();
 
@@ -174,10 +183,51 @@ function activate(code, kind, externalId, title, source = '') {
  * Проверок на попытки здесь нет: это делает уже вошедший в админку хозяин.
  */
 function bind(keyId, kind, externalId, title) {
+  if (isGuest(keyId)) throw new Error('Это служебный профиль гостей — привязки к нему не делаются');
   const key = db.open()
     .prepare('SELECT id FROM keys WHERE id = ? AND revoked_at IS NULL').get(keyId);
   if (!key) throw new Error('Такого ключа нет');
   return attach(keyId, kind, externalId, title);
+}
+
+/**
+ * Служебный профиль для гостей открытого бота.
+ *
+ * Когда владелец открывает бота для всех, расход гостей пишется сюда,
+ * а постоянных привязок у гостей не появляется: закрыл тумблер — доступ
+ * кончился в ту же секунду, и в списке людей нет сотни незнакомцев.
+ */
+const GUEST_NAME = 'Гости бота';
+
+/** Служебный ли это профиль гостей. Кодов и привязок ему не положено. */
+function isGuest(id) {
+  const row = db.open().prepare('SELECT name FROM keys WHERE id = ?').get(id);
+  return Boolean(row && row.name === GUEST_NAME);
+}
+
+/**
+ * Был ли этот внешний номер когда-то привязан к отозванному профилю.
+ * Нужно открытому боту: «удалить» у владельца должно значить «забанить»,
+ * а не «перевести человека в гости».
+ */
+function wasRevoked(kind, externalId) {
+  return Boolean(db.open().prepare(`
+    SELECT 1 FROM devices d
+    JOIN keys k ON k.id = d.key_id
+    WHERE d.kind = ? AND d.external_id = ? AND k.revoked_at IS NOT NULL
+  `).get(kind, String(externalId)));
+}
+
+function guestKeyId() {
+  const database = db.open();
+  const found = database
+    .prepare('SELECT id FROM keys WHERE name = ? AND revoked_at IS NULL')
+    .get(GUEST_NAME);
+  if (found) return found.id;
+  const info = database
+    .prepare('INSERT INTO keys (name, code, code_until, created_at) VALUES (?, NULL, 0, ?)')
+    .run(GUEST_NAME, Date.now());
+  return Number(info.lastInsertRowid);
 }
 
 /** Кто это, если известен только его номер в телеграме. */
@@ -227,6 +277,6 @@ function setMayServe(id, allowed) {
 
 module.exports = {
   issue, reissue, list, revoke, unbind, bind, byExternal, activate, authenticate,
-  setMayServe, byDevice, forgetMisses,
-  MAX_DEVICES, MAX_TRIES, PAUSE_MS, DEFAULT_CODE_TTL_MS,
+  setMayServe, byDevice, forgetMisses, guestKeyId, wasRevoked,
+  MAX_DEVICES, MAX_TRIES, PAUSE_MS, DEFAULT_CODE_TTL_MS, GUEST_NAME,
 };

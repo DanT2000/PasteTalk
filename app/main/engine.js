@@ -56,13 +56,21 @@ class Engine {
   }
 
   modelsDir() {
-    return path.join(app.getPath('userData'), 'models');
+    // Папку можно вынести на просторный диск: модели занимают гигабайты,
+    // а системный раздел у людей часто забит под завязку. В папку
+    // установки её класть нельзя — обновление стирает установку целиком,
+    // и модели пришлось бы качать заново после каждого выпуска.
+    const custom = String(config.get('engine.modelsDir', '') || '');
+    return custom || path.join(app.getPath('userData'), 'models');
   }
 
   // ---------- жизненный цикл ----------
 
   async start() {
     if (this.child) return;
+    // Идёт перенос папки моделей: подниматься нельзя, движок открыл бы
+    // файлы, которые прямо сейчас копируются и удаляются.
+    if (this.moving) return;
     const found = this.locate();
     if (!found) {
       this.fail('Движок распознавания не найден. Переустановите PasteTalk.');
@@ -91,21 +99,27 @@ class Engine {
     log.info(`запускаю: ${found.command}`);
     // stdin держим открытым специально: движок следит за ним и завершается
     // сам, когда труба рвётся — то есть когда приложение закрылось.
-    this.child = spawn(found.command, args, {
+    const child = spawn(found.command, args, {
       cwd: found.cwd,
       windowsHide: true,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
+    this.child = child;
 
-    this.child.stdout.setEncoding('utf8');
-    this.child.stdout.on('data', (chunk) => this.readStdout(chunk));
-    this.child.stderr.setEncoding('utf8');
-    this.child.stderr.on('data', (chunk) => {
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data', (chunk) => this.readStdout(chunk));
+    child.stderr.setEncoding('utf8');
+    child.stderr.on('data', (chunk) => {
       const text = chunk.trim();
       if (text) log.warn(text.split('\n').slice(-3).join(' | '));
     });
-    this.child.on('exit', (code) => this.handleExit(code));
-    this.child.on('error', (error) => this.fail(`Движок не запустился: ${error.message}`));
+    child.on('exit', (code) => {
+      // Поздний exit процесса, который уже заменили новым (застрял на
+      // kill дольше таймаута stop): трогать свежий child ему нельзя.
+      if (this.child !== child) return;
+      this.handleExit(code);
+    });
+    child.on('error', (error) => this.fail(`Движок не запустился: ${error.message}`));
 
     this.readyTimer = setTimeout(() => {
       if (this.state === 'starting') this.fail('Движок не ответил за минуту.');
@@ -180,8 +194,18 @@ class Engine {
     } catch {
       /* не ответил — добьём */
     }
-    if (this.child) this.child.kill();
+    const child = this.child;
     this.child = null;
+    if (child) {
+      // Дожидаемся настоящей смерти процесса: /shutdown отвечает до
+      // выхода, а модель держит свой файл открытым — двигать её из-под
+      // живого процесса нельзя.
+      await new Promise((resolve) => {
+        const timer = setTimeout(resolve, 2500);
+        child.once('exit', () => { clearTimeout(timer); resolve(); });
+        try { child.kill(); } catch { resolve(); }
+      });
+    }
     this.setState('stopped');
   }
 

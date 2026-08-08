@@ -294,3 +294,45 @@ test('без токена опрос не поднимается', () => {
   runner.sync();
   assert.strictEqual(runner.running(), false);
 });
+
+// ---------- открытый бот и закрытые привязки ----------
+
+test('открытый бот: гость распознаёт без кода, привязки не появляется', async () => {
+  settings.set('access.botOpen', true);
+  const tg = fakeTelegram();
+  await bot.handle(voice(777), { tg, queue: okQueue });
+
+  assert.strictEqual(tg.sent[1].text, 'сказанное вслух');
+  // Привязка не создаётся нарочно: выключил тумблер — гость отвалился.
+  assert.ok(!keys.byExternal('telegram', '777'));
+  assert.ok(keys.list().some((key) => key.name === 'Гости бота'), 'расход гостей должен иметь профиль');
+});
+
+test('тумблер выключили — гость снова получает отказ', async () => {
+  settings.set('access.botOpen', false);
+  const tg = fakeTelegram();
+  await bot.handle(voice(777), { tg, queue: okQueue });
+  assert.match(tg.sent[0].text, /код доступа/i);
+});
+
+test('код работает и при открытом боте: личная привязка важнее гостевой', async () => {
+  settings.set('access.botOpen', true);
+  const key = keys.issue('Тестировщик');
+  const tg = fakeTelegram();
+  await bot.handle(said(888, key.code), { tg, queue: okQueue });
+  assert.strictEqual(keys.byExternal('telegram', '888').keyId, key.id);
+});
+
+test('привязки закрыты: код отклоняется, уже привязанные работают', async () => {
+  const key = keys.issue('Мама');
+  keys.bind(key.id, 'telegram', '555', 'Мама');
+  settings.set('access.newCodes', false);
+  const fresh = keys.issue('Новичок');
+  const tg = fakeTelegram();
+
+  await bot.handle(said(999, fresh.code), { tg, queue: okQueue });
+  assert.match(tg.sent[0].text, /закрыты владельцем/i);
+
+  await bot.handle(voice(555), { tg, queue: okQueue });
+  assert.strictEqual(tg.sent[2].text, 'сказанное вслух');
+});

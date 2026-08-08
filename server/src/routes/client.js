@@ -30,7 +30,10 @@ function register(app) {
     try {
       return { token: keys.activate(code, kind, externalId, title, clientIp(request)).token };
     } catch (error) {
-      return reply.code(403).send({ error: error.message });
+      // Машинный код для закрытых привязок: приложения переводят его на
+      // язык человека сами, а не показывают русскую строку всем подряд.
+      const closed = error.message.includes('Новые подключения закрыты');
+      return reply.code(403).send({ error: error.message, ...(closed ? { code: 'newCodesClosed' } : {}) });
     }
   });
 

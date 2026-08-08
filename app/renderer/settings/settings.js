@@ -257,6 +257,43 @@ function syncSoundDependents() {
 }
 $('sound').addEventListener('change', syncSoundDependents);
 
+// ---------- папка моделей ----------
+
+async function refreshModelsDir() {
+  const info = await api.models.dir();
+  $('models-dir-sub').textContent = `${info.dir} — ${t('модели весят гигабайты, папку можно вынести на просторный диск')}`;
+  $('models-dir-reset').style.display = info.custom ? '' : 'none';
+}
+
+async function changeModelsDir(action) {
+  let target = '';
+  if (action === 'pick') {
+    const picked = await api.models.pickDir();
+    if (!picked || picked.cancelled) return;
+    target = picked.dir;
+  }
+  $('models-dir-pick').disabled = true;
+  $('models-dir-reset').disabled = true;
+  $('models-dir-sub').textContent = t('Переношу модели — на большой модели это займёт минуту-другую…');
+  try {
+    const answer = await api.models.changeDir(target);
+    if (!answer || answer.ok === false) {
+      say(`${t('Перенести не вышло:')} ${t(answer?.error || 'что-то пошло не так')}`);
+      return;
+    }
+    if (answer.warning) say(t(answer.warning));
+    else if (!answer.same) say(t('Готово — модели теперь в новой папке'));
+  } catch (error) {
+    say(`${t('Перенести не вышло:')} ${t(error.message.replace(/^Error invoking remote method '[^']+': Error: /, ''))}`);
+  } finally {
+    $('models-dir-pick').disabled = false;
+    $('models-dir-reset').disabled = false;
+    await refreshModelsDir();
+  }
+}
+$('models-dir-pick').addEventListener('click', () => changeModelsDir('pick'));
+$('models-dir-reset').addEventListener('click', () => changeModelsDir('reset'));
+
 // ---------- модели распознавания ----------
 
 function renderModels() {
@@ -1141,6 +1178,7 @@ async function start() {
   applyAppearance();
   bindAll();
   syncSoundDependents();
+  refreshModelsDir();
   renderHotkeys();
   renderProviders();
   syncModeHint();

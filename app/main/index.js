@@ -370,6 +370,110 @@ ipcMain.handle('llm:check', (_event, overrides) => llm.check(overrides));
 ipcMain.handle('llm:models', (_event, overrides) => llm.models(overrides));
 ipcMain.handle('llm:providers', () => llm.PROVIDERS);
 
+// ---------- папка моделей ----------
+
+ipcMain.handle('models:dir', () => ({
+  dir: engine.modelsDir(),
+  custom: Boolean(config.get('engine.modelsDir', '')),
+}));
+
+// Только выбор папки: «Переношу…» окно покажет после того, как папка
+// действительно выбрана, а не пока человек ходит по дискам в диалоге.
+ipcMain.handle('models:pickDir', async (event) => {
+  const win = event.sender.getOwnerBrowserWindow();
+  const result = await dialog.showOpenDialog(win, {
+    title: tr('Папка для моделей'),
+    properties: ['openDirectory', 'createDirectory'],
+  });
+  if (result.canceled || !result.filePaths[0]) return { cancelled: true };
+  // Не сама выбранная папка, а своя подпапка в ней. При следующем
+  // переезде старая папка удаляется ЦЕЛИКОМ — и это «целиком» обязано
+  // принадлежать нам, а не документам человека, выбравшего D:\ корнем.
+  return { cancelled: false, dir: path.join(result.filePaths[0], 'PasteTalk models') };
+});
+
+/**
+ * Перенести модели. Модели весят гигабайты, и системный диск не
+ * резиновый. Движок на время переезда останавливается и не может быть
+ * поднят ничем (трей, сторожок): модель держит свой файл открытым, и
+ * копировать-удалять её из-под живого процесса нельзя.
+ */
+let movingModels = false;
+
+ipcMain.handle('models:changeDir', async (_event, target) => {
+  const fsn = require('node:fs');
+  const fsp = require('node:fs/promises');
+
+  if (movingModels) return { ok: false, error: 'Перенос уже идёт' };
+  // 'limit' — тоже распознавание: запись упёрлась в потолок и досчитывает.
+  if (['listening', 'thinking', 'limit'].includes(recorder.state) || recorder.busy) {
+    return { ok: false, error: 'Идёт запись — закончите её и повторите' };
+  }
+
+  const defaultDir = path.resolve(path.join(app.getPath('userData'), 'models'));
+  const to = path.resolve(String(target || '') || defaultDir);
+  const from = path.resolve(engine.modelsDir());
+  // На Windows пути сравниваются без учёта регистра.
+  const norm = (p) => (process.platform === 'win32' ? p.toLowerCase() : p);
+  const wantCustom = norm(to) !== norm(defaultDir);
+
+  if (norm(from) === norm(to)) {
+    // Выбрана та же папка — переносить нечего, но конфиг выравниваем:
+    // вдруг в нём дефолтный путь был прописан явно.
+    config.set({ engine: { modelsDir: wantCustom ? to : '' } });
+    return { ok: true, same: true, dir: engine.modelsDir(), custom: wantCustom };
+  }
+  const rel = path.relative(norm(from), norm(to));
+  if (rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel)) {
+    return { ok: false, error: 'Нельзя переносить модели внутрь их же папки' };
+  }
+
+  movingModels = true;
+  engine.moving = true;
+  try {
+    engine.stopping = false;
+    await engine.stop();
+    if (fsn.existsSync(from)) {
+      await fsp.mkdir(to, { recursive: true });
+      // force: файлы в цели перезаписываются. Обрезанный прошлым сбоем
+      // файл выглядит как «уже есть», и доверять ему нельзя.
+      await fsp.cp(from, to, { recursive: true, force: true });
+    }
+    // Конфиг — сразу после успешной копии и на диск без задержки: если
+    // уборка старой папки споткнётся или свет мигнёт, модели уже в новой,
+    // и движок обязан смотреть туда.
+    config.set({ engine: { modelsDir: wantCustom ? to : '' } });
+    config.flush();
+    let warning = '';
+    // Удаляем только свои папки: стандартную и «PasteTalk models». Если в
+    // конфиг руками вписали чужую (D:\ или общую) — не трогаем её вовсе.
+    const ownFolder = norm(from) === norm(defaultDir)
+      || norm(path.basename(from)) === norm('PasteTalk models');
+    if (ownFolder) {
+      try {
+        if (fsn.existsSync(from)) await fsp.rm(from, { recursive: true, force: true });
+      } catch (error) {
+        log.warn(`старая папка моделей удалена не целиком: ${error.message}`);
+        warning = 'Модели переехали, но старую папку не удалось удалить целиком — доудалите вручную';
+      }
+    } else {
+      log.warn(`старая папка моделей не наша (${from}) — не удаляю`);
+      warning = 'Модели переехали; старую папку не трогали — удалите её вручную, если она не нужна';
+    }
+    log.info(`модели переехали: ${from} → ${to}`);
+    return { ok: true, dir: engine.modelsDir(), custom: wantCustom, warning };
+  } catch (error) {
+    log.error(`перенос моделей не удался: ${error.message}`);
+    return { ok: false, error: error.message };
+  } finally {
+    movingModels = false;
+    engine.moving = false;
+    engine.stopping = false;
+    engine.restarts = 0;
+    engine.start().catch(() => {});
+  }
+});
+
 ipcMain.handle('hotkeys:isFree', (_event, accelerator) => hotkeys.isFree(accelerator));
 
 ipcMain.handle('app:state', () => ({

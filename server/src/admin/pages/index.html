@@ -508,7 +508,8 @@ function showCode(key) {
 }
 
 function codeCell(person) {
-  if (person.revoked) return '<span class="muted">—</span>';
+  // У служебного профиля гостей кода не было и не будет.
+  if (person.revoked || person.guest) return '<span class="muted">—</span>';
   const alive = person.code && person.codeUntil > Date.now();
   if (alive) {
     return '<div><span class="code">' + safe(person.code) + '</span></div>'
@@ -530,13 +531,15 @@ async function drawPeople() {
       : '<span class="muted">' + t('никто ещё не вошёл') + '</span>';
 
     return '<tr>'
-      + '<td><div>' + safe(person.name) + (person.revoked ? ' <span class="muted">' + t('(отозван)') + '</span>' : '') + '</div>'
+      + '<td><div>' + safe(person.name)
+        + (person.revoked ? ' <span class="muted">' + t('(отозван)') + '</span>' : '')
+        + (person.guest ? ' <span class="muted">' + t('(служебный: расход открытого бота)') + '</span>' : '') + '</div>'
         + '<td>' + codeCell(person) + '</td>'
       + '<td class="num">' + minutes(person.minutes) + '</td>'
       + '<td class="num">' + money(person.rub) + '</td>'
       + '<td>' + devices + '</td>'
       + '<td><div class="row-actions">'
-        + (person.revoked ? '' : '<button class="btn ghost tiny" data-code="' + person.id + '">' + t('новый код') + '</button>'
+        + (person.revoked || person.guest ? '' : '<button class="btn ghost tiny" data-code="' + person.id + '">' + t('новый код') + '</button>'
           + '<button class="btn ghost tiny" data-bind="' + person.id + '">' + t('телеграм вручную') + '</button>'
           + '<button class="btn ghost tiny" data-key="' + person.id + '">' + t('удалить') + '</button>')
       + '</div></td>'
@@ -891,6 +894,21 @@ async function drawSettings() {
       + '<span class="why muted">' + t('Облако стоит копейки, но избавляет от «оно висит». Второй вариант — если платить не хочется совсем') + '</span></label>'
     + '</div>'
 
+    + '<div class="card"><h2>' + t('Доступ') + '</h2>'
+    + '<label class="field"><span>' + t('Telegram-бот') + '</span>'
+      + '<select data-set="access.botOpen">'
+        + '<option value="false"' + (get('access.botOpen', false) === true ? '' : ' selected') + '>' + t('только по коду') + '</option>'
+        + '<option value="true"' + (get('access.botOpen', false) === true ? ' selected' : '') + '>' + t('открыт для всех') + '</option>'
+      + '</select>'
+      + '<span class="why muted">' + t('«Открыт для всех» — любой пишет боту без кода, расход гостей виден в профиле «Гости бота». Выключили — гости теряют доступ сразу, привязанные по коду остаются') + '</span></label>'
+    + '<label class="field"><span>' + t('Новые привязки по коду') + '</span>'
+      + '<select data-set="access.newCodes">'
+        + '<option value="true"' + (get('access.newCodes', true) === false ? '' : ' selected') + '>' + t('разрешены') + '</option>'
+        + '<option value="false"' + (get('access.newCodes', true) === false ? ' selected' : '') + '>' + t('закрыты') + '</option>'
+      + '</select>'
+      + '<span class="why muted">' + t('«Закрыты» — коды не принимаются ни в приложениях, ни в боте. Все, кто уже привязан, продолжают работать как раньше') + '</span></label>'
+    + '</div>'
+
     + '<div class="row-actions"><button class="btn" id="save-settings">' + t('Сохранить') + '</button>'
     + '<span id="settings-note" class="muted"></span></div>';
 
@@ -1043,7 +1061,7 @@ async function drawSettings() {
       const key = input.dataset.set;
       if (key === 'proxy.scope') {
         body.settings[key] = input.value;
-      } else if (key === 'spillToCloud') {
+      } else if (key === 'spillToCloud' || key === 'access.botOpen' || key === 'access.newCodes') {
         body.settings[key] = input.value === 'true';
       } else if (key.startsWith('prompt.')) {
         // Совпадает со стандартным — не фиксируем: пусть будущие правки
