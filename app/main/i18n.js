@@ -25,7 +25,16 @@ try {
   const dir = path.join(__dirname, '..', 'locales');
   for (const name of fs.readdirSync(dir)) {
     if (/^en.*\.json$/i.test(name)) {
-      Object.assign(dict, JSON.parse(fs.readFileSync(path.join(dir, name), 'utf8')));
+      const part = JSON.parse(fs.readFileSync(path.join(dir, name), 'utf8'));
+      for (const [key, value] of Object.entries(part)) {
+        // Один ключ с разными переводами в разных файлах — тихая порча:
+        // побеждает файл, что позже по алфавиту, и правка проигравшего
+        // молча ни на что не влияет. Пусть хотя бы будет видно в журнале.
+        if (key in dict && dict[key] !== value) {
+          console.warn(`[i18n] «${key}» переведён по-разному, побеждает ${name}`);
+        }
+        dict[key] = value;
+      }
     }
   }
 } catch { /* без словаря интерфейс остаётся русским */ }

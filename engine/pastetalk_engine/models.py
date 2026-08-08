@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import gc
+import os
 import threading
 import time
 from dataclasses import dataclass, field
@@ -18,6 +19,9 @@ from faster_whisper import WhisperModel
 # Что показываем человеку в настройках. Размер — сколько займёт на диске.
 CATALOG: dict[str, dict[str, Any]] = {
     "large-v3": {"repo": "Systran/faster-whisper-large-v3", "size_mb": 3090, "title": "Large-v3"},
+    # Turbo: точность почти как у large-v3, а весит и считает как medium.
+    # Отдельно ценна тем, кто делит видеокарту с играми или сидит на CPU.
+    "large-v3-turbo": {"repo": "deepdml/faster-whisper-large-v3-turbo-ct2", "size_mb": 1620, "title": "Large-v3 Turbo"},
     "medium":   {"repo": "Systran/faster-whisper-medium",   "size_mb": 1530, "title": "Medium"},
     "small":    {"repo": "Systran/faster-whisper-small",    "size_mb": 484,  "title": "Small"},
     "base":     {"repo": "Systran/faster-whisper-base",     "size_mb": 145,  "title": "Base"},
@@ -103,6 +107,10 @@ class ModelManager:
         self._count_lock = threading.Lock()
         threading.Thread(target=self._sweep_idle, daemon=True).start()
         self._model: WhisperModel | None = None
+        # Устройство модели, которая реально лежит в памяти. state.device
+        # меняется в момент запроса на переключение, то есть раньше самой
+        # подмены — а ширину луча надо выбирать по тому, кто будет считать.
+        self._loaded_device = ""
         self._transcribe_lock = threading.Lock()
 
     # ---------- сведения ----------
@@ -251,16 +259,25 @@ class ModelManager:
                 return
             self.state.state = "loading"
             model = WhisperModel(
-                name,
+                # Именно repo, а не имя из каталога: у faster-whisper своя
+                # таблица имён, и для turbo она указывает на ДРУГОЙ
+                # репозиторий — модель скачалась бы дважды, а удаление
+                # чистило бы не тот кэш. Строка с «/» берётся как есть.
+                CATALOG[name]["repo"],
                 device=device,
                 compute_type=compute_type,
                 download_root=self.cache_dir,
+                # На процессоре два ядра остаются системе: захват звука и
+                # интерфейс не должны стоять в очереди за матричными
+                # умножениями — это слышно как пропуски в записи.
+                cpu_threads=max(1, (os.cpu_count() or 4) - 2) if device == "cpu" else 0,
             )
             # Пока грузили, человек мог выбрать другую. Тогда эта — лишняя.
             if wanted != self._wanted:
                 return
             with self.state.lock:
                 self._model = model
+                self._loaded_device = device
             self._sleeping = False
             self._used_at = time.time()
             self.state.state = "ready"
@@ -357,6 +374,11 @@ class ModelManager:
             model = self._model
             if model is None:
                 raise RuntimeError("MODEL_NOT_READY")
+            # Ширина луча — по устройству модели, которая реально считает:
+            # на видеокарте луч в 5 гипотез почти бесплатен, на процессоре
+            # он умножает время в разы. setdefault не трогает вызовы, где
+            # луч задан явно (замер скорости ходит с единицей).
+            options.setdefault("beam_size", 5 if self._loaded_device == "cuda" else 2)
             with self.state.lock:
                 self._busy += 1
             try:

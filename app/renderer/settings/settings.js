@@ -290,6 +290,7 @@ function renderModels() {
 function describeModel(item, size, status) {
   const notes = {
     'large-v3': 'Самая точная',
+    'large-v3-turbo': 'Почти так же точна, но заметно легче и быстрее',
     medium: 'Быстрее, чуть проще',
     small: 'Для слабых компьютеров',
     base: 'Совсем быстрая, ошибается',

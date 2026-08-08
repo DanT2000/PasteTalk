@@ -100,7 +100,6 @@ class FileJob:
                 vad_filter=True,
                 no_speech_threshold=0.6,
                 log_prob_threshold=-1.0,
-                beam_size=5,
                 condition_on_previous_text=True,
                 initial_prompt=self.initial_prompt or None,
             )

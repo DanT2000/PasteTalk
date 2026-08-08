@@ -59,6 +59,10 @@ class Recorder extends EventEmitter {
     this.silentSince = 0;
     this.lastText = '';
     this.busy = false;
+    // Обычный текст не вставился из-за окна «от администратора». Помним
+    // до конца записи: если улучшение упадёт или его отменят, человеку
+    // всё равно нужно сказать, что вставлять придётся руками.
+    this.plainElevated = false;
     // Копилка звука для внешнего распознавания. null означает «копить не
     // надо» — иначе брошенная запись осталась бы висеть в памяти.
     this.chunks = null;
@@ -361,15 +365,22 @@ class Recorder extends EventEmitter {
 
     this.lastText = text;
     const autoPaste = config.get('text.autoPaste', true);
-    await paste.deliver(text, autoPaste);
+    const delivered = await paste.deliver(text, autoPaste);
+    this.plainElevated = Boolean(delivered.elevated);
     log.info(`распознано ${text.length} символов за ${Math.round(durationS)} с звука`);
     this.emit('text', { text, improved: false, seconds: durationS });
 
     const wantsAi = this.mode === 'improve' && config.get('ai.enabled', false);
     if (wantsAi) await this.improve(text, autoPaste);
     else {
-      this.emitState('done');
-      this.scheduleHide(HIDE_AFTER_MS);
+      // Окно «от администратора» не принимает наш Ctrl+V — Windows молча
+      // выбрасывает симулированное нажатие. Текст цел, но вставлять руками.
+      // Статус, а не подсказка: в компактном виде подсказка скрыта, а
+      // строка статуса видна всегда — предупреждение обязано дойти.
+      this.emitState('done', delivered.elevated
+        ? { status: tr('Вставьте сами: Ctrl+V'), hint: tr('Окно запущено от администратора') }
+        : {});
+      this.scheduleHide(delivered.elevated ? 5200 : HIDE_AFTER_MS);
     }
   }
 
@@ -400,22 +411,28 @@ class Recorder extends EventEmitter {
         log.info('улучшение отменённой записи выброшено');
         return;
       }
-      await paste.deliver(improved, autoPaste);
+      const delivered = await paste.deliver(improved, autoPaste);
       this.lastText = improved;
       this.emit('text', { text: improved, improved: true });
-      this.emitState('aidone');
-      this.scheduleHide(HIDE_AFTER_MS);
+      this.emitState('aidone', delivered.elevated
+        ? { status: tr('Вставьте сами: Ctrl+V'), hint: tr('Окно запущено от администратора') }
+        : {});
+      this.scheduleHide(delivered.elevated ? 5200 : HIDE_AFTER_MS);
     } catch (error) {
       if (attempt !== this.attempt) return;
       if (llm.isCancelled(error)) {
         log.info('улучшение отменено человеком');
-        this.emitState('cancelled', { hint: tr('Обычный текст остался в буфере') });
-        this.scheduleHide(2400);
+        this.emitState('cancelled', this.plainElevated
+          ? { status: tr('Вставьте сами: Ctrl+V'), hint: tr('Окно запущено от администратора') }
+          : { hint: tr('Обычный текст остался в буфере') });
+        this.scheduleHide(this.plainElevated ? 5200 : 2400);
         return;
       }
       log.warn(`ИИ не справился: ${error.message}`);
-      this.emitState('aierror', { hint: tr(error.message) });
-      this.scheduleHide(3600);
+      this.emitState('aierror', this.plainElevated
+        ? { status: tr('Вставьте сами: Ctrl+V'), hint: tr('Окно запущено от администратора') }
+        : { hint: tr(error.message) });
+      this.scheduleHide(this.plainElevated ? 5200 : 3600);
     }
   }
 
@@ -442,8 +459,10 @@ class Recorder extends EventEmitter {
     if (this.state === 'ai') {
       this.attempt += 1;
       llm.cancel();
-      this.emitState('cancelled', { hint: tr('Обычный текст остался в буфере') });
-      this.scheduleHide(2400);
+      this.emitState('cancelled', this.plainElevated
+        ? { status: tr('Вставьте сами: Ctrl+V'), hint: tr('Окно запущено от администратора') }
+        : { hint: tr('Обычный текст остался в буфере') });
+      this.scheduleHide(this.plainElevated ? 5200 : 2400);
       return 'ai';
     }
     if (this.state === 'thinking') {

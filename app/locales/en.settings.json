@@ -2,7 +2,6 @@
   "PasteTalk — Настройки": "PasteTalk — Settings",
   "Проверяю движок…": "Checking the engine…",
   "Свернуть в область уведомлений — программа продолжит работать": "Hide to the notification area — the app keeps running",
-
   "Основное": "General",
   "Распознавание": "Recognition",
   "Горячие клавиши": "Hotkeys",
@@ -12,7 +11,6 @@
   "Файлы": "Files",
   "Интеграция": "Integration",
   "О программе": "About",
-
   "Здравствуйте": "Welcome",
   "Три вещи, и можно диктовать. Всё остальное потом, в настройках.": "Three things and you can start dictating. Everything else can wait — it's all in the settings.",
   "1. Модель распознавания": "1. Recognition model",
@@ -31,7 +29,6 @@
   ". Нажали, сказали, нажали ещё раз — текст в буфере обмена.": ". Press it, speak, press again — the text is in your clipboard.",
   "Скачать и начать": "Download and start",
   "Пропустить": "Skip",
-
   "Как PasteTalk слушает и куда отдаёт текст.": "How PasteTalk listens and where the text goes.",
   "Звук": "Sound",
   "Микрофон": "Microphone",
@@ -68,7 +65,6 @@
   "Пауза": "Pause",
   "Горячие клавиши перестанут работать, программа останется в трее": "Hotkeys stop working; the app stays in the tray",
   "Для тех, кто знает, зачем": "For those who know what they're doing",
-
   "Речь превращается в текст на вашем компьютере. Интернет нужен один раз — чтобы скачать модель.": "Speech becomes text on your own computer. The internet is needed once — to download the model.",
   "Считать речь": "Transcribe speech",
   "На этом компьютере — ничего не уходит в интернет": "On this computer — nothing leaves it",
@@ -131,7 +127,6 @@
   "10 минут": "10 minutes",
   "20 минут": "20 minutes",
   "60 минут": "60 minutes",
-
   "Нажмите «Изменить», затем нужное сочетание — и Enter, чтобы сохранить.": "Click \"Change\", press the shortcut you want, then Enter to save.",
   "Поведение": "Behavior",
   "Когда начинать запись": "When recording starts",
@@ -141,7 +136,6 @@
   "Через 2 секунды": "After 2 seconds",
   "Через 3 секунды": "After 3 seconds",
   "Через 5 секунд": "After 5 seconds",
-
   "Языковая модель убирает слова-паразиты и приводит сказанное в порядок. Работает поверх готового текста, отдельно от Whisper.": "A language model removes filler words and tidies up what you said. It works on the finished text, separately from Whisper.",
   "Обычный текст попадает в буфер обмена сразу, не дожидаясь модели. Улучшенный приходит следом и заменяет его. Не ответила — у вас на руках остаётся обычный.": "The plain text lands in your clipboard right away, without waiting for the model. The cleaned-up version follows and replaces it. If the model doesn't answer, you still have the plain one.",
   "Откуда брать модель": "Where the model comes from",
@@ -169,7 +163,6 @@
   "30 секунд": "30 seconds",
   "1 минута": "1 minute",
   "3 минуты": "3 minutes",
-
   "Размер меняет всё окно целиком: настройки, подсказки и панель записи.": "Size scales everything at once: settings, tips, and the recording panel.",
   "Размер интерфейса": "Interface size",
   "Выберите размер, который вам удобно читать": "Pick the size you're comfortable reading",
@@ -203,12 +196,10 @@
   "Компактная вдвое уже: только микрофон, уровень и что сейчас происходит": "Compact is half the width: just the mic, the level, and what's happening now",
   "Полная": "Full",
   "Компактная": "Compact",
-
   "Последние надиктовки. Можно вернуться к любой: скопировать заново или причесать моделью — даже если буфер обмена давно занят другим.": "Your recent dictations. Come back to any of them: copy it again or tidy it up with the model — even if the clipboard has long moved on.",
   "Сколько хранить": "How many to keep",
   "Записи лежат на этом компьютере и никуда не уходят. Лишние удаляются сами, начиная с самых старых": "Entries live on this computer and never leave it. Extras are removed automatically, oldest first",
   "Очистить": "Clear",
-
   "Расшифровка готовых записей той же моделью, что и живая диктовка.": "Transcribe existing recordings with the same model as live dictation.",
   "Перетащите файл сюда": "Drop a file here",
   "Видео и аудио: MP4, MKV, MOV, WEBM, MP3, WAV, M4A, OGG, FLAC.": "Video and audio: MP4, MKV, MOV, WEBM, MP3, WAV, M4A, OGG, FLAC.",
@@ -224,7 +215,6 @@
   "Перед каждым куском текста — минута и секунда, на которой он звучит": "Each chunk of text starts with the minute and second where it's spoken",
   "Достаёт звук из видео. Проверяю…": "Extracts audio from video. Checking…",
   "Как поставить": "How to install",
-
   "Позволяет диктовать с телефона и из Telegram, пользуясь этим компьютером. Соединение устанавливает сам компьютер — пробрасывать порты на роутере не нужно.": "Lets you dictate from your phone and from Telegram using this computer. The computer opens the connection itself — no port forwarding on your router.",
   "Наружу ничего не открывается: компьютер сам звонит серверу и держит связь. Когда он выключен, телефон и бот работают через облако.": "Nothing is exposed to the outside: the computer calls the server and keeps the link up. When it's off, the phone and the bot go through the cloud.",
   "Связь с сервером": "Server link",
@@ -241,7 +231,6 @@
   "Порт движка распознавания": "Recognition engine port",
   "Ноль — занять любой свободный, так не бывает конфликтов. Число нужно, только если вы прописываете правила брандмауэра или лезете к движку своими средствами. Он слушает лишь этот компьютер и требует токен, снаружи к нему не подключиться": "Zero means take any free port — no conflicts that way. A fixed number only matters if you write firewall rules or talk to the engine with your own tools. It listens only on this computer and requires a token; it can't be reached from outside",
   "Применить": "Apply",
-
   "PasteTalk превращает речь в текст, ничего не отправляя в интернет.": "PasteTalk turns speech into text without sending anything to the internet.",
   "Движок: проверяю…": "Engine: checking…",
   "Перезапустить движок": "Restart engine",
@@ -257,7 +246,6 @@
   "Загружаю…": "Loading…",
   "Открыть файл ошибок": "Open error file",
   "Открыть файл журнала": "Open log file",
-
   "Готов": "Ready",
   "Движок запускается…": "Engine starting…",
   "Движок не запустился": "The engine failed to start",
@@ -369,6 +357,7 @@
   "Проверить не вышло:": "Couldn't check:",
   "есть": "new",
   "У вас": "You have",
+  "Почти так же точна, но заметно легче и быстрее": "Nearly as accurate, but much lighter and faster",
   "вышла": "the newest is",
   "скачается": "the download is",
   ". Поставится само и перезапустится — настройки останутся на месте": ". It installs itself and restarts — your settings stay put",
@@ -417,11 +406,10 @@
   "Экран отключён — панель там, где курсор": "That display is disconnected — the panel follows the cursor",
   "Не удалось открыть настройки:": "Couldn't open settings:",
   "Сбой в окне настроек:": "Settings window error:",
-
   "Процессор": "CPU",
   "Видеокарта (CUDA)": "GPU (CUDA)",
-  "Запустите LM Studio и включите в нём локальный сервер": "Launch LM Studio and turn on its local server",
-  "Модель должна быть скачана: ollama pull": "The model must be downloaded first: ollama pull",
+  "Запустите LM Studio и включите в нём локальный сервер": "Start LM Studio and turn on its local server",
+  "Модель должна быть скачана: ollama pull": "The model must be pulled first: ollama pull",
   "Работает через вашу подписку Claude — ключ не нужен": "Runs on your Claude subscription — no key needed",
   "Работает через вашу подписку OpenAI — ключ не нужен": "Runs on your OpenAI subscription — no key needed",
   "Своё, OpenAI-совместимое": "Custom, OpenAI-compatible",
@@ -431,21 +419,21 @@
   "Opus — самая сильная, $$$": "Opus — the strongest, $$$",
   "Как в Codex": "Same as Codex",
   "gpt-5.6-luna — полегче": "gpt-5.6-luna — lighter",
-  "gpt-5.6-terra — средняя": "gpt-5.6-terra — mid-size",
+  "gpt-5.6-terra — средняя": "gpt-5.6-terra — medium",
   "gpt-5.6-sol — по умолчанию у Codex": "gpt-5.6-sol — Codex default",
   "Ключ берётся в личном кабинете OpenAI": "Get a key from your OpenAI account",
   "Движок ещё не запустился": "The engine hasn't started yet",
   "Движок не справился": "The engine couldn't handle it",
   "Запись не найдена": "Entry not found",
-  "Улучшение выключено в настройках": "Cleanup is turned off in settings",
-  "Адрес сервера записан неверно": "The server address is malformed",
-  "Сервер ответил не JSON": "The server didn't answer with JSON",
-  "Модель вернула пустой ответ": "The model returned an empty answer",
+  "Улучшение выключено в настройках": "Improvement is turned off in Settings",
+  "Адрес сервера записан неверно": "The server address doesn't look right",
+  "Сервер ответил не JSON": "The server didn't return JSON",
+  "Модель вернула пустой ответ": "The model returned an empty response",
   "Не указан адрес сервера": "No server address set",
   "Код доступа не введён": "The access code is empty",
   "Доступ отозван — введите код заново": "Access revoked — enter the code again",
   "Выпусков пока нет": "No releases yet",
-  "GitHub ответил не JSON": "GitHub didn't answer with JSON",
-  "Обновление не нашлось": "The update file wasn't found",
-  "Модель ещё грузится": "The model is still loading"
+  "GitHub ответил не JSON": "GitHub didn't return JSON",
+  "Обновление не нашлось": "No update found",
+  "Модель ещё грузится": "Model is still loading"
 }
