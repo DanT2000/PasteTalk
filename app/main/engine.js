@@ -279,14 +279,14 @@ class Engine {
    * и сразу убираем: чужой звук на диске не залёживается — обещали не
    * хранить, значит не храним, даже если распознавание сорвалось.
    */
-  async transcribeBuffer(buffer, { filename = 'voice.ogg', language = null } = {}) {
+  async transcribeBuffer(buffer, { filename = 'voice.ogg', language = null, prompt = '' } = {}) {
     const os = require('node:os');
     const fsp = require('node:fs/promises');
     const safe = String(filename).replace(/[^\w.-]/g, '_');
     const temp = path.join(os.tmpdir(), `pastetalk-${Date.now()}-${safe}`);
     await fsp.writeFile(temp, buffer);
     try {
-      const job = await this.startFile({ path: temp, language, timestamps: false });
+      const job = await this.startFile({ path: temp, language, timestamps: false, prompt });
       for (;;) {
         const state = await this.fileStatus(job.id);
         if (state.state === 'done') {

@@ -6,6 +6,7 @@ const config = require('./config');
 const engine = require('./engine');
 const { tr } = require('./i18n');
 const llm = require('./llm');
+const modes = require('../../shared/modes');
 const paste = require('./paste');
 const remote = require('./remote');
 const log = require('./logger').scoped('record');
@@ -105,8 +106,11 @@ class Recorder extends EventEmitter {
     }
     this.busy = true;
     try {
+      // Словарь специфики уходит подсказкой Whisper: со списком терминов
+      // перед глазами он пишет «Coolify», а не «кулифай».
       const session = await engine.openSession({
         language: config.get('language', 'ru') === 'auto' ? null : config.get('language', 'ru'),
+        prompt: modes.whisperPrompt(config.get('speech.vocabulary', '')),
       });
       this.sessionId = session.id;
       this.mode = mode;

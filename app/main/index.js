@@ -10,6 +10,7 @@ const hotkeys = require('./hotkeys');
 const i18n = require('./i18n');
 const llm = require('./llm');
 const logger = require('./logger');
+const modes = require('../../shared/modes');
 const paste = require('./paste');
 const recorder = require('./recorder');
 const relay = require('./relay');
@@ -531,7 +532,10 @@ ipcMain.handle('files:pick', async (event) => {
   return result.canceled ? null : result.filePaths[0];
 });
 
-ipcMain.handle('files:start', (_event, options) => engine.startFile(options));
+ipcMain.handle('files:start', (_event, options) => {
+  // Словарь специфики помогает и расшифровке файлов — термины те же.
+  return engine.startFile({ ...options, prompt: modes.whisperPrompt(config.get('speech.vocabulary', '')) });
+});
 ipcMain.handle('files:status', (_event, id) => engine.fileStatus(id));
 ipcMain.handle('files:cancel', (_event, id) => engine.cancelFile(id));
 ipcMain.handle('files:save', async (event, payload) => {
@@ -549,6 +553,21 @@ ipcMain.handle('files:save', async (event, payload) => {
 ipcMain.handle('clipboard:write', (_event, text) => { paste.copy(String(text || '')); return true; });
 
 ipcMain.handle('updates:check', () => updates.check());
+
+// Обновление по кнопке из настроек: скачивает, тихо ставит и перезапускает
+// программу — на сайт никого не гоняем. Ошибка возвращается окну настроек:
+// оно покажет её на месте и предложит страницу загрузки как запасной путь.
+ipcMain.handle('updates:install', async () => {
+  try {
+    await updates.downloadAndInstall((percent) => {
+      windows.send('settings', 'update:progress', Math.round(percent));
+    });
+    return { ok: true };
+  } catch (error) {
+    log.error(`обновление из настроек не удалось: ${error.message}`);
+    return { ok: false, error: error.message };
+  }
+});
 
 // ---------- история надиктованного ----------
 

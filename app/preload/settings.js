@@ -64,6 +64,8 @@ contextBridge.exposeInMainWorld('pastetalk', {
     errors: (limit) => ipcRenderer.invoke('app:errors', limit),
     clipboardHistory: () => ipcRenderer.invoke('app:clipboardHistory'),
     checkUpdates: () => ipcRenderer.invoke('updates:check'),
+    installUpdate: () => ipcRenderer.invoke('updates:install'),
+    onUpdateProgress: on('update:progress'),
     openPath: (target) => ipcRenderer.invoke('app:openPath', target),
     openExternal: (url) => ipcRenderer.invoke('app:openExternal', url),
     onPaused: on('app:paused'),

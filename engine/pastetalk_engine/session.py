@@ -186,7 +186,9 @@ class Session:
             # Куски идут отдельно, и опора на предыдущий текст здесь скорее
             # вредит: модель начинает повторять уже сказанное.
             condition_on_previous_text=False,
-            initial_prompt=self.initial_prompt if first else None,
+            # Куски независимы, поэтому словарь нужен каждому: термин из
+            # третьей фразы заслуживает подсказки не меньше первой.
+            initial_prompt=self.initial_prompt or None,
         )
         for segment in segments:
             text = segment.text.strip()

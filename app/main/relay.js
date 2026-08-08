@@ -7,6 +7,7 @@ const WebSocket = require('ws');
 const config = require('./config');
 const engine = require('./engine');
 const llm = require('./llm');
+const modes = require('../../shared/modes');
 const log = require('./logger').scoped('relay');
 
 /**
@@ -171,9 +172,15 @@ class Relay extends EventEmitter {
 
   async doStt(payload) {
     const audio = Buffer.from(payload.audio, 'base64');
+    // Словарь диктующего важнее словаря владельца машины: если сервер
+    // прислал подсказку с задачей — берём её. Без неё подставляем свой
+    // словарь: на личном сервере с телефона диктует тот же человек.
+    const prompt = String(payload.prompt || '')
+      || modes.whisperPrompt(config.get('speech.vocabulary', ''));
     const result = await engine.transcribeBuffer(audio, {
       filename: payload.filename,
       language: payload.language,
+      prompt,
     });
     return { text: result.text, seconds: result.durationS, model: result.model };
   }

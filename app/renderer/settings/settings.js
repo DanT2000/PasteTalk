@@ -914,12 +914,19 @@ $('errors-open').addEventListener('click', async () => api.app.openPath((await a
 $('open-github').addEventListener('click', () => api.app.openExternal('https://github.com/DanT2000/PasteTalk'));
 
 let updateLink = '';
+// Кнопка «Обновить» ставит обновление сама, изнутри программы. Ссылка на
+// сайт остаётся запасным путём — если самообновление не вышло.
+let updateFallback = false;
+// Пока идёт установка, ничьи чужие ответы не смеют трогать этот блок:
+// запоздавшая «Проверить» иначе перерисует прогресс и спрячет кнопку.
+let installing = false;
 $('update-check').addEventListener('click', async () => {
   $('update-check').disabled = true;
   $('update-pill').classList.add('is-hidden');
   $('update-sub').textContent = t('Спрашиваю GitHub…');
 
   const answer = await api.app.checkUpdates();
+  if (installing) return;
   $('update-check').disabled = false;
 
   if (!answer.ok) {
@@ -932,11 +939,13 @@ $('update-check').addEventListener('click', async () => {
   pill.classList.remove('is-hidden');
   if (answer.newer) {
     updateLink = answer.download;
+    updateFallback = false;
     pill.className = 'pill';
     pill.textContent = `${t('есть')} ${answer.latest}`;
-    $('update-sub').textContent = `${t('У вас')} ${answer.current}, ${t('на GitHub')} ${answer.latest}`
-      + (answer.sizeMb ? ` — ${t('установщик')} ${answer.sizeMb} ${t('МБ')}` : '')
-      + t('. Скачайте и запустите поверх, настройки сохранятся');
+    $('update-get').textContent = t('Обновить сейчас');
+    $('update-sub').textContent = `${t('У вас')} ${answer.current}, ${t('вышла')} ${answer.latest}`
+      + (answer.sizeMb ? ` — ${t('скачается')} ${answer.sizeMb} ${t('МБ')}` : '')
+      + t('. Поставится само и перезапустится — настройки останутся на месте');
     $('update-get').style.display = '';
   } else {
     pill.className = 'pill pill-ok';
@@ -945,8 +954,33 @@ $('update-check').addEventListener('click', async () => {
     $('update-get').style.display = 'none';
   }
 });
-$('update-get').addEventListener('click', () => {
-  if (updateLink) api.app.openExternal(updateLink);
+$('update-get').addEventListener('click', async () => {
+  if (updateFallback) {
+    if (updateLink) api.app.openExternal(updateLink);
+    return;
+  }
+  installing = true;
+  $('update-get').disabled = true;
+  $('update-check').disabled = true;
+  $('update-sub').textContent = t('Скачиваю обновление…');
+
+  const answer = await api.app.installUpdate();
+  // Успех сюда не приходит: программа уже перезапускается новой версией.
+  if (answer && !answer.ok) {
+    installing = false;
+    $('update-get').disabled = false;
+    $('update-check').disabled = false;
+    updateFallback = true;
+    $('update-get').textContent = t('Скачать с сайта');
+    $('update-get').style.display = '';
+    $('update-sub').textContent = `${t('Само обновиться не вышло:')} ${t(answer.error)}. `
+      + t('Можно скачать установщик и запустить его поверх — настройки сохранятся');
+  }
+});
+api.app.onUpdateProgress((percent) => {
+  $('update-sub').textContent = percent >= 100
+    ? t('Ставлю и перезапускаюсь…')
+    : `${t('Скачиваю обновление…')} ${percent}%`;
 });
 $('engine-restart').addEventListener('click', async () => {
   say(t('Перезапускаю движок'));

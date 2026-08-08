@@ -101,7 +101,10 @@ const PROVIDERS = {
     title: 'Своё, OpenAI-совместимое',
     kind: 'openai',
     baseUrl: '',
-    needsKey: false,
+    // Ключ показываем, но не требуем: свой сервер бывает и с ключом,
+    // и без. Пустое поле — просто не отправляем заголовок.
+    needsKey: true,
+    hint: 'Свой сервер: ключ впишите, если он его требует, иначе оставьте пустым',
   },
 };
 
@@ -158,10 +161,13 @@ function resolve(overrides = {}) {
 }
 
 function instruction(settings) {
+  // Словарь специфики живёт на этом компьютере, поэтому добавляется и к
+  // готовой инструкции с сервера: задачу-то выполняет местная модель.
+  const vocabulary = config.get('speech.vocabulary', '');
   // Готовая инструкция приходит с задачами от сервера: промпт мог быть
   // правлен в его админке, и собирать свой поверх было бы враньём.
-  if (settings.instruction) return settings.instruction;
-  return modes.instruction(settings.mode, settings.prompt);
+  if (settings.instruction) return settings.instruction + modes.vocabularyClause(vocabulary);
+  return modes.instruction(settings.mode, settings.prompt, vocabulary);
 }
 
 /**

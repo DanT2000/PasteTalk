@@ -139,11 +139,11 @@ function spillAllowed() {
   return settings.get('spillToCloud', true) !== false;
 }
 
-async function transcribe({ audio, filename, language, clientSeconds }) {
+async function transcribe({ audio, filename, language, clientSeconds, prompt = '' }) {
   const cloud = async () => ({
     ...await chains.run(
       chains.sttChain(),
-      (id) => stt.transcribe(id, { audio, filename, language, clientSeconds }),
+      (id) => stt.transcribe(id, { audio, filename, language, clientSeconds, prompt }),
       'распознаванием',
     ),
     executedBy: 'cloud',
@@ -152,7 +152,9 @@ async function transcribe({ audio, filename, language, clientSeconds }) {
   const job = async (agentId) => ({
     ...await socket.sendTo(agentId, {
       kind: 'stt',
-      payload: { audio: audio.toString('base64'), filename, language },
+      // prompt — словарь специфики того, кто диктует. Старые агенты поле
+      // просто не заметят.
+      payload: { audio: audio.toString('base64'), filename, language, prompt },
     }),
     executedBy: 'agent',
   });

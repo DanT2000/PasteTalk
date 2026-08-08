@@ -30,7 +30,7 @@ function seconds(audio, fromProvider, fromClient) {
   return Number(fromClient) > 0 ? Number(fromClient) : 0;
 }
 
-async function transcribe(providerId, { audio, filename, language, clientSeconds }) {
+async function transcribe(providerId, { audio, filename, language, clientSeconds, prompt = '' }) {
   const preset = CLOUD[providerId];
   if (!preset) throw new Error(`Провайдер ${providerId} неизвестен`);
 
@@ -50,6 +50,9 @@ async function transcribe(providerId, { audio, filename, language, clientSeconds
   form.set('file', new Blob([audio]), safeName);
   form.set('model', model);
   if (language) form.set('language', language);
+  // Словарь специфики диктующего: /audio/transcriptions понимает prompt,
+  // остальные молча игнорируют.
+  if (prompt) form.set('prompt', prompt);
   // verbose_json — ради длительности: по ней считается стоимость.
   form.set('response_format', 'verbose_json');
 

@@ -25,6 +25,7 @@ class FileJob:
         language: str | None,
         timestamps: bool,
         model: str | None = None,
+        initial_prompt: str = "",
     ) -> None:
         self.id = uuid.uuid4().hex[:12]
         self.models = models
@@ -32,6 +33,7 @@ class FileJob:
         self.language = language or None
         self.timestamps = timestamps
         self.model = model or None
+        self.initial_prompt = initial_prompt
 
         self.state = "queued"     # queued | switching | decoding | working | done | error
         self.progress = 0.0
@@ -100,6 +102,7 @@ class FileJob:
                 log_prob_threshold=-1.0,
                 beam_size=5,
                 condition_on_previous_text=True,
+                initial_prompt=self.initial_prompt or None,
             )
             for segment in segments:
                 if self.cancelled:

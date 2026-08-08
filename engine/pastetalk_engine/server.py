@@ -272,6 +272,7 @@ class Handler(BaseHTTPRequestHandler):
                 payload.get("language"),
                 bool(payload.get("timestamps")),
                 payload.get("model"),
+                payload.get("prompt", ""),
             )
             engine.jobs[job.id] = job
             self._send(200, job.as_dict(with_segments=False))

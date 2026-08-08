@@ -2,6 +2,7 @@
 
 const config = require('./config');
 const log = require('./logger').scoped('remote');
+const modes = require('../../shared/modes');
 
 /**
  * Распознавание не здесь, а снаружи.
@@ -132,6 +133,10 @@ async function viaServer(pcm) {
       audio: toWav(pcm).toString('base64'),
       filename: 'voice.wav',
       language: config.get('language', 'ru') === 'auto' ? null : config.get('language', 'ru'),
+      // Словарь специфики едет с задачей: распознавать будет чужая машина
+      // или облако, а термины — этого человека. Старый сервер лишнее поле
+      // молча отбросит.
+      prompt: modes.whisperPrompt(config.get('speech.vocabulary', '')),
     }),
     signal: AbortSignal.timeout(timeoutFor(pcm.length)),
   });
@@ -159,6 +164,10 @@ async function viaCloud(pcm) {
   form.set('response_format', 'verbose_json');
   const language = config.get('language', 'ru');
   if (language && language !== 'auto') form.set('language', language);
+  // Словарь специфики: у /audio/transcriptions для этого есть поле prompt.
+  // Кто его не понимает — молча игнорирует, хуже не становится.
+  const prompt = modes.whisperPrompt(config.get('speech.vocabulary', ''));
+  if (prompt) form.set('prompt', prompt);
 
   const response = await fetch(`${base}/audio/transcriptions`, {
     method: 'POST',

@@ -18,6 +18,11 @@ const DEFAULTS = {
   language: 'ru',
   microphoneId: 'default',
 
+  // Специфика человека: термины, имена и жаргон из его работы.
+  // Одной строкой через запятую. Уходит подсказкой в Whisper при
+  // распознавании и в языковую модель при улучшении текста.
+  speech: { vocabulary: '' },
+
   sound: { preset: 'bell', volume: 60 },
 
   text: {
