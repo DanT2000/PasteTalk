@@ -74,6 +74,9 @@ app.whenReady().then(async () => {
   relay.refresh();
 
   registerHotkeys();
+  // Уборка осиротевших голосовых файлов — до первой записи, чтобы не
+  // зацепить свежую.
+  history.sweepVoices();
   watchdog.syncAutoLaunch();
   if (config.get('startup.restartOnCrash', true)) watchdog.start();
 
@@ -215,6 +218,13 @@ recorder.on('text', (payload) => {
   if (entry) windows.send('capsule', 'capsule:history', { has: true });
 });
 
+// Распознавание сорвалось — голос уехал в историю. Кнопку «причесать
+// последнюю» капсуле не включаем: текста у этой записи ещё нет.
+recorder.on('voice', (payload) => {
+  history.addVoice(payload);
+  windows.send('settings', 'history:changed', history.all());
+});
+
 recorder.on('hide', () => windows.hideCapsule());
 
 // ---------- горячие клавиши ----------
@@ -246,7 +256,9 @@ function registerHotkeys() {
 async function improveClipboard() {
   const fromClipboard = clipboard.readText().trim();
   const last = history.latest();
-  const text = fromClipboard || (last ? (last.improved || last.text) : '');
+  // Голосовая запись без текста улучшению не поддаётся — не подсовываем
+  // вместо неё более старую диктовку, это обмануло бы человека.
+  const text = fromClipboard || (last && !last.voice ? (last.improved || last.text) : '');
 
   if (!text) {
     recorder.cancelHide();
@@ -268,6 +280,11 @@ async function improveLast() {
   windows.showCapsule();
   if (!last) {
     windows.send('capsule', 'capsule:state', { state: 'aierror', hint: tr('История пока пуста') });
+    recorder.scheduleHide(2600);
+    return;
+  }
+  if (last.voice) {
+    windows.send('capsule', 'capsule:state', { state: 'aierror', hint: tr('Последняя запись не распознана — нажмите «Распознать» в истории') });
     recorder.scheduleHide(2600);
     return;
   }
@@ -580,6 +597,42 @@ ipcMain.handle('history:copy', (_event, payload) => {
   if (!entry) return false;
   paste.copy(payload.improved && entry.improved ? entry.improved : entry.text);
   return true;
+});
+
+/**
+ * Распознать сохранённый голос ещё раз — тем, что выбрано в настройках
+ * сейчас: движок мог ожить, сервер — вернуться на связь.
+ */
+ipcMain.handle('history:recognize', async (_event, id) => {
+  const entry = history.find(id);
+  if (!entry || !entry.voice) throw new Error('Запись не найдена');
+  let wav;
+  try {
+    wav = require('node:fs').readFileSync(entry.voice);
+  } catch {
+    throw new Error('Файл голоса не найден — запись можно только убрать');
+  }
+
+  let text = '';
+  if (remote.isRemote()) {
+    // WAV писали мы сами: 44 байта заголовка, дальше PCM 16 кГц.
+    text = (await remote.transcribe(wav.subarray(44))).text;
+  } else {
+    if (!engine.isReady) throw new Error(engine.lastError || 'Движок ещё запускается');
+    const answer = await engine.transcribeBuffer(wav, {
+      filename: 'history.wav',
+      language: config.get('language', 'ru') === 'auto' ? null : config.get('language', 'ru'),
+      prompt: modes.whisperPrompt(config.get('speech.vocabulary', '')),
+    });
+    text = answer.text;
+  }
+
+  text = String(text || '').trim();
+  if (!text) throw new Error('Распознать не вышло — в записи не нашлось речи');
+  history.setText(id, text);
+  paste.copy(text);
+  windows.send('settings', 'history:changed', history.all());
+  return history.all();
 });
 
 /** Улучшить запись из истории и запомнить результат рядом с оригиналом. */

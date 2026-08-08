@@ -91,6 +91,7 @@ contextBridge.exposeInMainWorld('pastetalk', {
     all: () => ipcRenderer.invoke('history:all'),
     copy: (id, improved) => ipcRenderer.invoke('history:copy', { id, improved }),
     improve: (id) => ipcRenderer.invoke('history:improve', id),
+    recognize: (id) => ipcRenderer.invoke('history:recognize', id),
     remove: (id) => ipcRenderer.invoke('history:remove', id),
     clear: () => ipcRenderer.invoke('history:clear'),
     onChanged: on('history:changed'),

@@ -118,6 +118,10 @@ class ModelManager:
     def status(self) -> dict[str, Any]:
         return self.state.as_dict()
 
+    def loaded_device(self) -> str:
+        """Устройство модели, реально лежащей в памяти. Пусто — не грузилась."""
+        return self._loaded_device
+
     def is_ready(self) -> bool:
         """Может ли движок обслужить запрос.
 

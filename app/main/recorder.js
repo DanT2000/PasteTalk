@@ -1,6 +1,9 @@
 'use strict';
 
+const fs = require('node:fs');
+const path = require('node:path');
 const { EventEmitter } = require('node:events');
+const { app } = require('electron');
 
 const config = require('./config');
 const engine = require('./engine');
@@ -66,6 +69,10 @@ class Recorder extends EventEmitter {
     // Копилка звука для внешнего распознавания. null означает «копить не
     // надо» — иначе брошенная запись осталась бы висеть в памяти.
     this.chunks = null;
+    // Копия всего наговорённого — страховка: если распознавание сорвётся,
+    // звук уйдёт в историю, а не в никуда. Сбрасывается при успехе.
+    this.audioCopy = null;
+    this.audioBytes = 0;
     // Номер попытки. Растёт при каждой отмене: ответ, пришедший от
     // прежней, узнаётся по устаревшему номеру и выбрасывается.
     this.attempt = (this.attempt || 0) + 1;
@@ -123,6 +130,8 @@ class Recorder extends EventEmitter {
       this.hadSignal = false;
       this.silentSince = Date.now();
       this.lastText = '';
+      this.audioCopy = [];
+      this.audioBytes = 0;
       this.emitState('listening', { elapsedMs: 0 });
       this.watchStream();
       log.info(`запись начата (${mode}), сессия ${this.sessionId}`);
@@ -145,9 +154,48 @@ class Recorder extends EventEmitter {
     this.hadSignal = false;
     this.silentSince = Date.now();
     this.lastText = '';
+    this.audioCopy = [];
+    this.audioBytes = 0;
     this.emitState('listening', { elapsedMs: 0 });
     this.watchStream();
     log.info(`запись начата (${mode}), считать будет ${remote.where()}`);
+  }
+
+  /** Копия звука на случай неудачи. Предел — чуть выше потолка записи. */
+  keepCopy(chunk) {
+    if (!this.audioCopy) return;
+    // Потолок настраиваемый (до часа) — берём его, а не константу: иначе
+    // от длинной диктовки в историю молча уехала бы только половина.
+    const capS = (Number(config.get('limits', {}).maxDurationMs) || 20 * 60 * 1000) / 1000 + 60;
+    if (this.audioBytes > 16000 * 2 * capS) return;
+    this.audioCopy.push(Buffer.from(chunk));
+    this.audioBytes += chunk.length;
+  }
+
+  /**
+   * Неудача после того, как человек говорил: звук не выбрасываем, а
+   * складываем wav-файлом в историю — оттуда его можно распознать заново,
+   * когда движок оживёт или сервер вернётся на связь.
+   */
+  stashVoice() {
+    const parts = this.audioCopy;
+    this.audioCopy = null;
+    if (!parts || !parts.length || !this.hadSignal) return false;
+    const pcm = Buffer.concat(parts);
+    const seconds = pcm.length / (16000 * 2);
+    if (seconds < 1) return false;
+    try {
+      const dir = path.join(app.getPath('userData'), 'voice');
+      fs.mkdirSync(dir, { recursive: true });
+      const file = path.join(dir, `${Date.now().toString(36)}.wav`);
+      fs.writeFileSync(file, remote.toWav(pcm));
+      this.emit('voice', { file, seconds });
+      log.info(`голос сохранён в историю: ${Math.round(seconds)} с`);
+      return true;
+    } catch (error) {
+      log.warn(`не удалось сохранить голос: ${error.message}`);
+      return false;
+    }
   }
 
   /**
@@ -178,6 +226,7 @@ class Recorder extends EventEmitter {
   async pushAudio(chunk, peak) {
     if (this.state !== 'listening') return;
     this.lastChunkAt = Date.now();
+    this.keepCopy(chunk);
     if (this.chunks) return this.collect(chunk, peak);
     if (!this.sessionId) return;
 
@@ -191,6 +240,9 @@ class Recorder extends EventEmitter {
       reply = await engine.pushAudio(this.sessionId, chunk);
     } catch (error) {
       log.error(`поток прервался: ${error.message}`);
+      // Запись уже не идёт (finish/отмена успели раньше) — сбой этого
+      // куска лишь эхо остановки, и стэшить звук будет кто надо, не мы.
+      if (this.state !== 'listening') return;
       await this.abort('engineDown', error.message);
       return;
     }
@@ -305,8 +357,11 @@ class Recorder extends EventEmitter {
     } catch (error) {
       if (attempt !== this.attempt) return;
       log.warn(`распознать снаружи не вышло: ${error.message}`);
-      this.emitState('engineDown', { hint: tr(error.message) });
-      this.scheduleHide(3600);
+      const stashed = this.stashVoice();
+      this.emitState('engineDown', stashed
+        ? { status: tr('Не распозналось'), hint: tr('Голос сохранён в истории — можно распознать заново') }
+        : { hint: tr(error.message) });
+      this.scheduleHide(stashed ? 4200 : 3600);
     }
   }
 
@@ -326,9 +381,15 @@ class Recorder extends EventEmitter {
     try {
       result = await engine.stopSession(id);
     } catch (error) {
+      // Ответ отменённой попытки: человек уже начал новую запись или
+      // передумал. Трогать состояние и стэшить ЧУЖУЮ копию звука нельзя.
+      if (attempt !== this.attempt) return;
       log.error(error);
-      this.emitState('engineDown', { hint: tr(error.message) });
-      this.scheduleHide(3000);
+      const stashed = this.stashVoice();
+      this.emitState('engineDown', stashed
+        ? { status: tr('Не распозналось'), hint: tr('Голос сохранён в истории — можно распознать заново') }
+        : { hint: tr(error.message) });
+      this.scheduleHide(stashed ? 4200 : 3000);
       return;
     }
 
@@ -358,11 +419,18 @@ class Recorder extends EventEmitter {
     let text = (raw || '').trim();
     if (text && !config.get('text.keepPunctuation', true)) text = stripPunctuation(text);
     if (!text) {
-      this.emitState('nospeech');
-      this.scheduleHide(1800);
+      // Речь была, а текста нет — распознавание оступилось, не человек.
+      // Голос в историю: там есть кнопка «Распознать» для второй попытки.
+      const stashed = this.everSpoke && this.stashVoice();
+      this.emitState('nospeech', stashed
+        ? { hint: tr('Голос сохранён в истории — можно распознать заново') }
+        : {});
+      this.scheduleHide(stashed ? 3600 : 1800);
       return;
     }
 
+    // Текст добрался до человека — страховочная копия звука не нужна.
+    this.audioCopy = null;
     this.lastText = text;
     const autoPaste = config.get('text.autoPaste', true);
     const delivered = await paste.deliver(text, autoPaste);
@@ -511,7 +579,13 @@ class Recorder extends EventEmitter {
     this.sessionId = null;
     this.chunks = null;
     if (id) engine.cancelSession(id).catch(() => {});
-    this.emitState(reason, { hint: tr(hint) });
+    // Тишину и осознанную отмену не храним — а сорванную на полуслове
+    // речь обязаны: человек наговорил, и «извините, пропало» не ответ.
+    // Отмена же значит «выбросить»: крестик не должен тайком копить wav.
+    const stashed = reason !== 'nospeech' && reason !== 'cancelled' && this.stashVoice();
+    this.emitState(reason, {
+      hint: tr(stashed ? 'Голос сохранён в истории — можно распознать заново' : hint),
+    });
     this.scheduleHide(reason === 'nospeech' ? 1800 : 3600);
   }
 

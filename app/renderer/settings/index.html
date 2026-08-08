@@ -164,10 +164,24 @@
                 <option value="wood">Деревяшка</option>
                 <option value="chime">Перезвон</option>
                 <option value="tick">Тик</option>
+                <option value="crystal">Хрусталь</option>
+                <option value="harp">Арфа</option>
+                <option value="kalimba">Калимба</option>
+                <option value="flute">Флейта</option>
+                <option value="bubble">Пузырёк</option>
+                <option value="box">Шкатулка</option>
                 <option value="none">Без звука</option>
               </select>
               <button class="btn" id="sound-test">Послушать</button>
             </div>
+          </div>
+          <div class="row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/></svg>
+            <div class="row-text">
+              <div class="row-title">Сигнал, когда улучшение готово</div>
+              <div class="row-sub">Модель иногда думает долго. Спокойный звук скажет, что текст в буфере заменён улучшенным</div>
+            </div>
+            <div class="row-control"><input class="switch" type="checkbox" data-cfg="sound.aiDone"></div>
           </div>
           <div class="row">
             <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>
@@ -724,6 +738,7 @@
           </div>
         </div>
 
+        <div class="group-title">Записи</div>
         <div class="card" id="history-list"></div>
       </section>
 

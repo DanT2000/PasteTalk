@@ -66,32 +66,54 @@ class Engine:
 
         import numpy as np
 
-        if not self.models.is_ready():
-            raise RuntimeError("Модель ещё не загружена")
+        # Сразу после переключения устройства в памяти ещё лежит прежняя
+        # модель — и замер честно гонял бы её, а подписывался бы новым
+        # устройством: «процессор быстрее видеокарты». Ждём, пока в памяти
+        # окажется именно то, что просили.
+        waited = 0.0
+        while waited < 120:
+            state = self.models.status()
+            if state["state"] == "error":
+                raise RuntimeError(state["error"] or "Модель не загрузилась")
+            if state["state"] == "ready" and self.models.loaded_device() == state["device"]:
+                break
+            time.sleep(0.5)
+            waited += 0.5
+        else:
+            raise RuntimeError("Модель ещё грузится — дождитесь и повторите")
+
+        # Подпись фиксируем сейчас: пока идёт замер, человек может выбрать
+        # другую модель — и свежий status() описал бы её, а считала эта.
+        bench_device = self.models.loaded_device() or state["device"]
+        bench_model = state["title"]
+        bench_compute = state["computeType"]
 
         seconds = 60
         t = np.arange(seconds * SAMPLE_RATE, dtype=np.float32) / SAMPLE_RATE
         wobble = 140 + 60 * np.sin(2 * np.pi * 0.7 * t)
         signal = 0.25 * np.sin(2 * np.pi * wobble * t) * (0.6 + 0.4 * np.sin(2 * np.pi * 2.3 * t))
-
-        started = time.perf_counter()
-        segments, _info = self.models.transcribe(
-            signal.astype(np.float32),
+        options = dict(
             language="ru",
             vad_filter=False,
             beam_size=1,
             without_timestamps=True,
             condition_on_previous_text=False,
         )
+
+        # Прогрев вне секундомера: первый проход на видеокарте включает
+        # инициализацию ядер CUDA и нечестно завышает время.
+        list(self.models.transcribe(signal[: 2 * SAMPLE_RATE].astype(np.float32), **options)[0])
+
+        started = time.perf_counter()
+        segments, _info = self.models.transcribe(signal.astype(np.float32), **options)
         list(segments)
         elapsed = time.perf_counter() - started
 
-        status = self.models.status()
         return {
             "secondsPerMinute": round(elapsed * 60 / seconds, 2),
-            "device": status["device"],
-            "model": status["title"],
-            "computeType": status["computeType"],
+            "device": bench_device,
+            "model": bench_model,
+            "computeType": bench_compute,
         }
 
     def forget_finished_jobs(self) -> None:
@@ -211,6 +233,16 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, {"ok": True})
 
         elif method == "POST" and head == "benchmark":
+            # Модель качается из сети — это надолго, и держать запрос
+            # открытым до таймаута клиента нечестно: лучше сразу сказать
+            # словами, что подождать нужно не нас.
+            state = engine.models.status()
+            if state["state"] == "downloading" or (
+                engine.models.loaded_device() == ""
+                and not engine.models.is_cached(state["name"])
+            ):
+                self._reject(409, "Модель ещё грузится — дождитесь и повторите")
+                return
             # Будим заранее: иначе к времени работы приписалось бы время
             # загрузки, и человек увидел бы втрое худшую оценку железа.
             engine.models.ensure_loaded()

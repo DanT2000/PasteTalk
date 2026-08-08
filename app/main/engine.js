@@ -259,7 +259,9 @@ class Engine {
   modelStatus() { return this.request('GET', '/model', null, 5000); }
   loadModel(model) { return this.request('POST', '/model', model, 10000); }
   deleteModel(name) { return this.request('DELETE', `/model/${name}`, null, 30000); }
-  benchmark() { return this.request('POST', '/benchmark', {}, 300000); }
+  // Запас на честный замер: до двух минут ожидания нужной модели,
+  // прогрев и сам прогон минуты звука на слабом процессоре.
+  benchmark() { return this.request('POST', '/benchmark', {}, 480000); }
 
   openSession(options) { return this.request('POST', '/session', options, 10000); }
   pushAudio(id, chunk) { return this.request('POST', `/session/${id}/audio`, chunk, 30000); }

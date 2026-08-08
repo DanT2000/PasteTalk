@@ -346,3 +346,6 @@ a { color: var(--accent); }
 :focus-visible { outline: .125rem solid var(--accent); outline-offset: .125rem; border-radius: .25rem; }
 
 @media (prefers-reduced-motion: reduce) { *, html { transition: none !important; animation: none !important; } }
+
+/* Приглушённый ряд: настройка есть, но сейчас ей нечем управлять. */
+.row.is-muted { opacity: .55; }

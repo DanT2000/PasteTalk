@@ -33,11 +33,30 @@ function load() {
   if (items) return items;
   try {
     const saved = JSON.parse(fs.readFileSync(file(), 'utf8'));
-    items = Array.isArray(saved) ? saved.slice(0, limit()) : [];
+    const list = Array.isArray(saved) ? saved : [];
+    items = list.slice(0, limit());
+    // Записи за пределом выпадают — их голосовые файлы тоже.
+    for (const dropped of list.slice(limit())) unlinkVoice(dropped);
   } catch {
     items = [];
   }
   return items;
+}
+
+/**
+ * Прибрать осиротевшие wav в папке голосов: файл мог остаться от
+ * сломанного JSON или упавшего между записями приложения. Зовётся один
+ * раз на старте, до первой записи, — чтобы не задеть свежий стэш.
+ */
+function sweepVoices() {
+  try {
+    const dir = path.join(app.getPath('userData'), 'voice');
+    const known = new Set(load().filter((i) => i.voice).map((i) => path.resolve(i.voice)));
+    for (const name of fs.readdirSync(dir)) {
+      const full = path.resolve(dir, name);
+      if (!known.has(full)) fs.unlinkSync(full);
+    }
+  } catch { /* папки может не быть вовсе — значит, и прибирать нечего */ }
 }
 
 let writeTimer = null;
@@ -56,6 +75,26 @@ function save() {
   }, 500);
 }
 
+/** Стереть файл голоса записи, если он есть. Файл мог уйти и сам. */
+function unlinkVoice(entry) {
+  if (!entry || !entry.voice) return;
+  try {
+    fs.unlinkSync(entry.voice);
+  } catch { /* уже нет — и хорошо */ }
+}
+
+/** Обрезать список до предела, прибрав файлы выпавших записей. */
+function prune() {
+  const keep = limit();
+  if (items.length <= keep) return;
+  for (const dropped of items.slice(keep)) unlinkVoice(dropped);
+  items.length = keep;
+}
+
+function makeId() {
+  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+}
+
 /**
  * Добавить текст. Улучшенный вариант не заводит новую запись, а
  * дописывается к той же: это один и тот же надиктованный кусок, и в
@@ -66,7 +105,7 @@ function add({ text, improved = false, seconds = 0 }) {
   if (!clean) return null;
   load();
 
-  if (improved && items[0] && !items[0].improved) {
+  if (improved && items[0] && !items[0].improved && !items[0].voice) {
     items[0].improved = clean;
     items[0].improvedAt = Date.now();
     save();
@@ -74,15 +113,46 @@ function add({ text, improved = false, seconds = 0 }) {
   }
 
   const entry = {
-    id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+    id: makeId(),
     text: clean,
     improved: improved ? clean : '',
     seconds: Math.round(seconds),
     at: Date.now(),
   };
   items.unshift(entry);
-  const keep = limit();
-  if (items.length > keep) items.length = keep;
+  prune();
+  save();
+  return entry;
+}
+
+/**
+ * Голос, который не удалось распознать. Текста нет — есть wav-файл и
+ * возможность распознать его позже: движок мог упасть, сервер — молчать,
+ * а наговорённое пропадать не должно.
+ */
+function addVoice({ file, seconds = 0 }) {
+  load();
+  const entry = {
+    id: makeId(),
+    text: '',
+    improved: '',
+    voice: file,
+    seconds: Math.round(seconds),
+    at: Date.now(),
+  };
+  items.unshift(entry);
+  prune();
+  save();
+  return entry;
+}
+
+/** Распознавание задним числом удалось: голос превращается в текст. */
+function setText(id, text) {
+  const entry = find(id);
+  if (!entry) return null;
+  entry.text = String(text || '').trim();
+  unlinkVoice(entry);
+  delete entry.voice;
   save();
   return entry;
 }
@@ -112,14 +182,17 @@ function setImproved(id, improved) {
 function remove(id) {
   load();
   const before = items.length;
+  unlinkVoice(find(id));
   items = items.filter((item) => item.id !== id);
   if (items.length !== before) save();
   return items.length !== before;
 }
 
 function clear() {
+  load();
+  for (const item of items) unlinkVoice(item);
   items = [];
   save();
 }
 
-module.exports = { add, all, find, latest, setImproved, remove, clear, file };
+module.exports = { add, addVoice, setText, all, find, latest, setImproved, remove, clear, file, sweepVoices };

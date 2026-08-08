@@ -23,7 +23,9 @@ const DEFAULTS = {
   // распознавании и в языковую модель при улучшении текста.
   speech: { vocabulary: '' },
 
-  sound: { preset: 'bell', volume: 60 },
+  // aiDone — отдельный спокойный сигнал, когда улучшение текста готово:
+  // модель иногда думает долго, и ждать её, глядя в экран, не хочется.
+  sound: { preset: 'bell', volume: 60, aiDone: true },
 
   text: {
     autoPaste: true,

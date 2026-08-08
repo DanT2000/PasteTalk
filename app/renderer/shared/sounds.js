@@ -67,6 +67,42 @@ const PRESETS = {
     notes: [[A5 * 2, 0, 0.7]],
     decay: 0.05, attack: 0.001,
   },
+  crystal: {
+    title: 'Хрусталь',
+    partials: [[1, 1], [2.9, 0.35], [6.4, 0.18], [9.7, 0.08]],
+    notes: [[E6, 0, 0.8], [A5 * 2, 0.09, 0.5]],
+    decay: 1.1, attack: 0.002,
+  },
+  harp: {
+    title: 'Арфа',
+    partials: [[1, 1], [2, 0.45], [3, 0.2], [4, 0.08]],
+    notes: [[C5, 0, 0.9], [E5, 0.07, 0.8], [G5, 0.14, 0.7], [C6, 0.21, 0.6]],
+    decay: 0.7, attack: 0.004,
+  },
+  kalimba: {
+    title: 'Калимба',
+    partials: [[1, 1], [6.27, 0.12], [12.1, 0.04]],
+    notes: [[G5, 0, 1], [C6, 0.09, 0.75]],
+    decay: 0.5, attack: 0.002,
+  },
+  flute: {
+    title: 'Флейта',
+    partials: [[1, 1], [2, 0.12], [3, 0.05]],
+    notes: [[E5, 0, 0.85], [G5, 0.12, 0.7]],
+    decay: 0.55, attack: 0.05,
+  },
+  bubble: {
+    title: 'Пузырёк',
+    partials: [[1, 1], [2, 0.2]],
+    notes: [[G5, 0, 0.7], [E6, 0.05, 0.9]],
+    decay: 0.18, attack: 0.003,
+  },
+  box: {
+    title: 'Шкатулка',
+    partials: [[1, 1], [4.2, 0.3], [8, 0.1]],
+    notes: [[C6, 0, 0.8], [E6, 0.09, 0.65], [G6, 0.18, 0.55]],
+    decay: 0.65, attack: 0.003,
+  },
   none: null,
 };
 
@@ -81,9 +117,11 @@ function audio() {
 /**
  * @param {string} preset  имя из PRESETS
  * @param {number} volume  0..100
- * @param {boolean} rising  true — начало записи, false — конец (ниже тоном)
+ * @param {boolean|string} variant  true — начало записи, false — конец
+ *   (тот же мотив задом наперёд и ниже), 'done' — «улучшение готово»:
+ *   спокойное разрешение из двух нот тем же тембром.
  */
-function playSound(preset, volume, rising = true) {
+function playSound(preset, volume, variant = true) {
   const recipe = PRESETS[preset];
   if (!recipe || !volume) return;
 
@@ -100,12 +138,20 @@ function playSound(preset, volume, rising = true) {
   soften.connect(ctx.destination);
 
   // Конец записи — тот же мотив, но задом наперёд и ниже. Так два
-  // сигнала не спутать, даже не глядя на экран.
-  const notes = rising ? recipe.notes : [...recipe.notes].reverse();
+  // сигнала не спутать, даже не глядя на экран. «Готово» — своя пара нот:
+  // мягкий подъём с разрешением, тише и неторопливее сигналов записи.
+  const done = variant === 'done';
+  const rising = done ? true : Boolean(variant);
+  const notes = done
+    ? [[G5, 0, 0.5], [C6, 0.12, 0.7]]
+    : (rising ? recipe.notes : [...recipe.notes].reverse());
   const shift = rising ? 1 : 0.75;
+  const attack = done ? Math.max(recipe.attack, 0.015) : recipe.attack;
+  const decay = done ? recipe.decay * 1.25 : recipe.decay;
+  const step = done ? 0.12 : (recipe.notes[1]?.[1] ?? 0.07);
 
   notes.forEach(([frequency, _offset, loudness], index) => {
-    const at = ctx.currentTime + index * (recipe.notes[1]?.[1] ?? 0.07);
+    const at = ctx.currentTime + index * step;
     for (const [ratio, weight] of recipe.partials) {
       const osc = ctx.createOscillator();
       const env = ctx.createGain();
@@ -114,16 +160,16 @@ function playSound(preset, volume, rising = true) {
 
       // Обертоны затухают быстрее основного тона — так звучит всё, что
       // звенит в природе, и именно это отличает звук от синтетического писка.
-      const life = recipe.decay / (1 + (ratio - 1) * 0.55);
+      const life = decay / (1 + (ratio - 1) * 0.55);
       const peak = weight * (loudness ?? 1);
       env.gain.setValueAtTime(0.0001, at);
-      env.gain.exponentialRampToValueAtTime(peak, at + recipe.attack);
-      env.gain.exponentialRampToValueAtTime(0.0001, at + recipe.attack + life);
+      env.gain.exponentialRampToValueAtTime(peak, at + attack);
+      env.gain.exponentialRampToValueAtTime(0.0001, at + attack + life);
 
       osc.connect(env);
       env.connect(out);
       osc.start(at);
-      osc.stop(at + recipe.attack + life + 0.02);
+      osc.stop(at + attack + life + 0.02);
     }
   });
 }

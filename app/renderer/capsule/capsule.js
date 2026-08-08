@@ -86,7 +86,11 @@ let config = null;
 let previous = null;
 let countdownTimer = null;
 
-/** Сигнал звучит на входе в запись и на выходе из неё — больше нигде. */
+/**
+ * Сигнал звучит на входе в запись, на выходе из неё и — если включено —
+ * когда улучшение доделалось: модель иногда думает долго, и человек
+ * успевает отвернуться от экрана.
+ */
 function chime(next) {
   const sound = config?.sound;
   if (!sound || sound.preset === 'none') return;
@@ -94,6 +98,8 @@ function chime(next) {
     window.pastetalkSounds.playSound(sound.preset, sound.volume, true);
   } else if (previous === 'listening' && next !== 'listening') {
     window.pastetalkSounds.playSound(sound.preset, sound.volume, false);
+  } else if (next === 'aidone' && previous === 'ai' && sound.aiDone !== false) {
+    window.pastetalkSounds.playSound(sound.preset, sound.volume, 'done');
   }
 }
 

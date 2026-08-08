@@ -230,9 +230,32 @@ $('mic-test').addEventListener('click', async () => {
 });
 
 $('sound-test').addEventListener('click', () => {
-  window.pastetalkSounds.playSound(settings.sound?.preset || 'bell', settings.sound?.volume ?? 60, true);
-  setTimeout(() => window.pastetalkSounds.playSound(settings.sound?.preset || 'bell', settings.sound?.volume ?? 60, false), 550);
+  const preset = settings.sound?.preset || 'bell';
+  const volume = settings.sound?.volume ?? 60;
+  window.pastetalkSounds.playSound(preset, volume, true);
+  setTimeout(() => window.pastetalkSounds.playSound(preset, volume, false), 550);
+  // Третьим — «улучшение готово», если сигнал включён: пусть слышно всё.
+  if (settings.sound?.aiDone !== false) {
+    setTimeout(() => window.pastetalkSounds.playSound(preset, volume, 'done'), 1250);
+  }
 });
+
+/** Спокойное «готово» — когда модель отработала из окна настроек. */
+function chimeDone() {
+  const sound = settings?.sound || {};
+  if (!sound.preset || sound.preset === 'none' || sound.aiDone === false) return;
+  window.pastetalkSounds.playSound(sound.preset, sound.volume ?? 60, 'done');
+}
+
+/** Переключателю «сигнал готовности» нечего включать при «Без звука». */
+function syncSoundDependents() {
+  const off = ($('sound').value || 'bell') === 'none';
+  const toggle = document.querySelector('[data-cfg="sound.aiDone"]');
+  if (!toggle) return;
+  toggle.disabled = off;
+  toggle.closest('.row')?.classList.toggle('is-muted', off);
+}
+$('sound').addEventListener('change', syncSoundDependents);
 
 // ---------- модели распознавания ----------
 
@@ -361,7 +384,7 @@ $('bench').addEventListener('click', async () => {
     $('bench-sub').textContent = `${t('Минута речи распознаётся за')} ${result.secondsPerMinute.toFixed(1)} ${t('с')} `
       + `(${result.device === 'cuda' ? t('видеокарта') : t('процессор')}, ${result.model})`;
   } catch (error) {
-    $('bench-sub').textContent = `${t('Померить не вышло:')} ${t(error.message)}`;
+    $('bench-sub').textContent = `${t('Померить не вышло:')} ${t(error.message.replace(/^Error invoking remote method '[^']+': Error: /, ''))}`;
   }
   $('bench').disabled = false;
 });
@@ -808,6 +831,37 @@ function renderHistory(list) {
   for (const item of list) {
     const row = document.createElement('div');
     row.className = 'row row-stack';
+
+    // Голос без текста: распознавание сорвалось, звук сохранён. Вместо
+    // «Копировать» и «Причесать» — одна кнопка второй попытки.
+    if (item.voice) {
+      row.innerHTML = `
+        <div class="row-sub">${whenSaid(item.at)}${item.seconds ? ` · ${item.seconds} ${t('с речи')}` : ''}`
+        + ` · <span class="pill">${t('не распозналось')}</span></div>
+        <div class="history-text">${t('Голос сохранён, но текст не получился — можно попробовать ещё раз')}</div>
+        <div class="under-card" style="margin-bottom:0;"></div>`;
+      const acts = row.querySelector('.under-card');
+      const retry = button(t('Распознать'), 'btn btn-accent', async () => {
+        retry.disabled = true;
+        retry.textContent = t('Распознаю…');
+        try {
+          renderHistory(await api.history.recognize(item.id));
+          chimeDone();
+          say(t('Готово, текст в буфере обмена'));
+        } catch (error) {
+          say(t(error.message.replace(/^Error invoking remote method '[^']+': Error: /, '')));
+          retry.disabled = false;
+          retry.textContent = t('Распознать');
+        }
+      });
+      acts.appendChild(retry);
+      acts.appendChild(button(t('Убрать'), 'btn btn-quiet', async () => {
+        renderHistory(await api.history.remove(item.id));
+      }));
+      card.appendChild(row);
+      continue;
+    }
+
     const shown = item.improved || item.text;
     row.innerHTML = `
       <div class="row-sub">${whenSaid(item.at)}${item.seconds ? ` · ${item.seconds} ${t('с речи')}` : ''}`
@@ -832,6 +886,7 @@ function renderHistory(list) {
         improve.textContent = t('Думает…');
         try {
           await api.history.improve(item.id);
+          chimeDone();
           say(t('Готово, текст в буфере обмена'));
         } catch (error) {
           say(t(error.message.replace(/^Error invoking remote method '[^']+': Error: /, '')));
@@ -1085,6 +1140,7 @@ async function start() {
 
   applyAppearance();
   bindAll();
+  syncSoundDependents();
   renderHotkeys();
   renderProviders();
   syncModeHint();
