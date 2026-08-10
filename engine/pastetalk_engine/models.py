@@ -14,7 +14,10 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import ctranslate2
+import numpy as np
 from faster_whisper import WhisperModel
+
+from . import cuda_libs
 
 # Что показываем человеку в настройках. Размер — сколько займёт на диске.
 CATALOG: dict[str, dict[str, Any]] = {
@@ -261,6 +264,13 @@ class ModelManager:
                 self._download(name)
             if wanted != self._wanted:
                 return
+            # Математика NVIDIA не едет в сборке: докачиваем один раз.
+            # До этого CUDA «работала» только там, где системно стоит
+            # CUDA Toolkit, — то есть на машине разработчика.
+            if device == "cuda":
+                cuda_libs.ensure(self.cache_dir, self.state)
+            if wanted != self._wanted:
+                return
             self.state.state = "loading"
             model = WhisperModel(
                 # Именно repo, а не имя из каталога: у faster-whisper своя
@@ -276,6 +286,29 @@ class ModelManager:
                 # умножениями — это слышно как пропуски в записи.
                 cpu_threads=max(1, (os.cpu_count() or 4) - 2) if device == "cpu" else 0,
             )
+            # Предполётная кроха звука. Веса копируются на карту и без
+            # cuBLAS — падает только первое умножение, то есть посреди
+            # диктовки человека. Лучше упасть здесь и сказать словами.
+            if device == "cuda":
+                probe = np.zeros(1600, dtype=np.float32)
+
+                def run_probe():
+                    list(model.transcribe(
+                        probe, language="ru", beam_size=1,
+                        vad_filter=False, without_timestamps=True,
+                    )[0])
+
+                try:
+                    run_probe()
+                except Exception as exc:  # noqa: BLE001
+                    # Обычно хватает cuBLAS. Если эта сборка ctranslate2
+                    # запросила полный cuDNN — докачиваем и пробуем снова.
+                    if "cudnn" not in str(exc).lower():
+                        raise
+                    cuda_libs.ensure_cudnn(self.cache_dir, self.state)
+                    self.state.state = "loading"
+                    run_probe()
+
             # Пока грузили, человек мог выбрать другую. Тогда эта — лишняя.
             if wanted != self._wanted:
                 return

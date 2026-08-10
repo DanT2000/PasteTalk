@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import queue
+import sys
 import threading
 import uuid
 from typing import Any
@@ -69,8 +70,16 @@ class Session:
 
             pending = len(self._buffer) - self._cursor
             long_enough = pending >= MAX_CHUNK_S * SAMPLE_RATE
+            # Нарезка по паузам — привилегия видеокарты. Энкодер Whisper
+            # всегда считает полное 30-секундное окно, сколько бы звука ни
+            # было: на процессоре трёхсекундная фраза стоит столько же,
+            # сколько 24-секундная, и резать каждые 600 мс тишины значит
+            # замедлить распознавание почти в десять раз. Проверено на
+            # живом замере: 24 с одним куском — 12 с, кусками — 110 с.
+            by_pause = self.models.state.device == "cuda"
             phrase_over = (
-                self._tracker.silence_ms >= CUT_SILENCE_MS
+                by_pause
+                and self._tracker.silence_ms >= CUT_SILENCE_MS
                 and self._tracker.speech_ms >= MIN_SPEECH_MS
             )
             if pending > 0 and (phrase_over or long_enough):
@@ -90,12 +99,16 @@ class Session:
             "error": self._error,
         }
 
-    def _cut_locked(self) -> None:
+    def _cut_locked(self, final: bool = False) -> None:
         """Отправить накопленное в очередь. Вызывается под self._lock."""
         keep = int(KEEP_TAIL_MS * SAMPLE_RATE / 1000)
-        end = max(self._cursor, len(self._buffer) - 0)
+        # Хвост тишины остаётся в буфере — он станет началом следующего
+        # куска, чтобы слово на границе не оказалось разрезанным. Раньше
+        # тут стояло «- 0», и константа не работала вовсе. Финальный срез
+        # забирает всё: после него следующего куска не будет.
+        end = len(self._buffer) if final else max(self._cursor, len(self._buffer) - keep)
         piece = self._buffer[self._cursor:end]
-        if len(piece) < keep:
+        if len(piece) < (1 if final else keep):
             return
         offset = self._cursor / SAMPLE_RATE
         self._cursor = end
@@ -117,7 +130,7 @@ class Session:
         """Дорезать хвост, дождаться очереди и отдать весь текст."""
         with self._lock:
             if len(self._buffer) > self._cursor:
-                self._cut_locked()
+                self._cut_locked(final=True)
         self._jobs.put(None)
         self._worker.join(timeout=timeout)
         self._closed = True
@@ -170,6 +183,9 @@ class Session:
                 self._transcribe(piece, offset)
             except Exception as exc:  # noqa: BLE001
                 self._error = str(exc)
+                # И в журнал тоже: молча умершая сессия неделями выглядела
+                # как «думает очень долго», и никто не знал почему.
+                print(f"сессия {self.id}: {exc}", file=sys.stderr, flush=True)
 
     def _transcribe(self, piece: np.ndarray, offset: float) -> None:
         first = not self._segments

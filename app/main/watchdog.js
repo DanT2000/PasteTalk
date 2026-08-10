@@ -25,9 +25,15 @@ const FAILURES_BEFORE_RESTART = 2;
 // Столько же, сколько выдерживает сам движок при падениях: разные числа
 // в двух местах приводили бы к тому, что одна защита сдаётся раньше другой.
 const RESTARTS_BEFORE_GIVING_UP = 10;
+// Сдались — но не навсегда: через десять минут пробуем цикл заново.
+// Система могла освободить сокеты, драйвер — ожить. Раньше сторож после
+// giveUp() до перезапуска приложения лишь спамил в журнал каждые 30 с —
+// у одного пользователя набежало 1300 строк за ночь.
+const RETRY_AFTER_GIVE_UP_MS = 10 * 60 * 1000;
 
 let timer = null;
 let failures = 0;
+let gaveUpAt = 0;
 let restarts = 0;
 let restarting = false;
 let warned = false;
@@ -47,13 +53,21 @@ async function check() {
     return;
   } catch (error) {
     failures += 1;
-    log.warn(`движок не ответил (${failures}): ${error.message}`);
+    // После признания поражения тем же сообщением журнал не засоряем.
+    if (!warned) log.warn(`движок не ответил (${failures}): ${error.message}`);
   }
 
   if (failures < FAILURES_BEFORE_RESTART) return;
 
   if (restarts >= RESTARTS_BEFORE_GIVING_UP) {
     giveUp();
+    if (gaveUpAt && Date.now() - gaveUpAt >= RETRY_AFTER_GIVE_UP_MS) {
+      log.info('сторож пробует лечить движок заново');
+      warned = false;
+      failures = 0;
+      restarts = 0;
+      gaveUpAt = 0;
+    }
     return;
   }
 
@@ -77,6 +91,7 @@ async function check() {
 function giveUp() {
   if (warned) return;
   warned = true;
+  gaveUpAt = Date.now();
   log.error(`движок не отвечает после ${RESTARTS_BEFORE_GIVING_UP} перезапусков`);
   dialog.showMessageBox({
     type: 'error',

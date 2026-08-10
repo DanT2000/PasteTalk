@@ -73,6 +73,10 @@ class Recorder extends EventEmitter {
     // звук уйдёт в историю, а не в никуда. Сбрасывается при успехе.
     this.audioCopy = null;
     this.audioBytes = 0;
+    // Накопитель отправки в движок и подсказка о состоянии модели.
+    this.pending = [];
+    this.pendingBytes = 0;
+    this.modelHint = '';
     // Номер попытки. Растёт при каждой отмене: ответ, пришедший от
     // прежней, узнаётся по устаревшему номеру и выбрасывается.
     this.attempt = (this.attempt || 0) + 1;
@@ -134,6 +138,18 @@ class Recorder extends EventEmitter {
       this.audioBytes = 0;
       this.emitState('listening', { elapsedMs: 0 });
       this.watchStream();
+      // Модель может ещё качаться или грузиться — запись при этом идёт,
+      // но человек обязан знать, чего ждёт: раньше «Распознаю…» висело
+      // молча, и неделя такой тишины выглядела как сломанная программа.
+      this.modelHint = '';
+      engine.modelStatus().then((model) => {
+        if (this.state !== 'listening') return;
+        if (model.state === 'downloading') {
+          this.modelHint = `${tr('Модель ещё качается')} — ${Math.round((model.progress || 0) * 100)}%`;
+        } else if (model.state === 'loading') {
+          this.modelHint = tr('Модель грузится в память — запись идёт');
+        }
+      }).catch(() => {});
       log.info(`запись начата (${mode}), сессия ${this.sessionId}`);
     } catch (error) {
       log.error(error);
@@ -235,9 +251,19 @@ class Recorder extends EventEmitter {
       this.hadSignal = true;
     }
 
+    // Копим 600 мс перед отправкой: пять HTTP-запросов в секунду на всю
+    // диктовку — это тысячи сокетов в день, и у одного пользователя
+    // система в них уже захлёбывалась (WinError 10055).
+    this.pending.push(chunk);
+    this.pendingBytes += chunk.length;
+    if (this.pendingBytes < 16000 * 2 * 0.6) return;
+    const batch = Buffer.concat(this.pending);
+    this.pending = [];
+    this.pendingBytes = 0;
+
     let reply;
     try {
-      reply = await engine.pushAudio(this.sessionId, chunk);
+      reply = await engine.pushAudio(this.sessionId, batch);
     } catch (error) {
       log.error(`поток прервался: ${error.message}`);
       // Запись уже не идёт (finish/отмена успели раньше) — сбой этого
@@ -248,7 +274,17 @@ class Recorder extends EventEmitter {
     }
     if (this.state !== 'listening') return;
 
+    // Ошибка воркера сессии — например, видеокарте не хватает библиотек.
+    // Раньше это поле не читал никто, и человек неделю смотрел на вечное
+    // «Распознаю…», не подозревая, что распознавание давно умерло.
+    if (reply.error) {
+      log.error(`сессия сломалась: ${reply.error}`);
+      await this.abort('engineDown', reply.error);
+      return;
+    }
+
     if (reply.everSpoke) this.everSpoke = true;
+    if ((reply.segments || []).length) this.modelHint = '';
     const elapsedMs = Date.now() - this.startedAt;
     this.emit('partial', { segments: reply.segments || [], elapsedMs });
     this.emitState('listening', { elapsedMs, ...this.quietHint() });
@@ -280,8 +316,12 @@ class Recorder extends EventEmitter {
    * проблеме после того, как наговорил десять минут в пустоту.
    */
   quietHint() {
-    if (Date.now() - this.silentSince <= MIC_QUIET_MS) return {};
-    return { status: tr('Микрофон отдаёт тишину'), hint: tr('Запись идёт — проверьте устройство') };
+    if (Date.now() - this.silentSince > MIC_QUIET_MS) {
+      return { status: tr('Микрофон отдаёт тишину'), hint: tr('Запись идёт — проверьте устройство') };
+    }
+    // Пока модель качается или грузится — говорим об этом прямо на панели.
+    if (this.modelHint) return { hint: this.modelHint };
+    return {};
   }
 
   /**
@@ -379,6 +419,14 @@ class Recorder extends EventEmitter {
     const attempt = this.attempt;
     let result;
     try {
+      // Дослать недокопленный хвост звука — иначе последние полсекунды
+      // речи не дойдут до модели.
+      if (this.pending && this.pendingBytes) {
+        const tail = Buffer.concat(this.pending);
+        this.pending = [];
+        this.pendingBytes = 0;
+        await engine.pushAudio(id, tail).catch(() => {});
+      }
       result = await engine.stopSession(id);
     } catch (error) {
       // Ответ отменённой попытки: человек уже начал новую запись или
@@ -398,6 +446,17 @@ class Recorder extends EventEmitter {
     // можно будет только отсюда.
     for (const item of result.dropped || []) {
       log.info(`выброшено как выдумка модели: «${item.text}» — ${item.reason}`);
+    }
+
+    // Сессия умерла и текста нет — это не «Тишина», это причина словами.
+    if (result.error && !(result.text || '').trim()) {
+      log.error(`распознавание не удалось: ${result.error}`);
+      const stashed = this.stashVoice();
+      this.emitState('engineDown', stashed
+        ? { status: tr('Не распозналось'), hint: tr(result.error) }
+        : { hint: tr(result.error) });
+      this.scheduleHide(4200);
+      return;
     }
 
     await this.deliver(result.text, result.durationS, attempt);

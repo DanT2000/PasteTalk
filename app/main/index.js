@@ -623,8 +623,14 @@ ipcMain.on('capsule:action', (_event, action) => {
   }
 });
 
+// Куски звука — строго по очереди. pushAudio асинхронный, и без цепочки
+// параллельные HTTP-запросы под нагрузкой обгоняли друг друга: движок
+// дописывал их в буфер в порядке прихода, и звук перемешивался.
+let audioChain = Promise.resolve();
 ipcMain.on('audio:chunk', (_event, payload) => {
-  recorder.pushAudio(Buffer.from(payload.pcm), payload.peak || 0);
+  audioChain = audioChain
+    .then(() => recorder.pushAudio(Buffer.from(payload.pcm), payload.peak || 0))
+    .catch(() => {});
 });
 
 ipcMain.on('audio:level', (_event, payload) => {
