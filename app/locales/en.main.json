@@ -94,6 +94,7 @@
   "Не выбрана модель для ChatGPT (OpenAI)": "No model selected for ChatGPT (OpenAI)",
   "Не выбрана модель для DeepSeek": "No model selected for DeepSeek",
   "Не выбрана модель для AITunnel": "No model selected for AITunnel",
+  "Не выбрана модель для Своё, OpenAI-совместимое": "No model selected for the custom OpenAI-compatible server",
   "Выпусков пока нет": "No releases yet",
   "Нет связи с интернетом": "No internet connection",
   "GitHub не ответил вовремя": "GitHub took too long to respond",

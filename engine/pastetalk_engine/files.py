@@ -94,7 +94,9 @@ class FileJob:
                 raise RuntimeError("В файле не нашлось звуковой дорожки")
 
             self.state = "working"
-            segments, _info = self.models.transcribe(
+            # Ленивый поток сегментов: прогресс и текст появляются по ходу
+            # распознавания, а отмена срабатывает сразу, а не через час.
+            stream = self.models.transcribe_stream(
                 audio,
                 language=self.language,
                 vad_filter=True,
@@ -103,20 +105,24 @@ class FileJob:
                 condition_on_previous_text=True,
                 initial_prompt=self.initial_prompt or None,
             )
-            for segment in segments:
-                if self.cancelled:
-                    self.state = "error"
-                    self.error = "Отменено"
-                    return
-                text = cleanup.keep(segment)
-                if text:
-                    self.segments.append({
-                        "text": text,
-                        "start": round(segment.start, 2),
-                        "end": round(segment.end, 2),
-                    })
-                if self.duration_s:
-                    self.progress = min(segment.end / self.duration_s, 0.999)
+            try:
+                for segment in stream:
+                    if self.cancelled:
+                        self.state = "error"
+                        self.error = "Отменено"
+                        return
+                    text = cleanup.keep(segment)
+                    if text:
+                        self.segments.append({
+                            "text": text,
+                            "start": round(segment.start, 2),
+                            "end": round(segment.end, 2),
+                        })
+                    if self.duration_s:
+                        self.progress = min(segment.end / self.duration_s, 0.999)
+            finally:
+                # Закрыть обязательно: генератор держит замок модели.
+                stream.close()
             self.progress = 1.0
             self.state = "done"
         except RuntimeError as exc:

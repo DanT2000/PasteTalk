@@ -830,36 +830,6 @@
           <div class="result-body" id="file-text"></div>
         </div>
 
-        <div class="group-title">Причесать расшифровку</div>
-        <div class="card">
-          <div class="row">
-            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/></svg>
-            <div class="row-text">
-              <div class="row-title">Что сделать с текстом</div>
-              <div class="row-sub">«Конспект совещания» превращает часовую запись в выжимку: темы с метками времени, решения, задачи и на что обратить внимание</div>
-            </div>
-            <div class="row-control">
-              <select id="file-improve-mode">
-                <option value="meeting">Конспект совещания</option>
-                <option value="clean">Почистить</option>
-                <option value="both">Почистить и переписать</option>
-              </select>
-              <button class="btn btn-accent" id="file-improve" disabled>Причесать</button>
-            </div>
-          </div>
-          <div class="row">
-            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h10M7 13h6"/></svg>
-            <div class="row-text">
-              <div class="row-title">Какой моделью</div>
-              <div class="row-sub">Большому совещанию — модель посильнее: можно выбрать не ту, что причёсывает обычную диктовку</div>
-            </div>
-            <div class="row-control">
-              <select id="file-ai-provider" data-cfg="files.aiProvider"></select>
-              <input class="field" type="text" id="file-ai-model" data-cfg="files.aiModel" placeholder="модель по умолчанию" spellcheck="false">
-            </div>
-          </div>
-        </div>
-
         <div class="group-title">Как расшифровывать</div>
         <div class="card">
           <div class="row">
@@ -889,7 +859,7 @@
             <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
             <div class="row-text">
               <div class="row-title">Метки времени</div>
-              <div class="row-sub">Перед каждым куском текста — минута и секунда, на которой он звучит</div>
+              <div class="row-sub">Минута и секунда перед каждым куском текста. Действует сразу; в конспект совещания метки идут всегда</div>
             </div>
             <div class="row-control"><input class="switch" type="checkbox" id="file-stamps" data-cfg="files.timestamps"></div>
           </div>
@@ -900,6 +870,37 @@
               <div class="row-sub" id="ffmpeg-sub">Достаёт звук из видео. Проверяю…</div>
             </div>
             <div class="row-control"><span class="pill pill-muted" id="ffmpeg-pill">проверяю</span><button class="btn" id="ffmpeg-how">Как поставить</button></div>
+          </div>
+        </div>
+
+        <div class="group-title">Причесать расшифровку</div>
+        <div class="card">
+          <div class="row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/></svg>
+            <div class="row-text">
+              <div class="row-title">Что сделать с текстом</div>
+              <div class="row-sub">«Конспект совещания» превращает часовую запись в выжимку: темы с метками времени, решения, задачи и на что обратить внимание</div>
+            </div>
+            <div class="row-control">
+              <select id="file-improve-mode">
+                <option value="meeting">Конспект совещания</option>
+                <option value="clean">Почистить</option>
+                <option value="both">Почистить и переписать</option>
+              </select>
+              <button class="btn btn-accent" id="file-improve" disabled>Причесать</button>
+            </div>
+          </div>
+          <div class="row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h10M7 13h6"/></svg>
+            <div class="row-text">
+              <div class="row-title">Какой моделью</div>
+              <div class="row-sub">Большому совещанию — модель посильнее: можно выбрать не ту, что причёсывает обычную диктовку</div>
+            </div>
+            <div class="row-control row-control-wrap">
+              <select id="file-ai-provider" data-cfg="files.aiProvider"></select>
+              <select id="file-ai-model" data-cfg="files.aiModel"></select>
+              <button class="btn" id="file-ai-refresh">Обновить</button>
+            </div>
           </div>
         </div>
       </section>

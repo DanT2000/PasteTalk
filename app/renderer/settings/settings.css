@@ -297,7 +297,7 @@ kbd {
 @container card (max-width: 30em) { .result-actions { margin-left: 0; width: 100%; } }
 .result-body { padding: 1rem; max-height: 16rem; overflow-y: auto;
   font-size: .875rem; line-height: 1.6; background: var(--bg); white-space: pre-wrap; }
-.result-body:empty::before { content: "Пока пусто — выберите файл выше."; color: var(--dim); }
+.result-body.is-dim { color: var(--dim); }
 
 /* Кнопки под карточкой: отступ сверху нужен, чтобы они не липли к ней,
    и снизу — чтобы следующий раздел не начинался вплотную. */
@@ -417,3 +417,11 @@ a { color: var(--accent); }
 .tour-veil.is-dim .tour-card { position: static; }
 
 #file-ai-model { max-width: 11rem; }
+
+/* Тур на крупном масштабе: карточка не выше окна, текст прокручивается. */
+.tour-card { max-height: calc(100vh - 1.5rem); }
+.tour-card .notes-body { min-height: 0; }
+
+/* Ряд с провайдером, моделью и «Обновить» на 150 % шире карточки —
+   пусть переносится на вторую строку, а не срезается без следа. */
+.row-control-wrap { flex: 1 1 auto; min-width: 0; flex-wrap: wrap; justify-content: flex-end; }

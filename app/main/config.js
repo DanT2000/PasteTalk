@@ -151,12 +151,17 @@ function isPlainObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-/** Слияние с умолчаниями: новые настройки появляются у старых пользователей сами. */
+/**
+ * Слияние с умолчаниями: новые настройки появляются у старых пользователей
+ * сами. Незнакомые ключи НЕ выбрасываются: в ai.keys живут ключи провайдеров,
+ * которых может не быть в умолчаниях, а после отката с новой версии её
+ * настройки не должны пропадать. Молчаливая потеря введённого ключа —
+ * худшее, что может сделать этот файл.
+ */
 function merge(defaults, saved) {
   const result = Array.isArray(defaults) ? [...defaults] : { ...defaults };
   for (const [key, value] of Object.entries(saved || {})) {
-    if (!(key in defaults)) continue;
-    result[key] = isPlainObject(defaults[key]) && isPlainObject(value)
+    result[key] = isPlainObject(defaults?.[key]) && isPlainObject(value)
       ? merge(defaults[key], value)
       : value;
   }
@@ -180,7 +185,11 @@ function migrate(settings) {
 function load() {
   if (cache) return cache;
   try {
-    cache = migrate(merge(DEFAULTS, JSON.parse(fs.readFileSync(file(), 'utf8'))));
+    const parsed = JSON.parse(fs.readFileSync(file(), 'utf8'));
+    // Обрезанный или переписанный вручную файл мог распарситься в строку
+    // или массив — сливать такое с умолчаниями значит закрепить мусор.
+    if (!isPlainObject(parsed)) throw new Error('settings.json — не объект');
+    cache = migrate(merge(DEFAULTS, parsed));
   } catch {
     cache = merge(DEFAULTS, {});
   }

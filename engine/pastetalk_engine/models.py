@@ -428,6 +428,38 @@ class ModelManager:
                 self._used_at = time.time()
             return result
 
+    def transcribe_stream(self, audio, **options):
+        """Ленивый проход: сегменты отдаются по мере распознавания.
+
+        transcribe() потребляет генератор faster-whisper целиком до
+        возврата — у часового файла это час без единой цифры прогресса и
+        без возможности отменить. Здесь сегменты выходят наружу сразу,
+        поэтому файл показывает живые проценты, текст по ходу дела и
+        останавливается по первой просьбе.
+
+        Замок модели держится, пока генератор потребляется: прочитайте его
+        до конца или закройте — иначе очередь к модели встанет.
+        """
+        self.ensure_loaded()
+        with self._transcribe_lock:
+            model = self._model
+            if model is None:
+                raise RuntimeError("MODEL_NOT_READY")
+            options.setdefault("beam_size", 5 if self._loaded_device == "cuda" else 2)
+            with self.state.lock:
+                self._busy += 1
+            try:
+                segments, _info = model.transcribe(audio, **options)
+                for segment in segments:
+                    yield segment
+                    # Идущая расшифровка — это работа, а не простой:
+                    # выгрузка по бездействию не должна сработать посреди.
+                    self._used_at = time.time()
+            finally:
+                with self.state.lock:
+                    self._busy -= 1
+                self._used_at = time.time()
+
 
 def _friendly_error(exc: Exception, device: str) -> str:
     """Понятная причина вместо трассировки — её человек и увидит в окне."""

@@ -115,23 +115,26 @@ const modes = require('../../shared/modes');
 const MODES = modes.MODES;
 
 /**
- * Текущий запрос к модели — чтобы его можно было прервать.
+ * Идущие запросы к моделям — по именам задач, чтобы прерывать прицельно.
  *
  * Модель думает секунды, а иногда и минуту. За это время человек успевает
  * передумать, и оставлять его смотреть на крутящийся кружок без выхода
- * нельзя. Здесь лежит способ оборвать то, что идёт прямо сейчас.
+ * нельзя. Слоты раздельные: 'dictation' — улучшение диктовки, 'digest' —
+ * многоминутный конспект файла. Пока крутится конспект, Esc на панели
+ * обязан находить именно запрос диктовки, а не промахиваться из-за того,
+ * что общий слот занял очередной кусок конспекта.
  */
-let stopCurrent = null;
-// Чей запрос сейчас в полёте: 'dictation' — обычное улучшение диктовки,
-// 'digest' — многоминутный конспект файла. Отмена с панели записи не
-// должна убивать конспект, который человек ждёт уже десять минут.
-let currentJob = 'dictation';
+const stops = new Map();
 const CANCELLED = 'PT_CANCELLED';
 
+function jobOf(settings) {
+  return settings.job === 'digest' ? 'digest' : 'dictation';
+}
+
 function cancel(job = 'dictation') {
-  if (!stopCurrent || currentJob !== job) return false;
-  const stop = stopCurrent;
-  stopCurrent = null;
+  const stop = stops.get(job);
+  if (!stop) return false;
+  stops.delete(job);
   try {
     stop();
   } catch { /* уже завершился сам */ }
@@ -144,7 +147,7 @@ function isCancelled(error) {
 }
 
 function busy() {
-  return stopCurrent !== null;
+  return stops.size > 0;
 }
 
 // ---------- настройки провайдера ----------
@@ -198,7 +201,7 @@ function stripThinking(text) {
 
 // ---------- транспорт: HTTP ----------
 
-function httpJson(method, url, { body, apiKey, timeoutMs }) {
+function httpJson(method, url, { body, apiKey, timeoutMs, job }) {
   return new Promise((resolve_, reject) => {
     let target;
     try {
@@ -242,10 +245,13 @@ function httpJson(method, url, { body, apiKey, timeoutMs }) {
 
     // Прервать можно только то, что ещё идёт: как только ответ получен,
     // отменять нечего, и ссылку надо убрать, иначе следующая отмена
-    // ударит по уже закрытому соединению.
-    stopCurrent = () => request.destroy(new Error(CANCELLED));
-    const done = () => { if (stopCurrent) stopCurrent = null; };
-    request.on('close', done);
+    // ударит по уже закрытому соединению. Регистрируются только запросы
+    // с именем задачи: списки моделей и проверки связи отмене не подлежат.
+    if (job) {
+      const stop = () => request.destroy(new Error(CANCELLED));
+      stops.set(job, stop);
+      request.on('close', () => { if (stops.get(job) === stop) stops.delete(job); });
+    }
 
     request.setTimeout(timeoutMs, () => request.destroy(new Error('Модель не ответила вовремя')));
     request.on('error', (error) => reject(
@@ -306,6 +312,7 @@ async function chat(settings, text, timeoutMs) {
       body: { ...body, ...NO_THINKING },
       apiKey: settings.apiKey,
       timeoutMs,
+      job: jobOf(settings),
     });
   } catch (error) {
     if (error.status !== 400 && error.status !== 422) throw error;
@@ -314,6 +321,7 @@ async function chat(settings, text, timeoutMs) {
       body,
       apiKey: settings.apiKey,
       timeoutMs,
+      job: jobOf(settings),
     });
   }
 
@@ -384,7 +392,9 @@ function runCli(settings, text, timeoutMs) {
     let cancelled = false;
 
     // Агента прерываем убийством процесса: другого способа он не знает.
-    stopCurrent = () => { cancelled = true; child.kill(); };
+    const jobName = jobOf(settings);
+    const stop = () => { cancelled = true; child.kill(); };
+    stops.set(jobName, stop);
 
     const timer = setTimeout(() => {
       child.kill();
@@ -405,7 +415,7 @@ function runCli(settings, text, timeoutMs) {
 
     child.on('close', (code) => {
       clearTimeout(timer);
-      if (stopCurrent) stopCurrent = null;
+      if (stops.get(jobName) === stop) stops.delete(jobName);
       if (cancelled) { reject(new Error(CANCELLED)); return; }
       const answer = stripThinking(out);
       if (code !== 0 && !answer) {
@@ -497,7 +507,6 @@ async function improve(text, overrides = {}) {
   if (!clean) return clean;
 
   const settings = resolve(overrides);
-  currentJob = settings.job === 'digest' ? 'digest' : 'dictation';
   const timeoutMs = timeoutFor(clean, settings);
   const started = Date.now();
 

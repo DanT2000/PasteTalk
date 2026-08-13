@@ -35,9 +35,14 @@ function applyTheme() {
 function createSettings() {
   if (windows.settings && !windows.settings.isDestroyed()) return windows.settings;
 
+  // С запасом под крупный масштаб (150 %): подсветке знакомства и карточке
+  // сбоку от неё должно хватать места. Но не больше рабочей области:
+  // на ноутбуке 1366×768 или при системных 150 % окно в 800 точек высоты
+  // уехало бы под панель задач.
+  const area = screen.getPrimaryDisplay().workAreaSize;
   const win = new BrowserWindow({
-    width: 1100,
-    height: 760,
+    width: Math.min(1200, area.width - 32),
+    height: Math.min(800, area.height - 32),
     minWidth: 720,
     minHeight: 520,
     show: false,

@@ -636,11 +636,18 @@ function fillModels(items) {
 }
 
 $('provider').addEventListener('change', async () => {
-  await save('ai.provider', $('provider').value);
+  const chosen = $('provider').value;
+  await save('ai.provider', chosen);
   await save('ai.baseUrl', '');
   await save('ai.model', '');
   $('ai-model').innerHTML = '';
   syncProvider();
+  // Страница «Файлы» с выбором «Как в улучшении текста» смотрит на этого
+  // же провайдера — её список моделей и кнопка «Обновить» следуют за ним.
+  if (!$('file-ai-provider').value) {
+    fillFileModels(undefined, chosen);
+    syncFileRefresh(chosen);
+  }
 });
 
 /** Каждый режим объясняем словами: из двух слов в списке непонятно. */
@@ -721,8 +728,52 @@ document.querySelectorAll('.scale-opt').forEach((option) =>
 
 let job = null;
 let jobTimer = null;
+// Оценка «сколько осталось» считается от начала распознавания и держится
+// спокойной: цифра не должна дрожать каждые полсекунды.
+let workStartedAt = 0;
+let workStartProgress = 0;
+let etaShownMin = -1;
+
+/** Стенограмма для показа: галочка снята — метки убираются, текст сплошной. */
+function renderTranscript(stamped, withStamps) {
+  if (withStamps) return stamped;
+  return stamped
+    .split('\n')
+    .map((line) => line.replace(/^\[[\d:]+\]\s*/, '').trim())
+    .filter(Boolean)
+    .join(' ');
+}
+
+/**
+ * Сколько осталось. Вниз оценка идёт свободно, вверх — только если ошиблись
+ * заметно: так она не скачет туда-сюда от случайных замедлений.
+ */
+function etaText(progress) {
+  if (!workStartedAt) {
+    workStartedAt = Date.now();
+    workStartProgress = progress || 0;
+    return '';
+  }
+  const elapsed = Date.now() - workStartedAt;
+  const covered = progress - workStartProgress;
+  if (elapsed >= 5000 && covered >= 0.02) {
+    const leftMs = elapsed * (1 - progress) / covered;
+    const minutes = Math.max(1, Math.ceil(leftMs / 60000));
+    if (etaShownMin < 0 || minutes < etaShownMin || minutes > etaShownMin + 1) etaShownMin = minutes;
+  }
+  if (etaShownMin < 0) return '';
+  const word = etaShownMin <= 1 ? t('около минуты') : `≈ ${etaShownMin} ${t('мин')}`;
+  return ` · ${t('осталось')} ${word}`;
+}
 
 async function startFile(path) {
+  // Прошлую задачу гасим первым делом: её опрос не должен дожить до
+  // нового файла, а движку незачем дораспознавать то, что человеку уже
+  // не нужно, — на процессоре это часы работы впустую.
+  clearInterval(jobTimer);
+  if (job?.id) api.files.cancel(job.id).catch(() => {});
+  job = null;
+
   // Файл взят в работу — зона перетаскивания уходит, на её месте сразу
   // видно, что происходит. Иначе человек смотрит на «перетащите файл» и
   // не понимает, случилось ли что-нибудь вообще.
@@ -730,7 +781,10 @@ async function startFile(path) {
   $('file-result').classList.remove('is-hidden');
   $('file-name').textContent = path.split(/[\\/]/).pop();
   $('file-info').textContent = t('Достаю звук…');
-  $('file-text').textContent = '';
+  // Пустой блок не должен звать выбрать файл, когда файл уже в работе:
+  // пока текста нет, здесь живёт понятный статус.
+  $('file-text').classList.add('is-dim');
+  $('file-text').textContent = t('Разбираю запись — текст появится по ходу распознавания');
   $('file-progress').style.display = 'block';
   $('file-progress').querySelector('i').style.width = '0';
   $('file-save').disabled = true;
@@ -738,30 +792,65 @@ async function startFile(path) {
   $('file-improve').disabled = true;
   $('file-back').classList.add('is-hidden');
   fileGen += 1;
+  const gen = fileGen;
   fileOriginal = '';
   fileImproved = '';
+  fileStamped = '';
   fileShowingOriginal = true;
+  workStartedAt = 0;
+  workStartProgress = 0;
+  etaShownMin = -1;
 
+  let started;
   try {
-    job = await api.files.start({
+    started = await api.files.start({
       path,
       model: $('file-model').value || undefined,
       language: $('file-lang').value || null,
-      timestamps: $('file-stamps').checked,
+      // Метки просим всегда: движок помнит время сегментов даром. Галочка
+      // стала чисто про показ, а конспект совещания всегда получает время.
+      timestamps: true,
     });
   } catch (error) {
-    $('file-info').textContent = error.message === 'MODEL_NOT_READY'
+    if (gen !== fileGen) return;
+    const message = ipcErrorText(error);
+    $('file-info').textContent = message === 'MODEL_NOT_READY'
       ? t('Модель ещё не готова — подождите, пока она загрузится')
-      : t(error.message);
+      : t(message);
     $('file-progress').style.display = 'none';
+    $('file-text').textContent = '';
+    $('file-text').classList.remove('is-dim');
     return;
   }
+  // Пока ждали старт, человек успел взять другой файл — этот больше не нужен.
+  if (gen !== fileGen) {
+    api.files.cancel(started.id).catch(() => {});
+    return;
+  }
+  job = started;
+  const jobId = started.id;
 
-  clearInterval(jobTimer);
   jobTimer = setInterval(async () => {
-    const status = await api.files.status(job.id);
+    if (gen !== fileGen) return;
+    let status;
+    try {
+      status = await api.files.status(jobId);
+    } catch (error) {
+      if (gen !== fileGen) return;
+      clearInterval(jobTimer);
+      $('file-progress').style.display = 'none';
+      if ($('file-text').classList.contains('is-dim')) $('file-text').textContent = '';
+      $('file-text').classList.remove('is-dim');
+      $('file-info').textContent = `${t('Не удалось узнать состояние:')} ${t(ipcErrorText(error))}`;
+      return;
+    }
+    if (gen !== fileGen) return;
     $('file-progress').querySelector('i').style.width = `${Math.round(status.progress * 100)}%`;
-    if (status.text) $('file-text').textContent = status.text;
+    if (status.text) {
+      fileStamped = status.text;
+      $('file-text').classList.remove('is-dim');
+      $('file-text').textContent = renderTranscript(fileStamped, $('file-stamps').checked);
+    }
 
     if (status.state === 'done') {
       clearInterval(jobTimer);
@@ -769,7 +858,10 @@ async function startFile(path) {
       $('file-info').textContent = `${formatDuration(status.durationS)} · ${t('готово')}`;
       $('file-save').disabled = false;
       $('file-copy').disabled = false;
-      fileOriginal = status.text || '';
+      fileStamped = status.text || '';
+      fileOriginal = renderTranscript(fileStamped, $('file-stamps').checked);
+      $('file-text').classList.remove('is-dim');
+      $('file-text').textContent = fileOriginal;
       fileImproved = '';
       fileShowingOriginal = true;
       $('file-improve').disabled = false;
@@ -777,11 +869,14 @@ async function startFile(path) {
     } else if (status.state === 'error') {
       clearInterval(jobTimer);
       $('file-progress').style.display = 'none';
+      // Статус-заглушку из блока текста убираем: ошибка написана ниже.
+      if ($('file-text').classList.contains('is-dim')) $('file-text').textContent = '';
+      $('file-text').classList.remove('is-dim');
       $('file-info').textContent = status.error === 'FFMPEG_MISSING'
         ? t('Нужен FFmpeg — без него звук из видео не достать')
         : t(status.error);
     } else if (status.state === 'working') {
-      $('file-info').textContent = `${formatDuration(status.durationS)} · ${t('распознаю')}, ${Math.round(status.progress * 100)} %`;
+      $('file-info').textContent = `${formatDuration(status.durationS)} · ${t('распознаю')}, ${Math.round(status.progress * 100)} %${etaText(status.progress)}`;
     } else if (status.state === 'switching') {
       $('file-info').textContent = t('Готовлю выбранную модель…');
     } else if (status.state === 'decoding') {
@@ -803,7 +898,12 @@ $('file-pick').addEventListener('click', async () => {
 $('file-another').addEventListener('click', async () => {
   const path = await api.files.pick();
   if (path) { startFile(path); return; }
+  // Диалог отменили — но человек явно закончил с этим файлом: гасим
+  // и опрос, и саму задачу в движке, иначе она молотит процессор дальше.
   clearInterval(jobTimer);
+  if (job?.id) api.files.cancel(job.id).catch(() => {});
+  job = null;
+  fileGen += 1;
   $('file-result').classList.add('is-hidden');
   $('drop').classList.remove('is-hidden');
 });
@@ -852,6 +952,9 @@ function ipcErrorText(error) {
 
 let fileOriginal = '';
 let fileImproved = '';
+// Стенограмма с метками времени — всегда, независимо от галочки показа:
+// конспекту совещания метки нужны, чтобы по ним искать место в записи.
+let fileStamped = '';
 let fileShowingOriginal = true;
 // Поколение файла: конспект, начатый для прошлого файла, не имеет права
 // трогать экран нового.
@@ -876,7 +979,100 @@ function fillFileProviders() {
     select.appendChild(option);
   });
   select.value = [...select.options].some((o) => o.value === chosen) ? chosen : '';
+  fillFileModels();
+  syncFileRefresh();
 }
+
+/**
+ * Модели — списком, а не полем: угадывать и печатать точное имя модели
+ * руками — не вариант. У агентов список известен заранее, у остальных
+ * подгружается кнопкой «Обновить» с сервера провайдера.
+ */
+function fillFileModels(fetched, providerOverride) {
+  const select = $('file-ai-model');
+  const chosen = select.value || settings.files?.aiModel || '';
+  select.innerHTML = '';
+  const def = document.createElement('option');
+  def.value = '';
+  def.textContent = t('Стандартная модель');
+  select.appendChild(def);
+
+  // Пустой выбор — «как в улучшении текста»: модели показываем того
+  // провайдера, который там настроен. providerOverride — свежее значение
+  // из обработчика: showValues мог откатить селект к старому.
+  const provider = (providerOverride ?? $('file-ai-provider').value) || settings.ai?.provider || '';
+  const preset = providers[provider];
+  let items = [];
+  if (fetched) {
+    items = fetched.map((name) => ({ value: name, label: name }));
+  } else if (preset?.kind === 'cli') {
+    items = (preset.models || [])
+      .filter((model) => model.id)
+      .map((model) => ({ value: model.id, label: t(model.title) }));
+  }
+  // Выбор человека не выбрасываем, даже если его нет в списке: имя,
+  // вписанное текстом в 2.15.0, обязано пережить обновление, а незнакомую
+  // агенту модель тот всё равно примет через свой флаг.
+  if (chosen && !items.some((item) => item.value === chosen)) {
+    items.push({ value: chosen, label: chosen });
+  }
+  for (const item of items) {
+    const option = document.createElement('option');
+    option.value = item.value;
+    option.textContent = item.label;
+    select.appendChild(option);
+  }
+  select.value = chosen;
+}
+
+/** «Обновить» нужна только там, где список моделей заранее неизвестен. */
+function syncFileRefresh(providerOverride) {
+  const id = (providerOverride ?? $('file-ai-provider').value) || settings.ai?.provider || '';
+  const preset = providers[id];
+  $('file-ai-refresh').classList.toggle('is-hidden', preset?.kind === 'cli');
+}
+
+$('file-ai-provider').addEventListener('change', async () => {
+  // Значение берём сразу: пока ждём запись, showValues может откатить селект.
+  const provider = $('file-ai-provider').value;
+  // Модель принадлежит провайдеру: имя от прошлого не переносим — у нового
+  // провайдера такой модели скорее всего нет.
+  await save('files.aiModel', '');
+  $('file-ai-model').value = '';
+  fillFileModels(undefined, provider);
+  syncFileRefresh(provider);
+});
+
+/** Подсказка, когда провайдеру файлов не хватает ключа: поля ключа на этой странице нет. */
+function fileKeyHint(provider) {
+  const id = provider || settings.ai?.provider || '';
+  if (providers[id]?.needsKey && !settings.ai?.keys?.[id]) {
+    return ` ${t('Ключ вводится на странице «Улучшение текста»')}`;
+  }
+  return '';
+}
+
+$('file-ai-refresh').addEventListener('click', async () => {
+  const provider = $('file-ai-provider').value;
+  const overrides = provider ? { provider } : {};
+  // Сохранённый адрес принадлежит основному провайдеру — чужой берёт свой.
+  if (provider && provider !== settings.ai?.provider) overrides.baseUrl = '';
+  $('file-ai-refresh').disabled = true;
+  try {
+    const answer = await api.llm.models(overrides);
+    if (!answer.ok) {
+      say(`${t('Список моделей не пришёл:')} ${t(answer.error)}${fileKeyHint(provider)}`);
+      return;
+    }
+    // У агентов модели приходят парами {id, title} — приводим к именам.
+    const names = (answer.models || [])
+      .map((item) => (typeof item === 'string' ? item : item.id))
+      .filter(Boolean);
+    fillFileModels(names.length ? names : undefined, provider);
+  } finally {
+    $('file-ai-refresh').disabled = false;
+  }
+});
 
 function showFileText(original) {
   fileShowingOriginal = original;
@@ -893,8 +1089,18 @@ api.files.onImproveProgress((progress) => {
   $('file-info').textContent = `${t('Конспектирую по кускам:')} ${progress.step} ${t('из')} ${progress.total}…`;
 });
 
+// Движок всегда помнит время, поэтому галочка меток действует сразу на
+// готовый текст — новое распознавание не нужно.
+$('file-stamps').addEventListener('change', () => {
+  if (!fileStamped) return;
+  fileOriginal = renderTranscript(fileStamped, $('file-stamps').checked);
+  if (fileShowingOriginal) $('file-text').textContent = fileOriginal;
+});
+
 $('file-improve').addEventListener('click', async () => {
-  const source = fileOriginal;
+  const mode = $('file-improve-mode').value;
+  // Конспекту совещания — текст с метками времени: по ним в записи ищут место.
+  const source = mode === 'meeting' ? (fileStamped || fileOriginal) : fileOriginal;
   if (!source.trim()) return;
   const gen = fileGen;
   fileImproveGen = gen;
@@ -904,7 +1110,7 @@ $('file-improve').addEventListener('click', async () => {
   try {
     const improved = await api.files.improve({
       text: source,
-      mode: $('file-improve-mode').value,
+      mode,
       provider: $('file-ai-provider').value,
       model: $('file-ai-model').value.trim(),
     });
@@ -919,7 +1125,7 @@ $('file-improve').addEventListener('click', async () => {
     const message = ipcErrorText(error);
     $('file-info').textContent = message.includes('PT_CANCELLED')
       ? t('Конспект прерван')
-      : `${t('Причесать не вышло:')} ${t(message)}`;
+      : `${t('Причесать не вышло:')} ${t(message)}${fileKeyHint($('file-ai-provider').value)}`;
   } finally {
     if (gen === fileGen) {
       $('file-improve').disabled = false;
@@ -1279,13 +1485,36 @@ function placeTourSpot(step) {
     spot.style.width = `${rect.width + 12}px`;
     spot.style.height = `${rect.height + 12}px`;
 
-    // Карточка — под подсветкой, если влезает, иначе над ней.
+    // Карточку ставим СБОКУ от подсветки, чтобы подсвеченное оставалось
+    // видно целиком, — особенно важно на крупном масштабе, где карточка
+    // под блоком перекрывала бы половину экрана. Некуда сбоку — вниз,
+    // вверх, и в крайнем случае к нижнему краю.
+    const clamp = (value, min, max) => Math.min(Math.max(value, min), Math.max(min, max));
+    const cardW = card.offsetWidth;
     const cardH = card.offsetHeight;
-    const below = rect.bottom + 18 + cardH < window.innerHeight;
-    const top = below ? rect.bottom + 18 : Math.max(12, rect.top - cardH - 18);
-    const left = Math.min(Math.max(rect.left, 12), window.innerWidth - card.offsetWidth - 12);
-    card.style.top = `${top}px`;
+    const gap = 18;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    let left;
+    let top;
+    if (rect.right + gap + cardW <= vw - 12) {
+      left = rect.right + gap;
+      top = clamp(rect.top, 12, vh - cardH - 12);
+    } else if (rect.left - gap - cardW >= 12) {
+      left = rect.left - gap - cardW;
+      top = clamp(rect.top, 12, vh - cardH - 12);
+    } else if (rect.bottom + gap + cardH <= vh - 12) {
+      left = clamp(rect.left, 12, vw - cardW - 12);
+      top = rect.bottom + gap;
+    } else if (rect.top - gap - cardH >= 12) {
+      left = clamp(rect.left, 12, vw - cardW - 12);
+      top = rect.top - gap - cardH;
+    } else {
+      left = (vw - cardW) / 2;
+      top = Math.max(12, vh - cardH - 12);
+    }
     card.style.left = `${left}px`;
+    card.style.top = `${top}px`;
   });
 }
 
@@ -1521,6 +1750,7 @@ async function start() {
 
   applyAppearance();
   bindAll();
+  syncKeyDots();
   syncSoundDependents();
   refreshModelsDir();
   renderHotkeys();
@@ -1547,6 +1777,7 @@ async function start() {
     settings = fresh;
     applyAppearance();
     showValues();
+    syncKeyDots();
     syncModeHint();
   });
 }
@@ -1653,6 +1884,17 @@ const RELAY_WORDS = {
   error: 'Не подключилось',
   denied: 'Сервер не принял',
 };
+
+/**
+ * Точечки в полях ключей, которые вводятся один раз и потом хранятся:
+ * пустое поле выглядит как «ключ сбросился», хотя он на месте.
+ */
+function syncKeyDots() {
+  const code = $('rec-code');
+  if (code) code.placeholder = settings.recognition?.serverToken ? '••••••' : '000000';
+  const relayCode = $('relay-code');
+  if (relayCode) relayCode.placeholder = settings.relay?.token ? '••••••••' : 'pt_…';
+}
 
 function showRelay(state) {
   const where = $('relay-state');
