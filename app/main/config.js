@@ -53,8 +53,11 @@ const DEFAULTS = {
   },
 
   // Язык интерфейса: '' — как в системе, 'ru' | 'en' — явный выбор.
+  // tourSeen — прошёл ли человек знакомство с программой. Ложь у всех,
+  // включая старых пользователей: тур новый, пусть увидят один раз.
   ui: {
     locale: '',
+    tourSeen: false,
   },
   appearance: {
     theme: 'system',        // system | dark | light
@@ -84,7 +87,10 @@ const DEFAULTS = {
   // не уходят — но и держать их без счёта незачем.
   history: { keep: 50 },
 
-  files: { timestamps: false },
+  // aiProvider/aiModel — чем причёсывать расшифровки файлов. Пусто —
+  // тем же, чем обычную диктовку. Отдельный выбор нужен, потому что
+  // часовое совещание заслуживает модели посильнее, чем быстрая фраза.
+  files: { timestamps: false, aiProvider: '', aiModel: '' },
 
   startup: { autoLaunch: true, restartOnCrash: true },
 

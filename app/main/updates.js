@@ -3,6 +3,7 @@
 const https = require('node:https');
 const { app } = require('electron');
 
+const config = require('./config');
 const log = require('./logger').scoped('updates');
 
 /**
@@ -75,6 +76,9 @@ async function check() {
       current,
       latest,
       newer,
+      // Решение «показывать ли» принимается здесь, а не в каждом окне:
+      // «больше не напоминать» должно работать одинаково везде.
+      notify: Boolean(newer && latest !== config.get('updates.skipVersion', '')),
       name: release.name || '',
       notes: String(release.body || '').slice(0, 2000),
       url: release.html_url,
@@ -101,20 +105,28 @@ async function check() {
 const ASK_EVERY_MS = 24 * 60 * 60 * 1000;
 const DELAY_AFTER_START_MS = 45000;
 
-function scheduleStartupCheck(onFound) {
-  const config = require('./config');
+// Последний тихий ответ: окно настроек открывают часто, а спрашивать
+// GitHub чаще раза в сутки незачем — и лимит запросов у него общий.
+let quietAnswer = null;
 
+async function quietCheck() {
+  const lastAsked = Number(config.get('updates.lastCheckedAt', 0)) || 0;
+  if (quietAnswer && Date.now() - lastAsked < ASK_EVERY_MS) return quietAnswer;
+  const answer = await check();
+  if (answer.ok) {
+    config.set({ updates: { lastCheckedAt: Date.now() } });
+    quietAnswer = answer;
+  }
+  return answer;
+}
+
+function scheduleStartupCheck(onFound) {
   setTimeout(async () => {
     const lastAsked = Number(config.get('updates.lastCheckedAt', 0)) || 0;
     if (Date.now() - lastAsked < ASK_EVERY_MS) return;
 
-    const answer = await check();
-    if (!answer.ok) return;
-    config.set({ updates: { lastCheckedAt: Date.now() } });
-
-    if (answer.newer && answer.latest !== config.get('updates.skipVersion', '')) {
-      onFound(answer);
-    }
+    const answer = await quietCheck();
+    if (answer.ok && answer.notify) onFound(answer);
   }, DELAY_AFTER_START_MS);
 }
 
@@ -156,4 +168,4 @@ async function downloadAndInstall(onProgress) {
   autoUpdater.quitAndInstall(true, true);
 }
 
-module.exports = { check, compare, scheduleStartupCheck, downloadAndInstall };
+module.exports = { check, compare, quietCheck, scheduleStartupCheck, downloadAndInstall };

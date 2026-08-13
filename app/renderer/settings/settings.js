@@ -284,7 +284,7 @@ async function changeModelsDir(action) {
     if (answer.warning) say(t(answer.warning));
     else if (!answer.same) say(t('Готово — модели теперь в новой папке'));
   } catch (error) {
-    say(`${t('Перенести не вышло:')} ${t(error.message.replace(/^Error invoking remote method '[^']+': Error: /, ''))}`);
+    say(`${t('Перенести не вышло:')} ${t(ipcErrorText(error))}`);
   } finally {
     $('models-dir-pick').disabled = false;
     $('models-dir-reset').disabled = false;
@@ -421,7 +421,7 @@ $('bench').addEventListener('click', async () => {
     $('bench-sub').textContent = `${t('Минута речи распознаётся за')} ${result.secondsPerMinute.toFixed(1)} ${t('с')} `
       + `(${result.device === 'cuda' ? t('видеокарта') : t('процессор')}, ${result.model})`;
   } catch (error) {
-    $('bench-sub').textContent = `${t('Померить не вышло:')} ${t(error.message.replace(/^Error invoking remote method '[^']+': Error: /, ''))}`;
+    $('bench-sub').textContent = `${t('Померить не вышло:')} ${t(ipcErrorText(error))}`;
   }
   $('bench').disabled = false;
 });
@@ -735,6 +735,12 @@ async function startFile(path) {
   $('file-progress').querySelector('i').style.width = '0';
   $('file-save').disabled = true;
   $('file-copy').disabled = true;
+  $('file-improve').disabled = true;
+  $('file-back').classList.add('is-hidden');
+  fileGen += 1;
+  fileOriginal = '';
+  fileImproved = '';
+  fileShowingOriginal = true;
 
   try {
     job = await api.files.start({
@@ -763,6 +769,11 @@ async function startFile(path) {
       $('file-info').textContent = `${formatDuration(status.durationS)} · ${t('готово')}`;
       $('file-save').disabled = false;
       $('file-copy').disabled = false;
+      fileOriginal = status.text || '';
+      fileImproved = '';
+      fileShowingOriginal = true;
+      $('file-improve').disabled = false;
+      $('file-back').classList.add('is-hidden');
     } else if (status.state === 'error') {
       clearInterval(jobTimer);
       $('file-progress').style.display = 'none';
@@ -830,6 +841,92 @@ $('file-copy').addEventListener('click', async () => {
   await api.clipboard.write($('file-text').textContent);
   say(t('Текст скопирован'));
 });
+
+// ---------- причесать расшифровку ----------
+
+/** Ошибка из main без служебной обёртки Electron. */
+function ipcErrorText(error) {
+  return String(error?.message || error || '')
+    .replace(/^Error invoking remote method '[^']+': Error: /, '');
+}
+
+let fileOriginal = '';
+let fileImproved = '';
+let fileShowingOriginal = true;
+// Поколение файла: конспект, начатый для прошлого файла, не имеет права
+// трогать экран нового.
+let fileGen = 0;
+
+/** Провайдеры для файлов: пусто — тот же, что причёсывает диктовку. */
+function fillFileProviders() {
+  const select = $('file-ai-provider');
+  const chosen = settings.files?.aiProvider ?? '';
+  select.innerHTML = '';
+  const same = document.createElement('option');
+  same.value = '';
+  same.textContent = t('Как в улучшении текста');
+  select.appendChild(same);
+  Object.entries(providers).forEach(([id, preset]) => {
+    // «Своё» без собственного поля адреса здесь работать не может:
+    // адрес хранится один и принадлежит основному провайдеру.
+    if (id === 'custom') return;
+    const option = document.createElement('option');
+    option.value = id;
+    option.textContent = t(preset.title);
+    select.appendChild(option);
+  });
+  select.value = [...select.options].some((o) => o.value === chosen) ? chosen : '';
+}
+
+function showFileText(original) {
+  fileShowingOriginal = original;
+  $('file-text').textContent = original ? fileOriginal : fileImproved;
+  $('file-back').textContent = t(original ? 'Показать конспект' : 'Показать оригинал');
+}
+
+$('file-back').addEventListener('click', () => showFileText(!fileShowingOriginal));
+
+let fileImproveGen = -1;
+api.files.onImproveProgress((progress) => {
+  // Поздний прогресс конспекта прошлого файла не топчет статус нового.
+  if (fileImproveGen !== fileGen) return;
+  $('file-info').textContent = `${t('Конспектирую по кускам:')} ${progress.step} ${t('из')} ${progress.total}…`;
+});
+
+$('file-improve').addEventListener('click', async () => {
+  const source = fileOriginal;
+  if (!source.trim()) return;
+  const gen = fileGen;
+  fileImproveGen = gen;
+  $('file-improve').disabled = true;
+  $('file-improve').textContent = t('Думает…');
+  $('file-info').textContent = t('Причёсываю — у большой записи это занимает пару минут…');
+  try {
+    const improved = await api.files.improve({
+      text: source,
+      mode: $('file-improve-mode').value,
+      provider: $('file-ai-provider').value,
+      model: $('file-ai-model').value.trim(),
+    });
+    // Пока думали, человек мог открыть другой файл — его экран не трогаем.
+    if (gen !== fileGen) return;
+    fileImproved = improved;
+    showFileText(false);
+    $('file-back').classList.remove('is-hidden');
+    $('file-info').textContent = t('Готово — результат ниже, оригинал никуда не делся');
+  } catch (error) {
+    if (gen !== fileGen) return;
+    const message = ipcErrorText(error);
+    $('file-info').textContent = message.includes('PT_CANCELLED')
+      ? t('Конспект прерван')
+      : `${t('Причесать не вышло:')} ${t(message)}`;
+  } finally {
+    if (gen === fileGen) {
+      $('file-improve').disabled = false;
+      $('file-improve').textContent = t('Причесать');
+    }
+  }
+});
 $('file-save').addEventListener('click', async () => {
   const saved = await api.files.save({
     text: $('file-text').textContent,
@@ -886,7 +983,7 @@ function renderHistory(list) {
           chimeDone();
           say(t('Готово, текст в буфере обмена'));
         } catch (error) {
-          say(t(error.message.replace(/^Error invoking remote method '[^']+': Error: /, '')));
+          say(t(ipcErrorText(error)));
           retry.disabled = false;
           retry.textContent = t('Распознать');
         }
@@ -926,7 +1023,7 @@ function renderHistory(list) {
           chimeDone();
           say(t('Готово, текст в буфере обмена'));
         } catch (error) {
-          say(t(error.message.replace(/^Error invoking remote method '[^']+': Error: /, '')));
+          say(t(ipcErrorText(error)));
           improve.disabled = false;
           improve.textContent = t('Причесать');
         }
@@ -1005,6 +1102,8 @@ $('errors-refresh').addEventListener('click', refreshErrors);
 $('logs-open').addEventListener('click', async () => api.app.openPath((await api.app.state()).logFile));
 $('errors-open').addEventListener('click', async () => api.app.openPath((await api.app.state()).errorFile));
 $('open-github').addEventListener('click', () => api.app.openExternal('https://github.com/DanT2000/PasteTalk'));
+$('open-guide').addEventListener('click', () => api.app.openExternal('https://github.com/DanT2000/PasteTalk#readme'));
+$('tour-again').addEventListener('click', showTour);
 
 let updateLink = '';
 // Кнопка «Обновить» ставит обновление сама, изнутри программы. Ссылка на
@@ -1047,7 +1146,10 @@ $('update-check').addEventListener('click', async () => {
     $('update-get').style.display = 'none';
   }
 });
-$('update-get').addEventListener('click', async () => {
+async function startInstallFlow() {
+  // Установка одна: вторая кнопка («Что нового», «О программе») не должна
+  // запускать параллельное скачивание того же файла.
+  if (installing) return;
   if (updateFallback) {
     if (updateLink) api.app.openExternal(updateLink);
     return;
@@ -1069,6 +1171,246 @@ $('update-get').addEventListener('click', async () => {
     $('update-sub').textContent = `${t('Само обновиться не вышло:')} ${t(answer.error)}. `
       + t('Можно скачать установщик и запустить его поверх — настройки сохранятся');
   }
+}
+$('update-get').addEventListener('click', startInstallFlow);
+
+// ---------- знакомство с программой ----------
+
+/**
+ * Несколько шагов о том, как всё устроено: где модель, что такое
+ * улучшение, чем провайдеры отличаются друг от друга. Показывается один
+ * раз, повторяется кнопкой в «О программе». Тексты собираются функцией,
+ * а не константой: перевод должен браться после applyLocale.
+ */
+function tourSteps() {
+  const p = (text) => `<p>${t(text)}</p>`;
+  return [
+    {
+      title: 'Как это работает',
+      body: p('Нажмите Ctrl+Alt+Space, скажите, нажмите ещё раз — текст уже в буфере обмена и, если включена автовставка, сам появился там, где стоял курсор.')
+        + p('Ctrl+Alt+Enter заканчивает запись сразу с улучшением, а Ctrl+Alt+I причёсывает то, что уже лежит в буфере.')
+        + p('Распознавание происходит на этом компьютере — звук никуда не уходит.'),
+    },
+    {
+      title: 'Модель распознавания',
+      page: 'model', target: '#model-list', wide: true,
+      body: p('Выбирается в разделе «Распознавание». Large-v3 — самая точная, Large-v3 Turbo почти так же точна, но вдвое легче и быстрее — хороший выбор для начала.')
+        + p('Модель скачивается один раз и живёт на диске. Если системный диск забит — «Папка моделей» переезжает куда скажете.')
+        + p('Без видеокарты NVIDIA выбирайте «Считать на: Процессор» и модель полегче — или режим «На сервере PasteTalk», если у вас есть код доступа.'),
+    },
+    {
+      title: 'Улучшение текста',
+      page: 'ai', target: '#ai-enabled',
+      body: p('Включается галочкой «Улучшать текст» в разделе «Улучшение текста». Языковая модель убирает «эээ» и повторы, расставляет знаки — а в режиме «Почистить и переписать» превращает устную речь в деловой текст.')
+        + p('Обычный текст попадает в буфер сразу, улучшенный приходит следом и заменяет его. Модель молчит — у вас остаётся обычный.')
+        + p('Указания модели можно переписать своими словами: режим «Свои указания».'),
+    },
+    {
+      title: 'Откуда брать модель для улучшения',
+      page: 'ai', target: '#provider',
+      body: p('LM Studio и Ollama — бесплатно и локально: программа на вашем компьютере, ничего никуда не уходит.')
+        + p('Claude Code и Codex — приложения-агенты, если они у вас установлены: работают через вашу подписку, ключ не нужен. Claude Code — от Anthropic, Codex — от OpenAI.')
+        + p('ChatGPT (OpenAI), DeepSeek и AITunnel — облачные API по своему ключу: платно, по расходу. «Своё, OpenAI-совместимое» — любой сервер с таким API, хоть бесплатный шлюз.'),
+    },
+    {
+      title: 'Словарь специфики',
+      page: 'model', target: '#vocabulary',
+      body: p('В работе каждого свои слова: названия программ, фамилии, термины. Впишите их в поле «Ваша специфика» в разделе «Распознавание» — через запятую.')
+        + p('Распознавание перестанет их коверкать («кулифай» станет Coolify), а улучшение — «исправлять» на литературный русский.'),
+    },
+    {
+      title: 'Файлы и конспекты',
+      page: 'files', target: '#file-improve', wide: true,
+      body: p('Раздел «Файлы»: перетащите видео или аудио — получите расшифровку, хоть с метками времени.')
+        + p('Кнопка «Причесать» превращает её в конспект: «Конспект совещания» делает из часовой записи выжимку — темы, решения, задачи. Для больших записей можно выбрать модель посильнее обычной.'),
+    },
+    {
+      title: 'Телефон и Telegram',
+      page: 'relay', target: '[data-page="relay"] .card', wide: true,
+      body: p('Раздел «Интеграция» подключает этот компьютер к серверу PasteTalk: тогда диктовать можно с телефона и через Telegram-бота, а распознавать будет этот компьютер.')
+        + p('Это необязательно: без сервера всё остальное работает как есть.'),
+    },
+    {
+      title: 'Готово',
+      page: 'about', target: '#tour-again',
+      body: p('Это знакомство можно пройти ещё раз: «О программе» → «Пройти знакомство».')
+        + p('Подробная инструкция и ответы — на GitHub; если что-то не работает, напишите в issues, поможем.'),
+    },
+  ];
+}
+
+let tourAt = 0;
+let tourPageBefore = '';
+// Шаги собираются один раз на показ (после applyLocale переводы уже на
+// месте), а resize двигает только подсветку — не пересобирает всё.
+let tourStepsCache = null;
+let tourCurrentStep = null;
+
+/** Подсветить живой кусок окна: рамка вокруг, всё остальное в тени. */
+function placeTourSpot(step) {
+  const veil = $('tour-veil');
+  const spot = $('tour-spot');
+  const card = $('tour-card');
+
+  let box = null;
+  if (step.target) {
+    const el = document.querySelector(step.target);
+    if (el) {
+      box = (step.wide ? el.closest('.card, .drop') : el.closest('.row')) || el;
+      box.scrollIntoView({ block: 'center' });
+    }
+  }
+
+  if (!box) {
+    veil.classList.add('is-dim');
+    spot.style.display = 'none';
+    card.style.left = '';
+    card.style.top = '';
+    return;
+  }
+
+  veil.classList.remove('is-dim');
+  spot.style.display = 'block';
+  // Мерим после прокрутки: раскладка должна устояться.
+  requestAnimationFrame(() => {
+    const rect = box.getBoundingClientRect();
+    spot.style.left = `${rect.left - 6}px`;
+    spot.style.top = `${rect.top - 6}px`;
+    spot.style.width = `${rect.width + 12}px`;
+    spot.style.height = `${rect.height + 12}px`;
+
+    // Карточка — под подсветкой, если влезает, иначе над ней.
+    const cardH = card.offsetHeight;
+    const below = rect.bottom + 18 + cardH < window.innerHeight;
+    const top = below ? rect.bottom + 18 : Math.max(12, rect.top - cardH - 18);
+    const left = Math.min(Math.max(rect.left, 12), window.innerWidth - card.offsetWidth - 12);
+    card.style.top = `${top}px`;
+    card.style.left = `${left}px`;
+  });
+}
+
+function renderTourStep() {
+  const steps = tourStepsCache || (tourStepsCache = tourSteps());
+  const step = steps[tourAt];
+  tourCurrentStep = step;
+  const active = document.querySelector('.nav-item.is-active')?.dataset.goto || '';
+  if (step.page && step.page !== active) goto(step.page);
+  $('tour-title').textContent = t(step.title);
+  $('tour-body').innerHTML = step.body;
+  $('tour-back').style.visibility = tourAt === 0 ? 'hidden' : 'visible';
+  $('tour-next').textContent = t(tourAt === steps.length - 1 ? 'Начать работу' : 'Дальше');
+  $('tour-dots').innerHTML = steps.map((_, i) => `<i${i === tourAt ? ' class="is-on"' : ''}></i>`).join('');
+  placeTourSpot(step);
+}
+
+function showTour() {
+  tourAt = 0;
+  tourStepsCache = null;
+  tourPageBefore = document.querySelector('.nav-item.is-active')?.dataset.goto || 'general';
+  $('tour-veil').classList.remove('is-hidden');
+  renderTourStep();
+}
+
+function finishTour() {
+  $('tour-veil').classList.add('is-hidden');
+  // Возвращаем человека туда, откуда он начал: тур не должен оставлять
+  // его в случайном разделе.
+  goto(tourPageBefore || 'general');
+  save('ui.tourSeen', true);
+}
+
+$('tour-skip').addEventListener('click', finishTour);
+$('tour-back').addEventListener('click', () => { if (tourAt > 0) { tourAt -= 1; renderTourStep(); } });
+$('tour-next').addEventListener('click', () => {
+  if (!tourStepsCache || tourAt >= tourStepsCache.length - 1) { finishTour(); return; }
+  tourAt += 1;
+  renderTourStep();
+});
+window.addEventListener('resize', () => {
+  if (!$('tour-veil').classList.contains('is-hidden') && tourCurrentStep) {
+    placeTourSpot(tourCurrentStep);
+  }
+});
+
+// ---------- всплывашка «вышла версия» ----------
+
+let toastRelease = null;
+let updateToastTimer = null;
+
+function hideUpdateToast() {
+  clearTimeout(updateToastTimer);
+  const toast = $('update-toast');
+  toast.classList.remove('is-in');
+  setTimeout(() => toast.classList.add('is-hidden'), 300);
+}
+
+/**
+ * Заметки выпуска приходят Markdown-текстом с GitHub. Полноценный
+ * разбор не нужен: заголовки, жирное и списки — этого хватает, чтобы
+ * человек прочитал «что нового» без решёток и звёздочек.
+ */
+function renderNotes(md) {
+  const inline = (s) => escapeHtml(s)
+    .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>');
+  let html = '';
+  let inList = false;
+  for (const raw of String(md || '').split(/\r?\n/)) {
+    const line = raw.trim();
+    // Контрольные суммы — для проверяющих руками, не для этого окна.
+    if (/^#+\s*Контрольные суммы/i.test(line)) break;
+    if (!line) { if (inList) { html += '</ul>'; inList = false; } continue; }
+    if (line.startsWith('#')) {
+      if (inList) { html += '</ul>'; inList = false; }
+      html += `<h3>${inline(line.replace(/^#+\s*/, ''))}</h3>`;
+      continue;
+    }
+    if (line.startsWith('- ')) {
+      if (!inList) { html += '<ul>'; inList = true; }
+      html += `<li>${inline(line.slice(2))}</li>`;
+      continue;
+    }
+    if (line.startsWith('```')) continue;
+    html += `<p>${inline(line)}</p>`;
+  }
+  if (inList) html += '</ul>';
+  return html;
+}
+
+/** Тихая проверка при открытии окна: вышла версия — аккуратный уголок. */
+async function maybeToastUpdate() {
+  try {
+    // Тихий путь ходит в сеть не чаще раза в сутки и сам уважает
+    // «больше не напоминать» — окну остаётся только показать.
+    const answer = await api.app.quietCheckUpdates();
+    if (!answer.ok || !answer.notify) return;
+    toastRelease = answer;
+    updateLink = answer.download;
+    $('update-toast-ver').textContent = answer.latest;
+    const toast = $('update-toast');
+    toast.classList.remove('is-hidden');
+    requestAnimationFrame(() => toast.classList.add('is-in'));
+    updateToastTimer = setTimeout(hideUpdateToast, 8000);
+  } catch { /* тихая проверка молчит и об ошибках */ }
+}
+
+$('update-toast-close').addEventListener('click', hideUpdateToast);
+$('update-toast-notes').addEventListener('click', () => {
+  hideUpdateToast();
+  if (!toastRelease) return;
+  $('notes-ver').textContent = toastRelease.latest;
+  $('notes-body').innerHTML = renderNotes(toastRelease.notes);
+  $('notes-veil').classList.remove('is-hidden');
+});
+$('notes-close').addEventListener('click', () => $('notes-veil').classList.add('is-hidden'));
+$('notes-veil').addEventListener('click', (event) => {
+  if (event.target === $('notes-veil')) $('notes-veil').classList.add('is-hidden');
+});
+$('notes-update').addEventListener('click', () => {
+  $('notes-veil').classList.add('is-hidden');
+  // Ход установки показывает раздел «О программе» — ведём человека туда.
+  goto('about');
+  startInstallFlow();
 });
 api.app.onUpdateProgress((percent) => {
   $('update-sub').textContent = percent >= 100
@@ -1137,11 +1479,13 @@ $('welcome-done').addEventListener('click', async () => {
   goto('model');
   pollModel();
   say(t('Качаю модель — это разово'));
+  if (!settings.ui?.tourSeen) showTour();
 });
 $('welcome-skip').addEventListener('click', async () => {
   await api.config.set({ firstRun: false });
   settings = await api.config.all();
   goto('general');
+  if (!settings.ui?.tourSeen) showTour();
 });
 
 // ---------- запуск окна ----------
@@ -1181,6 +1525,12 @@ async function start() {
   refreshModelsDir();
   renderHotkeys();
   renderProviders();
+  fillFileProviders();
+  maybeToastUpdate();
+  // Первое знакомство: один раз, можно пропустить. На самом первом
+  // запуске сперва идёт страница приветствия с выбором модели — тур
+  // начнётся после неё, когда человеку уже есть что подсвечивать.
+  if (!settings.ui?.tourSeen && !settings.firstRun) showTour();
   syncModeHint();
   await loadMicrophones();
 

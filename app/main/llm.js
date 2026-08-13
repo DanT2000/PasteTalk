@@ -122,10 +122,14 @@ const MODES = modes.MODES;
  * нельзя. Здесь лежит способ оборвать то, что идёт прямо сейчас.
  */
 let stopCurrent = null;
+// Чей запрос сейчас в полёте: 'dictation' — обычное улучшение диктовки,
+// 'digest' — многоминутный конспект файла. Отмена с панели записи не
+// должна убивать конспект, который человек ждёт уже десять минут.
+let currentJob = 'dictation';
 const CANCELLED = 'PT_CANCELLED';
 
-function cancel() {
-  if (!stopCurrent) return false;
+function cancel(job = 'dictation') {
+  if (!stopCurrent || currentJob !== job) return false;
   const stop = stopCurrent;
   stopCurrent = null;
   try {
@@ -417,6 +421,75 @@ function runCli(settings, text, timeoutMs) {
   });
 }
 
+// ---------- конспект длинной записи ----------
+
+// Кусок держим маленьким: у бесплатных провайдеров жёсткие пределы на
+// размер запроса, и часовая расшифровка целиком валит их одного за
+// другим. Порог целого прохода — когда запись короткая и резать незачем.
+const MEETING_CHUNK_CHARS = 9000;
+const MEETING_SINGLE_LIMIT = 20000;
+
+function splitTranscript(text) {
+  // Режем по строкам (у расшифровок с метками каждая фраза — строка),
+  // а сплошной текст без переносов — по предложениям. Строку длиннее
+  // куска (сплошной поток без пунктуации) дорезаем жёстко: лучше рез
+  // посреди слова, чем запрос, который провайдер отвергнет целиком.
+  const rough = text.includes('\n') ? text.split('\n') : text.split(/(?<=[.!?…])\s+/);
+  const lines = [];
+  for (const line of rough) {
+    if (line.length <= MEETING_CHUNK_CHARS) { lines.push(line); continue; }
+    for (const bit of line.split(/(?<=[.!?…])\s+/)) {
+      if (bit.length <= MEETING_CHUNK_CHARS) { lines.push(bit); continue; }
+      for (let at = 0; at < bit.length; at += MEETING_CHUNK_CHARS) {
+        lines.push(bit.slice(at, at + MEETING_CHUNK_CHARS));
+      }
+    }
+  }
+  const parts = [];
+  let current = [];
+  let length = 0;
+  for (const line of lines) {
+    if (length + line.length > MEETING_CHUNK_CHARS && current.length) {
+      parts.push(current.join('\n'));
+      current = [];
+      length = 0;
+    }
+    current.push(line);
+    length += line.length + 1;
+  }
+  if (current.length) parts.push(current.join('\n'));
+  return parts;
+}
+
+/**
+ * Конспект записи любой длины. Короткую отдаём модели целиком, длинную —
+ * в два прохода: заметки по кускам, затем общий конспект из заметок.
+ * onProgress получает строку о текущем шаге — для окна настроек.
+ */
+async function meetingNotes(text, overrides = {}, onProgress = null) {
+  const clean = String(text || '').trim();
+  if (clean.length <= MEETING_SINGLE_LIMIT) {
+    return improve(clean, { ...overrides, mode: 'meeting' });
+  }
+
+  const parts = splitTranscript(clean);
+  const notes = [];
+  for (let i = 0; i < parts.length; i++) {
+    if (onProgress) onProgress({ step: i + 1, total: parts.length + 1 });
+    notes.push(await improve(parts[i], { ...overrides, mode: 'meetingPart' }));
+  }
+  if (onProgress) onProgress({ step: parts.length + 1, total: parts.length + 1 });
+  const combined = notes
+    .map((note, i) => `Конспект части ${i + 1}:\n${note}`)
+    .join('\n\n');
+  // У трёхчасовой записи даже конспекты частей не влезают одним куском —
+  // тогда прогоняем их через ту же лестницу ещё раз.
+  if (combined.length > MEETING_SINGLE_LIMIT) {
+    return meetingNotes(combined, overrides, onProgress);
+  }
+  return improve(combined, { ...overrides, mode: 'meeting' });
+}
+
 // ---------- наружу ----------
 
 async function improve(text, overrides = {}) {
@@ -424,6 +497,7 @@ async function improve(text, overrides = {}) {
   if (!clean) return clean;
 
   const settings = resolve(overrides);
+  currentJob = settings.job === 'digest' ? 'digest' : 'dictation';
   const timeoutMs = timeoutFor(clean, settings);
   const started = Date.now();
 
@@ -511,4 +585,4 @@ function hasCommand(command) {
   });
 }
 
-module.exports = { improve, models, check, detect, cancel, isCancelled, busy, PROVIDERS, MODES };
+module.exports = { improve, meetingNotes, models, check, detect, cancel, isCancelled, busy, PROVIDERS, MODES };

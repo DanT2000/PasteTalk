@@ -659,6 +659,45 @@ ipcMain.handle('files:pick', async (event) => {
   return result.canceled ? null : result.filePaths[0];
 });
 
+/**
+ * Причесать расшифровку файла. Провайдера и модель можно взять другие,
+ * чем для обычной диктовки: часовое совещание заслуживает модели
+ * посильнее, чем быстрая фраза.
+ */
+let digestBusy = false;
+
+ipcMain.handle('files:improve', async (_event, payload) => {
+  // Один конспект за раз: перезагруженное окно или повторный клик не
+  // должны запускать второй многоминутный цикл поверх первого.
+  if (digestBusy) throw new Error('Конспект уже готовится — дождитесь его');
+
+  const mode = String(payload.mode || 'meeting');
+  // job: 'digest' — чтобы отмена с панели записи не убивала конспект.
+  const overrides = { mode, job: 'digest' };
+  if (payload.provider) {
+    overrides.provider = String(payload.provider);
+    // Сохранённые адрес и модель относятся к провайдеру из настроек
+    // улучшения; чужому провайдеру они не подходят — пусть берёт свои.
+    if (overrides.provider !== config.get('ai.provider', '')) {
+      overrides.baseUrl = '';
+      if (!payload.model) overrides.model = '';
+    }
+  }
+  if (payload.model) overrides.model = String(payload.model);
+
+  const text = String(payload.text || '');
+  digestBusy = true;
+  try {
+    if (mode !== 'meeting') return await llm.improve(text, overrides);
+    // Конспект умеет длинные записи: по кускам, с ходом дела в окне.
+    return await llm.meetingNotes(text, overrides, (progress) => {
+      windows.send('settings', 'files:improveProgress', progress);
+    });
+  } finally {
+    digestBusy = false;
+  }
+});
+
 ipcMain.handle('files:start', (_event, options) => {
   // Словарь специфики помогает и расшифровке файлов — термины те же.
   return engine.startFile({ ...options, prompt: modes.whisperPrompt(config.get('speech.vocabulary', '')) });
@@ -680,6 +719,7 @@ ipcMain.handle('files:save', async (event, payload) => {
 ipcMain.handle('clipboard:write', (_event, text) => { paste.copy(String(text || '')); return true; });
 
 ipcMain.handle('updates:check', () => updates.check());
+ipcMain.handle('updates:quiet', () => updates.quietCheck());
 
 // Обновление по кнопке из настроек: скачивает, тихо ставит и перезапускает
 // программу — на сайт никого не гоняем. Ошибка возвращается окну настроек:

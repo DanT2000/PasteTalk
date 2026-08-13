@@ -352,3 +352,68 @@ a { color: var(--accent); }
 
 /* Пути в подписи переносятся, а не обрезаются: путь без хвоста бесполезен. */
 .row-sub { overflow-wrap: anywhere; }
+
+/* ---------------- всплывашка обновления ---------------- */
+
+.update-toast {
+  position: fixed; right: 1.125rem; bottom: 1.125rem; z-index: 60;
+  background: var(--card); border: 1px solid var(--stroke-strong);
+  border-radius: .75rem; padding: .875rem 1rem; width: 19rem;
+  box-shadow: 0 .75rem 2rem rgba(0, 0, 0, .35);
+  transform: translateY(1.25rem); opacity: 0;
+  transition: transform .25s ease, opacity .25s ease;
+}
+.update-toast.is-in { transform: none; opacity: 1; }
+.update-toast-actions { display: flex; gap: .5rem; margin-top: .625rem; }
+
+/* ---------------- «что нового» ---------------- */
+
+.notes-veil {
+  position: fixed; inset: 0; z-index: 70;
+  background: rgba(10, 10, 14, .55);
+  display: flex; align-items: center; justify-content: center;
+}
+.notes-panel {
+  background: var(--panel); border: 1px solid var(--stroke-strong);
+  width: min(36rem, calc(100vw - 3rem));
+  max-height: min(72vh, 40rem);
+  border-radius: .875rem; padding: 1.125rem 1.25rem;
+  display: flex; flex-direction: column; gap: .75rem;
+  box-shadow: 0 1.5rem 3.75rem rgba(0, 0, 0, .5);
+}
+.notes-head { display: flex; justify-content: space-between; align-items: center; gap: .75rem; }
+.notes-body { overflow-y: auto; line-height: 1.55; font-size: .875rem; }
+.notes-body h3 { margin: .8em 0 .35em; font-size: .9375rem; color: var(--accent); }
+.notes-body p { margin: .4em 0; }
+.notes-body ul { margin: .4em 0 .4em 1.2em; }
+.notes-body li { margin: .25em 0; }
+.notes-actions { display: flex; justify-content: flex-end; gap: .5rem; }
+
+/* ---------------- знакомство ---------------- */
+
+.tour-foot { display: flex; justify-content: space-between; align-items: center; gap: .75rem; }
+.tour-nav { display: flex; gap: .5rem; }
+.tour-dots { display: flex; gap: .375rem; }
+.tour-dots i {
+  width: .5rem; height: .5rem; border-radius: 50%;
+  background: var(--stroke-strong); display: block;
+}
+.tour-dots i.is-on { background: var(--accent); }
+
+/* ---------------- тур-подсветка ---------------- */
+
+.tour-veil { position: fixed; inset: 0; z-index: 70; }
+.tour-veil.is-dim {
+  background: rgba(10, 10, 14, .55);
+  display: flex; align-items: center; justify-content: center;
+}
+.tour-spot {
+  position: fixed; pointer-events: none;
+  border: 2px solid var(--accent); border-radius: .75rem;
+  box-shadow: 0 0 0 200vmax rgba(10, 10, 14, .55);
+  transition: left .25s ease, top .25s ease, width .25s ease, height .25s ease;
+}
+.tour-card { position: fixed; width: min(24rem, calc(100vw - 2rem)); }
+.tour-veil.is-dim .tour-card { position: static; }
+
+#file-ai-model { max-width: 11rem; }

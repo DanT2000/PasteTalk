@@ -756,6 +756,49 @@
         <div class="card" id="history-list"></div>
       </section>
 
+      <!-- Знакомство: тур подсвечивает живые части окна, шаг за шагом. -->
+      <div class="tour-veil is-hidden" id="tour-veil">
+        <div class="tour-spot" id="tour-spot"></div>
+        <div class="notes-panel tour-card" id="tour-card">
+          <div class="notes-head">
+            <div class="row-title" id="tour-title">—</div>
+            <button class="btn btn-quiet" id="tour-skip">Пропустить</button>
+          </div>
+          <div class="notes-body" id="tour-body"></div>
+          <div class="tour-foot">
+            <div class="tour-dots" id="tour-dots"></div>
+            <div class="tour-nav">
+              <button class="btn" id="tour-back">Назад</button>
+              <button class="btn btn-accent" id="tour-next">Дальше</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Всплывашка «вышла версия»: уголок, пара секунд, не мешает. -->
+      <div class="update-toast is-hidden" id="update-toast">
+        <div class="row-title">Вышла версия <span id="update-toast-ver"></span></div>
+        <div class="row-sub">Поставится в один клик — настройки останутся на месте</div>
+        <div class="update-toast-actions">
+          <button class="btn btn-accent" id="update-toast-notes">Что нового</button>
+          <button class="btn btn-quiet" id="update-toast-close">Позже</button>
+        </div>
+      </div>
+
+      <!-- Что нового: короткий разбор выпуска, красиво и без Markdown-сырца. -->
+      <div class="notes-veil is-hidden" id="notes-veil">
+        <div class="notes-panel">
+          <div class="notes-head">
+            <div class="row-title">Что нового в <span id="notes-ver"></span></div>
+            <button class="btn" id="notes-close">Закрыть</button>
+          </div>
+          <div class="notes-body" id="notes-body"></div>
+          <div class="notes-actions">
+            <button class="btn btn-accent" id="notes-update">Обновить сейчас</button>
+          </div>
+        </div>
+      </div>
+
       <!-- ===== ФАЙЛЫ ===== -->
       <section class="page" data-page="files">
         <h2>Файлы</h2>
@@ -778,12 +821,43 @@
             </div>
             <div class="result-actions">
               <button class="btn" id="file-another">Другой файл</button>
+              <button class="btn is-hidden" id="file-back">Показать оригинал</button>
               <button class="btn" id="file-save" disabled>Сохранить как…</button>
               <button class="btn btn-accent" id="file-copy" disabled>Копировать всё</button>
             </div>
           </div>
           <div class="progress" id="file-progress" style="display:none;"><i></i></div>
           <div class="result-body" id="file-text"></div>
+        </div>
+
+        <div class="group-title">Причесать расшифровку</div>
+        <div class="card">
+          <div class="row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/></svg>
+            <div class="row-text">
+              <div class="row-title">Что сделать с текстом</div>
+              <div class="row-sub">«Конспект совещания» превращает часовую запись в выжимку: темы с метками времени, решения, задачи и на что обратить внимание</div>
+            </div>
+            <div class="row-control">
+              <select id="file-improve-mode">
+                <option value="meeting">Конспект совещания</option>
+                <option value="clean">Почистить</option>
+                <option value="both">Почистить и переписать</option>
+              </select>
+              <button class="btn btn-accent" id="file-improve" disabled>Причесать</button>
+            </div>
+          </div>
+          <div class="row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h10M7 13h6"/></svg>
+            <div class="row-text">
+              <div class="row-title">Какой моделью</div>
+              <div class="row-sub">Большому совещанию — модель посильнее: можно выбрать не ту, что причёсывает обычную диктовку</div>
+            </div>
+            <div class="row-control">
+              <select id="file-ai-provider" data-cfg="files.aiProvider"></select>
+              <input class="field" type="text" id="file-ai-model" data-cfg="files.aiModel" placeholder="модель по умолчанию" spellcheck="false">
+            </div>
+          </div>
         </div>
 
         <div class="group-title">Как расшифровывать</div>
@@ -941,6 +1015,16 @@
               <div class="row-sub">github.com/DanT2000/PasteTalk</div>
             </div>
             <div class="row-control"><button class="btn" id="open-github">Открыть</button></div>
+          </div>
+          <div class="row">
+            <div class="row-text">
+              <div class="row-title">Знакомство и инструкция</div>
+              <div class="row-sub">Короткий тур по программе — что где лежит и за что отвечает</div>
+            </div>
+            <div class="row-control">
+              <button class="btn" id="tour-again">Пройти знакомство</button>
+              <button class="btn" id="open-guide">Инструкция на GitHub</button>
+            </div>
           </div>
         </div>
 
