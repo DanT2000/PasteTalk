@@ -294,6 +294,8 @@ class Engine {
 
   setIdleUnload(ms) { return this.request('POST', '/idle', { ms }, 5000); }
 
+  downloadModel(name) { return this.request('POST', '/model/download', { name }, 10000); }
+  downloadsStatus() { return this.request('GET', '/model/downloads', null, 5000); }
   startFile(options) { return this.request('POST', '/file', options, 10000); }
   fileStatus(id) { return this.request('GET', `/file/${id}`, null, 10000); }
   cancelFile(id) { return this.request('DELETE', `/file/${id}`, null, 5000); }
@@ -305,14 +307,14 @@ class Engine {
    * и сразу убираем: чужой звук на диске не залёживается — обещали не
    * хранить, значит не храним, даже если распознавание сорвалось.
    */
-  async transcribeBuffer(buffer, { filename = 'voice.ogg', language = null, prompt = '' } = {}) {
+  async transcribeBuffer(buffer, { filename = 'voice.ogg', language = null, prompt = '', model = undefined } = {}) {
     const os = require('node:os');
     const fsp = require('node:fs/promises');
     const safe = String(filename).replace(/[^\w.-]/g, '_');
     const temp = path.join(os.tmpdir(), `pastetalk-${Date.now()}-${safe}`);
     await fsp.writeFile(temp, buffer);
     try {
-      const job = await this.startFile({ path: temp, language, timestamps: false, prompt });
+      const job = await this.startFile({ path: temp, language, timestamps: false, prompt, model });
       for (;;) {
         const state = await this.fileStatus(job.id);
         if (state.state === 'done') {

@@ -36,6 +36,8 @@ contextBridge.exposeInMainWorld('pastetalk', {
     dir: () => ipcRenderer.invoke('models:dir'),
     pickDir: () => ipcRenderer.invoke('models:pickDir'),
     changeDir: (target) => ipcRenderer.invoke('models:changeDir', target),
+    download: (name) => ipcRenderer.invoke('models:download', name),
+    downloads: () => ipcRenderer.invoke('models:downloads'),
   },
   hotkeys: {
     isFree: (accelerator) => ipcRenderer.invoke('hotkeys:isFree', accelerator),
@@ -47,6 +49,7 @@ contextBridge.exposeInMainWorld('pastetalk', {
      * и перетаскивание молча переставало работать: обработчик получал
      * undefined и ничего не делал.
      */
+    cancelImprove: () => ipcRenderer.invoke('files:cancelImprove'),
     pathOf: (file) => {
       try {
         return webUtils.getPathForFile(file);
@@ -100,7 +103,7 @@ contextBridge.exposeInMainWorld('pastetalk', {
     all: () => ipcRenderer.invoke('history:all'),
     copy: (id, improved) => ipcRenderer.invoke('history:copy', { id, improved }),
     improve: (id) => ipcRenderer.invoke('history:improve', id),
-    recognize: (id) => ipcRenderer.invoke('history:recognize', id),
+    recognize: (id, model) => ipcRenderer.invoke('history:recognize', { id, model: model || '' }),
     remove: (id) => ipcRenderer.invoke('history:remove', id),
     clear: () => ipcRenderer.invoke('history:clear'),
     onChanged: on('history:changed'),

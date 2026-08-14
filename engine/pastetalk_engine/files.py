@@ -69,6 +69,10 @@ class FileJob:
         self.cancelled = True
 
     def _run(self) -> None:
+        # Чужая модель берётся взаймы: после задачи возвращаем ту, что
+        # человек выбрал для диктовки. Иначе разовое «распознать заново
+        # тяжёлой моделью» навсегда подменяло бы модель всех диктовок.
+        restore = ""
         try:
             # Для файла можно взять другую модель, чем для диктовки. Тогда
             # сперва дожидаемся, пока она встанет в память: гонять две
@@ -77,6 +81,7 @@ class FileJob:
             if self.model and self.models.status()["name"] != self.model:
                 self.state = "switching"
                 status = self.models.status()
+                restore = status["name"]
                 self.models.request(self.model, status["device"], status["computeType"])
                 waited = 0.0
                 while self.models.status()["state"] not in ("ready", "error", "sleeping") and waited < 1800:
@@ -131,6 +136,10 @@ class FileJob:
         except Exception as exc:  # noqa: BLE001
             self.state = "error"
             self.error = str(exc)
+        finally:
+            if restore:
+                status = self.models.status()
+                self.models.request(restore, status["device"], status["computeType"])
 
 
 def _stamp(seconds: float) -> str:

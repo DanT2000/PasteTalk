@@ -33,9 +33,16 @@ win:
   target:
     - target: nsis
       arch: [x64]
+    # Портативная версия: один exe, все данные — в папке «PasteTalk data»
+    # рядом с ним. Устанавливать ничего не нужно, переезжает на флешке.
+    - target: portable
+      arch: [x64]
   # Подписи нет: сертификат стоит денег, а без него SmartScreen всё равно
   # ругается один раз. В README написано, что нажать.
   signAndEditExecutable: true
+
+portable:
+  artifactName: PasteTalk-${version}-Portable.${ext}
 
 nsis:
   oneClick: false

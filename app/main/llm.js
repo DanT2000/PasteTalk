@@ -125,6 +125,9 @@ const MODES = modes.MODES;
  * что общий слот занял очередной кусок конспекта.
  */
 const stops = new Map();
+// Отмена, пришедшая МЕЖДУ кусками длинной задачи: запроса в полёте нет,
+// stops пуст — но цикл по кускам обязан остановиться, а не жечь токены.
+const cancelledJobs = new Set();
 const CANCELLED = 'PT_CANCELLED';
 
 function jobOf(settings) {
@@ -132,6 +135,7 @@ function jobOf(settings) {
 }
 
 function cancel(job = 'dictation') {
+  cancelledJobs.add(job);
   const stop = stops.get(job);
   if (!stop) return false;
   stops.delete(job);
@@ -351,6 +355,11 @@ async function chat(settings, text, timeoutMs) {
     });
   }
 
+  // Обрезанный по лимиту токенов ответ — в журнал: молча отдавать огрызок
+  // нельзя, но и падать из-за перестраховщиков-серверов не стоит.
+  if (answer?.choices?.[0]?.finish_reason === 'length') {
+    log.warn('модель обрезала ответ по лимиту токенов — текст может быть неполным');
+  }
   const content = answer?.choices?.[0]?.message?.content;
   if (typeof content !== 'string' || !content.trim()) throw new Error('Модель вернула пустой ответ');
   // Пустоту проверяем ПОСЛЕ среза размышлений: ответ из одних <think>
@@ -509,11 +518,34 @@ function splitTranscript(text) {
 }
 
 /**
+ * Причесать длинный текст любым режимом. Двухчасовая расшифровка целиком
+ * не влезает ни в контекст локальной модели, ни в лимиты бесплатных
+ * провайдеров — режем на куски и причёсываем по очереди, как конспект.
+ * onProgress получает {step, total} — ход по кускам для окна.
+ */
+async function improveLong(text, overrides = {}, onProgress = null) {
+  const jobName = overrides.job === 'digest' ? 'digest' : 'dictation';
+  cancelledJobs.delete(jobName);
+  const clean = String(text || '').trim();
+  if (clean.length <= MEETING_SINGLE_LIMIT) return improve(clean, overrides);
+  const parts = splitTranscript(clean);
+  const results = [];
+  for (let i = 0; i < parts.length; i++) {
+    if (cancelledJobs.has(jobName)) throw new Error(CANCELLED);
+    if (onProgress) onProgress({ step: i + 1, total: parts.length });
+    results.push(await improve(parts[i], overrides));
+  }
+  return results.join('\n\n');
+}
+
+/**
  * Конспект записи любой длины. Короткую отдаём модели целиком, длинную —
  * в два прохода: заметки по кускам, затем общий конспект из заметок.
- * onProgress получает строку о текущем шаге — для окна настроек.
+ * onProgress получает {step, total} — ход по кускам для окна настроек.
  */
 async function meetingNotes(text, overrides = {}, onProgress = null) {
+  const jobName = overrides.job === 'digest' ? 'digest' : 'dictation';
+  cancelledJobs.delete(jobName);
   const clean = String(text || '').trim();
   if (clean.length <= MEETING_SINGLE_LIMIT) {
     return improve(clean, { ...overrides, mode: 'meeting' });
@@ -522,6 +554,7 @@ async function meetingNotes(text, overrides = {}, onProgress = null) {
   const parts = splitTranscript(clean);
   const notes = [];
   for (let i = 0; i < parts.length; i++) {
+    if (cancelledJobs.has(jobName)) throw new Error(CANCELLED);
     if (onProgress) onProgress({ step: i + 1, total: parts.length + 1 });
     notes.push(await improve(parts[i], { ...overrides, mode: 'meetingPart' }));
   }
@@ -650,4 +683,4 @@ function hasCommand(command) {
   });
 }
 
-module.exports = { improve, meetingNotes, models, check, detect, cancel, isCancelled, busy, PROVIDERS, MODES };
+module.exports = { improve, improveLong, meetingNotes, models, check, detect, cancel, isCancelled, busy, PROVIDERS, MODES };

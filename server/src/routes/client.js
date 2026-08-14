@@ -45,7 +45,7 @@ function register(app) {
     // Минутный засов взводится после проверки размера: отвергнутый по
     // размеру отчёт не должен съедать попытку.
     if (!reportAllowed(clientIp(request))) {
-      return reply.code(429).send({ error: 'Отчёт уже принят — не так часто' });
+      return reply.code(429).send({ error: 'С этого адреса отчёт уже приходил только что — попробуйте через минуту' });
     }
     // Версия попадает в разметку админки — чужим символам в ней не место.
     const version = String(request.body?.version || '').replace(/[^\w.+-]/g, '').slice(0, 40);

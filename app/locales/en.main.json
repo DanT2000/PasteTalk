@@ -97,6 +97,8 @@
   "Не выбрана модель для Своё, OpenAI-совместимое": "No model selected for the custom OpenAI-compatible server",
   "Текст в буфере — Ctrl+V": "Text is on the clipboard — Ctrl+V",
   "Горячие клавиши заняты другой программой — возможно, запущена вторая копия PasteTalk": "The hotkeys are held by another program — a second copy of PasteTalk may be running",
+  "У вас портативная версия: скачайте новый Portable.exe и замените старый — папка «PasteTalk data» с настройками останется вашей.": "You are on the portable version: download the new Portable.exe and replace the old one — the PasteTalk data folder with your settings stays yours.",
+  "Идёт запись — закончите её и попробуйте снова": "Recording in progress — finish it and try again",
   "Выпусков пока нет": "No releases yet",
   "Нет связи с интернетом": "No internet connection",
   "GitHub не ответил вовремя": "GitHub took too long to respond",

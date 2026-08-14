@@ -194,23 +194,36 @@ class Recorder extends EventEmitter {
    * когда движок оживёт или сервер вернётся на связь.
    */
   stashVoice() {
+    const kept = this.keepVoiceFile();
+    if (!kept) return false;
+    this.emit('voice', kept);
+    log.info(`голос сохранён в историю: ${Math.round(kept.seconds)} с`);
+    return true;
+  }
+
+  /**
+   * Сложить накопленный звук wav-файлом и вернуть путь. Общая часть двух
+   * дорог: «не распозналось — в историю на вторую попытку» и «распозналось,
+   * но звук остаётся рядом с текстом — вдруг захочется прогнать другой
+   * моделью». Звук живёт только на этом компьютере и уходит вместе с
+   * записью истории.
+   */
+  keepVoiceFile() {
     const parts = this.audioCopy;
     this.audioCopy = null;
-    if (!parts || !parts.length || !this.hadSignal) return false;
+    if (!parts || !parts.length || !this.hadSignal) return null;
     const pcm = Buffer.concat(parts);
     const seconds = pcm.length / (16000 * 2);
-    if (seconds < 1) return false;
+    if (seconds < 1) return null;
     try {
       const dir = path.join(app.getPath('userData'), 'voice');
       fs.mkdirSync(dir, { recursive: true });
       const file = path.join(dir, `${Date.now().toString(36)}.wav`);
       fs.writeFileSync(file, remote.toWav(pcm));
-      this.emit('voice', { file, seconds });
-      log.info(`голос сохранён в историю: ${Math.round(seconds)} с`);
-      return true;
+      return { file, seconds };
     } catch (error) {
       log.warn(`не удалось сохранить голос: ${error.message}`);
-      return false;
+      return null;
     }
   }
 
@@ -490,8 +503,10 @@ class Recorder extends EventEmitter {
       return;
     }
 
-    // Текст добрался до человека — страховочная копия звука не нужна.
-    this.audioCopy = null;
+    // Текст добрался — но звук не выбрасываем, а кладём рядом с записью:
+    // из истории её можно распознать заново другой моделью, если эта
+    // дала ерунду (не тот язык, лёгкая модель наврала).
+    const kept = this.keepVoiceFile();
     this.lastText = text;
     const autoPaste = config.get('text.autoPaste', true);
     const wantsAi = this.mode === 'improve' && config.get('ai.enabled', false);
@@ -501,7 +516,7 @@ class Recorder extends EventEmitter {
     const delivered = await paste.deliver(text, autoPaste && !wantsAi);
     this.plainElevated = Boolean(delivered.elevated);
     log.info(`распознано ${text.length} символов за ${Math.round(durationS)} с звука`);
-    this.emit('text', { text, improved: false, seconds: durationS });
+    this.emit('text', { text, improved: false, seconds: durationS, voice: kept ? kept.file : '' });
 
     if (wantsAi) await this.improve(text, autoPaste);
     else {

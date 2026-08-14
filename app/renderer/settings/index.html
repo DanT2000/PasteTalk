@@ -751,7 +751,7 @@
             <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 8v4l3 2"/></svg>
             <div class="row-text">
               <div class="row-title">Сколько хранить</div>
-              <div class="row-sub">Записи лежат на этом компьютере и никуда не уходят. Лишние удаляются сами, начиная с самых старых</div>
+              <div class="row-sub">Записи вместе со звуком лежат на этом компьютере и никуда не уходят. Звук нужен, чтобы распознать запись заново другой моделью, и занимает около 2 МБ на минуту речи; лишние записи удаляются сами, начиная с самых старых, — и звук вместе с ними</div>
             </div>
             <div class="row-control">
               <input class="field narrow" type="number" min="1" max="1000"
@@ -892,13 +892,19 @@
               <div class="row-sub">«Конспект совещания» превращает часовую запись в выжимку: темы с метками времени, решения, задачи и на что обратить внимание</div>
             </div>
             <div class="row-control">
-              <select id="file-improve-mode">
+              <select id="file-improve-mode" data-cfg="files.improveMode">
                 <option value="meeting">Конспект совещания</option>
                 <option value="clean">Почистить</option>
                 <option value="both">Почистить и переписать</option>
+                <option value="custom">Свои указания</option>
               </select>
               <button class="btn btn-accent" id="file-improve" disabled>Причесать</button>
             </div>
+          </div>
+          <div class="row row-stack is-hidden" id="file-prompt-row">
+            <div class="row-title">Свои указания модели</div>
+            <div class="row-sub">Текст расшифровки пойдёт следующим сообщением после этих указаний</div>
+            <textarea class="field area" id="file-prompt" data-cfg="files.prompt" spellcheck="false"></textarea>
           </div>
           <div class="row">
             <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h10M7 13h6"/></svg>
@@ -1070,13 +1076,10 @@
 
         <div class="group-title">Сообщить об ошибке</div>
         <div class="card">
-          <div class="row">
-            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20 20 4M14 4h6v6"/></svg>
-            <div class="row-text">
-              <div class="row-title">Отправить отчёт разработчику</div>
-              <div class="row-sub" id="report-sub">Что-то не работает — нажмите, и разработчик увидит, что случилось. Ключи и токены не отправляются никогда</div>
-            </div>
-            <div class="row-control"><button class="btn btn-accent" id="report-send">Отправить</button></div>
+          <div class="row row-stack">
+            <div class="row-title">Опишите, что случилось</div>
+            <div class="row-sub">Своими словами: что нажали, чего ждали, что произошло. Так ошибку найти намного проще</div>
+            <textarea class="field area" id="report-note" spellcheck="true"></textarea>
           </div>
           <div class="row">
             <div class="row-text">
@@ -1094,10 +1097,18 @@
           </div>
           <div class="row">
             <div class="row-text">
-              <div class="row-title">Сведения о системе</div>
-              <div class="row-sub">Версия программы и Windows, процессор, память, состояние движка</div>
+              <div class="row-title">Сведения об устройстве</div>
+              <div class="row-sub">Версия программы и Windows, процессор, видеокарта, память, состояние движка</div>
             </div>
             <div class="row-control"><input class="switch" type="checkbox" id="report-system" checked></div>
+          </div>
+          <div class="row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20 20 4M14 4h6v6"/></svg>
+            <div class="row-text">
+              <div class="row-title">Отправить отчёт разработчику</div>
+              <div class="row-sub" id="report-sub">Ключи, токены, адреса и словарь не отправляются никогда</div>
+            </div>
+            <div class="row-control"><button class="btn btn-accent" id="report-send">Отправить</button></div>
           </div>
         </div>
 

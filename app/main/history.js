@@ -44,17 +44,29 @@ function load() {
 }
 
 /**
+ * Полный путь к файлу голоса записи. В новых записях хранится только имя
+ * файла: на портативной флешке буква диска меняется от компьютера к
+ * компьютеру, и абсолютный путь мертвеет. Старые записи с абсолютным
+ * путём продолжают работать, а если путь умер — пробуем по имени.
+ */
+function voiceFile(entry) {
+  if (!entry || !entry.voice) return '';
+  if (path.isAbsolute(entry.voice) && fs.existsSync(entry.voice)) return entry.voice;
+  return path.join(app.getPath('userData'), 'voice', path.basename(entry.voice));
+}
+
+/**
  * Прибрать осиротевшие wav в папке голосов: файл мог остаться от
  * сломанного JSON или упавшего между записями приложения. Зовётся один
  * раз на старте, до первой записи, — чтобы не задеть свежий стэш.
+ * Сравниваем по именам файлов: буква диска могла смениться.
  */
 function sweepVoices() {
   try {
     const dir = path.join(app.getPath('userData'), 'voice');
-    const known = new Set(load().filter((i) => i.voice).map((i) => path.resolve(i.voice)));
+    const known = new Set(load().filter((i) => i.voice).map((i) => path.basename(i.voice)));
     for (const name of fs.readdirSync(dir)) {
-      const full = path.resolve(dir, name);
-      if (!known.has(full)) fs.unlinkSync(full);
+      if (!known.has(name)) fs.unlinkSync(path.join(dir, name));
     }
   } catch { /* папки может не быть вовсе — значит, и прибирать нечего */ }
 }
@@ -79,7 +91,7 @@ function save() {
 function unlinkVoice(entry) {
   if (!entry || !entry.voice) return;
   try {
-    fs.unlinkSync(entry.voice);
+    fs.unlinkSync(voiceFile(entry));
   } catch { /* уже нет — и хорошо */ }
 }
 
@@ -100,12 +112,14 @@ function makeId() {
  * дописывается к той же: это один и тот же надиктованный кусок, и в
  * списке он должен быть один, с обоими вариантами.
  */
-function add({ text, improved = false, seconds = 0 }) {
+function add({ text, improved = false, seconds = 0, voice = '' }) {
   const clean = String(text || '').trim();
   if (!clean) return null;
   load();
 
-  if (improved && items[0] && !items[0].improved && !items[0].voice) {
+  // Улучшение дописывается к последней записи С ТЕКСТОМ: это тот же
+  // надиктованный кусок. Голос у записи теперь бывает и при тексте.
+  if (improved && items[0] && !items[0].improved && items[0].text) {
     items[0].improved = clean;
     items[0].improvedAt = Date.now();
     save();
@@ -119,6 +133,10 @@ function add({ text, improved = false, seconds = 0 }) {
     seconds: Math.round(seconds),
     at: Date.now(),
   };
+  // Звук рядом с текстом: если модель дала ерунду, запись можно
+  // распознать заново другой моделью прямо из истории. Храним только имя
+  // файла — полный путь собирает voiceFile().
+  if (voice) entry.voice = path.basename(voice);
   items.unshift(entry);
   prune();
   save();
@@ -136,7 +154,7 @@ function addVoice({ file, seconds = 0 }) {
     id: makeId(),
     text: '',
     improved: '',
-    voice: file,
+    voice: path.basename(file),
     seconds: Math.round(seconds),
     at: Date.now(),
   };
@@ -146,13 +164,15 @@ function addVoice({ file, seconds = 0 }) {
   return entry;
 }
 
-/** Распознавание задним числом удалось: голос превращается в текст. */
+/** Распознавание задним числом удалось: у записи появляется текст. */
 function setText(id, text) {
   const entry = find(id);
   if (!entry) return null;
   entry.text = String(text || '').trim();
-  unlinkVoice(entry);
-  delete entry.voice;
+  // Улучшение делалось из старого текста — с новым оно больше не пара.
+  entry.improved = '';
+  // Голос НЕ удаляем: распознать можно ещё раз, другой моделью. Файл
+  // уйдёт вместе с записью — по лимиту, кнопкой «Убрать» или очисткой.
   save();
   return entry;
 }
@@ -195,4 +215,4 @@ function clear() {
   save();
 }
 
-module.exports = { add, addVoice, setText, all, find, latest, setImproved, remove, clear, file, sweepVoices };
+module.exports = { add, addVoice, setText, all, find, latest, setImproved, remove, clear, file, sweepVoices, voiceFile };

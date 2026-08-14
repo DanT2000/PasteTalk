@@ -18,6 +18,11 @@ const log = require('./logger').scoped('updates');
 const OWNER = 'DanT2000';
 const REPO = 'PasteTalk';
 
+// Портативная сборка: electron-builder подставляет папку, где лежит exe.
+function isPortable() {
+  return Boolean(process.env.PORTABLE_EXECUTABLE_DIR);
+}
+
 /**
  * «2.0.10» новее «2.0.9»: сравниваем числами, а не строками.
  * Суффикс беты понижает: «2.16.0-beta.1» СТАРШЕ «2.16.0» быть не может,
@@ -115,7 +120,10 @@ async function check() {
   try {
     const release = await latestRelease();
     const latest = String(release.tag_name || '').replace(/^v/i, '');
-    const installer = (release.assets || []).find((asset) => /Setup\.exe$/i.test(asset.name));
+    // Портативу — портативный exe, установке — установщик. Нет своего —
+    // хотя бы страница выпуска, там лежит всё.
+    const wanted = isPortable() ? /Portable\.exe$/i : /Setup\.exe$/i;
+    const installer = (release.assets || []).find((asset) => wanted.test(asset.name));
     const newer = latest && compare(latest, current) > 0;
     log.info(`проверка обновлений: у вас ${current}, на GitHub ${latest || '—'}`);
     return {
@@ -128,6 +136,7 @@ async function check() {
       notify: Boolean(newer && latest !== config.get('updates.skipVersion', '')),
       name: release.name || '',
       beta: Boolean(release.prerelease),
+      portable: isPortable(),
       notes: String(release.body || '').slice(0, 2000),
       url: release.html_url,
       download: installer ? installer.browser_download_url : release.html_url,
@@ -193,6 +202,14 @@ function scheduleStartupCheck(onFound) {
 let updaterWired = false;
 
 async function downloadAndInstall(onProgress) {
+  // Портатив само-обновляться не умеет: установщик поставил бы обычную
+  // копию с данными в профиле, а «PasteTalk data» на флешке осталась бы
+  // сиротой. Честно объясняем, как обновляться заменой файла.
+  if (isPortable()) {
+    throw new Error('Портативная версия обновляется заменой файла: скачайте новый '
+      + 'Portable.exe со страницы выпуска и положите вместо старого — папка '
+      + '«PasteTalk data» с настройками и моделями останется вашей');
+  }
   const { autoUpdater } = require('electron-updater');
   if (!updaterWired) {
     updaterWired = true;

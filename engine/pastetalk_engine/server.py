@@ -209,6 +209,16 @@ class Handler(BaseHTTPRequestHandler):
         if method == "GET" and head == "health":
             self._send(200, engine.health())
 
+        elif method == "GET" and head == "model" and len(parts) == 2 and parts[1] == "downloads":
+            self._send(200, engine.models.download_status())
+
+        elif method == "POST" and head == "model" and len(parts) == 2 and parts[1] == "download":
+            payload = self._json()
+            try:
+                self._send(200, engine.models.start_download(payload.get("name", "")))
+            except ValueError as exc:
+                self._reject(400, str(exc))
+
         elif method == "GET" and head == "model":
             self._send(200, engine.models.status())
 

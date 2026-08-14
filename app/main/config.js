@@ -95,7 +95,16 @@ const DEFAULTS = {
   // часовое совещание заслуживает модели посильнее, чем быстрая фраза.
   // aiBaseUrl/aiKey — свой сервер только для файлов: дорогая модель для
   // совещаний и дешёвая для диктовки могут жить на разных адресах.
-  files: { timestamps: false, aiProvider: '', aiModel: '', aiBaseUrl: '', aiKey: '' },
+  // improveMode/prompt — что делать с расшифровкой; 'custom' берёт prompt.
+  files: {
+    timestamps: false,
+    aiProvider: '',
+    aiModel: '',
+    aiBaseUrl: '',
+    aiKey: '',
+    improveMode: 'meeting',
+    prompt: 'Убери слова-паразиты и повторы, сохрани смысл и манеру речи. Не добавляй ничего от себя. Верни только готовый текст.',
+  },
 
   startup: { autoLaunch: true, restartOnCrash: true },
 

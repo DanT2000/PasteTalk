@@ -11,14 +11,14 @@
  */
 window.PASTETALK_EN = {
   // ---------- отчёты об ошибках ----------
+  'Отчёты': 'Reports',
   'Отчёты об ошибках': 'Error reports',
-  'Приходят из настольной программы по кнопке «Отправить разработчику»: журнал работы, настройки без ключей, сведения о системе':
-    'Sent from the desktop app via "Send to developer": work log, settings without keys, system info',
+  'Приходят из настольной программы по кнопке «Отправить разработчику»: описание словами, журнал работы, настройки без ключей, сведения об устройстве':
+    'Sent from the desktop app via "Send to developer": a written description, work log, settings without keys, device info',
+  'Без описания': 'No description',
   'Пока пусто — и это хорошо': 'Nothing yet — and that is good news',
   'Показать': 'Show',
-  'Загружаю…': 'Loading…',
   'Удалить': 'Delete',
-  'Отчёты не загрузились:': 'Reports failed to load:',
 
   // ---------- витрина ----------
   'PasteTalk — голос в текст, локально': 'PasteTalk — voice to text, locally',

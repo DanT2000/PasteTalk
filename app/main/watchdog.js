@@ -138,6 +138,11 @@ function applyAutoLaunch(enabled) {
     return;
   }
 
+  // Портативная сборка распаковывается во временную папку — прописать её
+  // в автозагрузку значит оставить в реестре мёртвый путь. Портатив
+  // реестр не трогает вовсе.
+  if (process.env.PORTABLE_EXECUTABLE_DIR) return;
+
   // Убираем запись, оставшуюся от прежних версий, иначе в автозагрузке
   // окажутся две строки, ведущие в одно место.
   try {
@@ -157,6 +162,7 @@ function applyAutoLaunch(enabled) {
 function syncAutoLaunch() {
   const wanted = config.get('startup.autoLaunch', true);
   if (!app.isPackaged) return;
+  if (process.env.PORTABLE_EXECUTABLE_DIR) return;
   const actual = app.getLoginItemSettings({
     name: LOGIN_ITEM_NAME,
     path: process.execPath,

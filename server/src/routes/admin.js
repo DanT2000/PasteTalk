@@ -75,7 +75,11 @@ function register(app) {
     if (!guard(request, reply)) return undefined;
     const db = require('../db').open();
     return {
-      reports: db.prepare('SELECT id, at, version, LENGTH(body) AS size FROM reports ORDER BY at DESC LIMIT 100').all(),
+      reports: db.prepare(`
+        SELECT id, at, version, LENGTH(body) AS size,
+               substr(json_extract(body, '$.note'), 1, 200) AS note
+        FROM reports ORDER BY at DESC LIMIT 100
+      `).all(),
     };
   });
 

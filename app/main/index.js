@@ -24,14 +24,18 @@ const windows = require('./windows');
 const log = logger.scoped('app');
 const { tr } = i18n;
 
-// Портативный режим: пустой файл «portable» (или portable.txt) рядом с
-// PasteTalk.exe — и все данные (настройки, модели, журналы) живут в папке
-// «PasteTalk data» там же. Программа целиком переезжает на флешке.
+// Портативный режим: все данные (настройки, модели, журналы) живут в
+// папке «PasteTalk data» рядом с программой — она целиком переезжает на
+// флешке. Включается двумя способами: портативной сборкой (electron-builder
+// подставляет PORTABLE_EXECUTABLE_DIR — папку, где лежит сам exe) или
+// пустым файлом «portable» рядом с обычной установкой.
 // Проверка — до замка одной копии: замок привязан к папке данных.
 try {
-  const portableRoot = path.dirname(process.execPath);
-  if (fs.existsSync(path.join(portableRoot, 'portable'))
-    || fs.existsSync(path.join(portableRoot, 'portable.txt'))) {
+  const portableRoot = process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(process.execPath);
+  const marker = Boolean(process.env.PORTABLE_EXECUTABLE_DIR)
+    || fs.existsSync(path.join(portableRoot, 'portable'))
+    || fs.existsSync(path.join(portableRoot, 'portable.txt'));
+  if (marker) {
     const dataDir = path.join(portableRoot, 'PasteTalk data');
     // Пробная запись обязательна: рядом с установкой в Program Files
     // писать нельзя, и без проверки программа молча теряла бы настройки.
@@ -121,7 +125,9 @@ async function announceUpdate(release) {
     type: 'info',
     title: 'PasteTalk',
     message: `${tr('Вышла версия')} ${release.latest}`,
-    detail: `${tr('У вас')} ${release.current}. ${tr('Обновление скачается и поставится само — настройки, модели и горячие клавиши останутся на месте.')}`
+    detail: `${tr('У вас')} ${release.current}. ${tr(release.portable
+      ? 'У вас портативная версия: скачайте новый Portable.exe и замените старый — папка «PasteTalk data» с настройками останется вашей.'
+      : 'Обновление скачается и поставится само — настройки, модели и горячие клавиши останутся на месте.')}`
       + (release.sizeMb ? `\n\n${tr('Размер:')} ${release.sizeMb} ${tr('МБ.')}` : ''),
     buttons: [tr('Обновить сейчас'), tr('Что нового'), tr('Потом'), tr('Больше не напоминать')],
     defaultId: 0,
@@ -129,8 +135,11 @@ async function announceUpdate(release) {
     noLink: true,
   });
 
-  if (response === 0) await selfUpdate(release);
-  else if (response === 1) shell.openExternal(release.url);
+  if (response === 0) {
+    // Портатив не умеет ставиться сам — открываем страницу с Portable.exe.
+    if (release.portable) shell.openExternal(release.download || release.url);
+    else await selfUpdate(release);
+  } else if (response === 1) shell.openExternal(release.url);
   else if (response === 3) config.set({ updates: { skipVersion: release.latest } });
 }
 
@@ -369,7 +378,10 @@ ipcMain.handle('config:set', (_event, patch) => {
 
   if (patch.appearance?.theme) windows.applyTheme();
   if (patch.hotkeys) registerHotkeys();
-  if (patch.startup && 'autoLaunch' in patch.startup) setAutoLaunch(after.startup.autoLaunch);
+  // Именно watchdog.applyAutoLaunch: раньше здесь звалась несуществующая
+  // setAutoLaunch — переключатель падал молча, реестр менялся только
+  // после перезапуска программы.
+  if (patch.startup && 'autoLaunch' in patch.startup) watchdog.applyAutoLaunch(after.startup.autoLaunch);
   if (patch.model && (patch.model.name !== before.model.name || patch.model.device !== before.model.device)) {
     engine.loadModel(after.model).catch((error) => log.error(error));
   }
@@ -410,6 +422,10 @@ ipcMain.handle('models:dir', () => ({
   dir: engine.modelsDir(),
   custom: Boolean(config.get('engine.modelsDir', '')),
 }));
+
+// Скачивание впрок: тянем вторую модель, пока выбранная работает.
+ipcMain.handle('models:download', (_event, name) => engine.downloadModel(String(name || '')));
+ipcMain.handle('models:downloads', () => engine.downloadsStatus());
 
 // Только выбор папки: «Переношу…» окно покажет после того, как папка
 // действительно выбрана, а не пока человек ходит по дискам в диалоге.
@@ -709,6 +725,8 @@ ipcMain.handle('files:improve', async (_event, payload) => {
   const mode = String(payload.mode || 'meeting');
   // job: 'digest' — чтобы отмена с панели записи не убивала конспект.
   const overrides = { mode, job: 'digest' };
+  // «Свои указания» для файлов — отдельные от указаний для диктовки.
+  if (mode === 'custom') overrides.prompt = config.get('files.prompt', '');
   if (payload.provider) {
     overrides.provider = String(payload.provider);
     if (overrides.provider === 'custom') {
@@ -729,15 +747,18 @@ ipcMain.handle('files:improve', async (_event, payload) => {
   const text = String(payload.text || '');
   digestBusy = true;
   try {
-    if (mode !== 'meeting') return await llm.improve(text, overrides);
-    // Конспект умеет длинные записи: по кускам, с ходом дела в окне.
-    return await llm.meetingNotes(text, overrides, (progress) => {
-      windows.send('settings', 'files:improveProgress', progress);
-    });
+    const onProgress = (progress) => windows.send('settings', 'files:improveProgress', progress);
+    // Любой режим умеет длинные записи: по кускам, с ходом дела в окне.
+    if (mode !== 'meeting') return await llm.improveLong(text, overrides, onProgress);
+    return await llm.meetingNotes(text, overrides, onProgress);
   } finally {
     digestBusy = false;
   }
 });
+
+// Отмена конспекта: новый файл или «Другой файл» не должны оставлять
+// многоминутный запрос жечь токены за спиной у человека.
+ipcMain.handle('files:cancelImprove', () => llm.cancel('digest'));
 
 ipcMain.handle('files:start', (_event, options) => {
   // Словарь специфики помогает и расшифровке файлов — термины те же.
@@ -815,6 +836,21 @@ function postJson(url, body) {
   });
 }
 
+/** Название видеокарты: «RTX 3060» в отчёте важнее модели процессора. */
+function videoCardName() {
+  return new Promise((resolve) => {
+    const { execFile } = require('node:child_process');
+    // Полный путь: у некоторых людей PATH вычищен, и powershell в нём нет.
+    const shell = path.join(process.env.SystemRoot || 'C:\\Windows',
+      'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+    execFile(shell, [
+      '-NoProfile', '-Command', '(Get-CimInstance Win32_VideoController).Name',
+    ], { timeout: 4000, windowsHide: true }, (error, out) => {
+      resolve(error ? '' : String(out).trim().replace(/\r?\n+/g, '; '));
+    });
+  });
+}
+
 /**
  * Отчёт об ошибке — только по явному нажатию человека. Что именно уйдёт,
  * он выбирает галочками; ключи и токены вычищаются всегда, без опций.
@@ -823,6 +859,10 @@ ipcMain.handle('report:send', async (_event, choices = {}) => {
   const body = {
     version: app.getVersion(),
     at: new Date().toISOString(),
+    // Описание словами — самое ценное в отчёте: что нажали, чего ждали.
+    // Режем по символам, а не по UTF-16-единицам: эмодзи не должны
+    // превращаться в обрубки.
+    note: [...String(choices.note || '')].slice(0, 2000).join(''),
   };
   if (choices.system !== false) {
     const os = require('node:os');
@@ -832,6 +872,7 @@ ipcMain.handle('report:send', async (_event, choices = {}) => {
       electron: process.versions.electron,
       locale: app.getLocale(),
       cpu: os.cpus()[0]?.model || '',
+      gpu: await videoCardName(),
       ramGb: Math.round(os.totalmem() / (1024 ** 3)),
     };
     try { body.system.engine = await engine.health(); } catch { body.system.engine = 'не отвечает'; }
@@ -875,15 +916,21 @@ ipcMain.handle('history:copy', (_event, payload) => {
 });
 
 /**
- * Распознать сохранённый голос ещё раз — тем, что выбрано в настройках
- * сейчас: движок мог ожить, сервер — вернуться на связь.
+ * Распознать сохранённый голос ещё раз — по умолчанию тем, что выбрано в
+ * настройках, или моделью, которую человек указал в истории: лёгкая
+ * модель наврала — та же запись прогоняется тяжёлой без новой диктовки.
  */
-ipcMain.handle('history:recognize', async (_event, id) => {
+ipcMain.handle('history:recognize', async (_event, payload) => {
+  const id = payload && typeof payload === 'object' ? payload.id : payload;
+  const model = payload && typeof payload === 'object' ? String(payload.model || '') : '';
   const entry = history.find(id);
   if (!entry || !entry.voice) throw new Error('Запись не найдена');
+  // Пока идёт живая диктовка, файл в очередь не ставим: модель занята
+  // сессией, а смена модели на лету подставила бы и саму диктовку.
+  if (recorder.active) throw new Error('Идёт запись — закончите её и попробуйте снова');
   let wav;
   try {
-    wav = require('node:fs').readFileSync(entry.voice);
+    wav = require('node:fs').readFileSync(history.voiceFile(entry));
   } catch {
     throw new Error('Файл голоса не найден — запись можно только убрать');
   }
@@ -896,6 +943,7 @@ ipcMain.handle('history:recognize', async (_event, id) => {
     if (!engine.isReady) throw new Error(engine.lastError || 'Движок ещё запускается');
     const answer = await engine.transcribeBuffer(wav, {
       filename: 'history.wav',
+      model: model || undefined,
       language: config.get('language', 'ru') === 'auto' ? null : config.get('language', 'ru'),
       prompt: modes.whisperPrompt(config.get('speech.vocabulary', '')),
     });

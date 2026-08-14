@@ -115,6 +115,11 @@ class ModelManager:
         # подмены — а ширину луча надо выбирать по тому, кто будет считать.
         self._loaded_device = ""
         self._transcribe_lock = threading.Lock()
+        # Скачивания впрок: человек тянет вторую модель, пока первая
+        # работает. Выбор и скачивание — независимые действия, поэтому
+        # у каждой закачки свой прогресс, а state текущей модели не трогается.
+        self._downloads: dict[str, dict[str, Any]] = {}
+        self._downloads_lock = threading.Lock()
 
     # ---------- сведения ----------
 
@@ -373,10 +378,14 @@ class ModelManager:
 
             def __init__(self, *_args, **kwargs) -> None:
                 self.total = kwargs.get("total") or 0
-                self.n = 0
+                # Докачка после обрыва начинается не с нуля — initial
+                # говорит, сколько уже лежит, и прогресс не врёт.
+                self.n = kwargs.get("initial") or 0
+                state.downloaded_mb += self.n / (1024 * 1024)
+                state.progress = min(state.downloaded_mb / total_mb, 0.999)
                 self.desc = kwargs.get("desc", "")
                 self.disable = True
-                self.format_dict = {"rate": None, "n": 0, "total": self.total, "elapsed": 0}
+                self.format_dict = {"rate": None, "n": self.n, "total": self.total, "elapsed": 0}
 
             def update(self, amount: int = 1) -> None:
                 self.n += amount
@@ -403,6 +412,84 @@ class ModelManager:
             allow_patterns=["*.bin", "*.json", "*.txt", "*.model"],
             tqdm_class=Reporter,
         )
+
+    # ---------- скачивание впрок ----------
+
+    def download_status(self) -> dict[str, dict[str, Any]]:
+        with self._downloads_lock:
+            return {name: dict(info) for name, info in self._downloads.items()}
+
+    def start_download(self, name: str) -> dict[str, Any]:
+        """Скачать модель, не трогая текущую. Повторный вызов — no-op."""
+        if name not in CATALOG:
+            raise ValueError("Неизвестная модель")
+        # Эту же модель прямо сейчас качает загрузчик выбранной — второй
+        # поток на тот же репозиторий дал бы двойной трафик и вравший
+        # прогресс. Отвечаем прогрессом идущей закачки.
+        if self.state.name == name and self.state.state == "downloading":
+            return {"state": "downloading", "progress": float(self.state.progress), "error": ""}
+        with self._downloads_lock:
+            existing = self._downloads.get(name)
+            if existing and existing["state"] == "downloading":
+                return dict(existing)
+            entry = {"state": "downloading", "progress": 0.0, "error": ""}
+            self._downloads[name] = entry
+        threading.Thread(target=self._download_only, args=(name, entry), daemon=True).start()
+        return dict(entry)
+
+    def _download_only(self, name: str, entry: dict[str, Any]) -> None:
+        from huggingface_hub import snapshot_download
+
+        total_mb = float(CATALOG[name]["size_mb"]) or 1.0
+        got = {"mb": 0.0}
+
+        class Reporter:
+            """Та же подделка под tqdm, что в _download, но пишет в свою
+            запись, а не в state: закачка впрок не смеет трогать прогресс
+            модели, которой человек пользуется прямо сейчас."""
+
+            def __init__(self, *_args, **kwargs) -> None:
+                self.total = kwargs.get("total") or 0
+                # Докачка после обрыва начинается не с нуля — initial
+                # говорит, сколько уже лежит, и прогресс не врёт.
+                self.n = kwargs.get("initial") or 0
+                got["mb"] += self.n / (1024 * 1024)
+                entry["progress"] = min(got["mb"] / total_mb, 0.999)
+                self.desc = kwargs.get("desc", "")
+                self.disable = True
+                self.format_dict = {"rate": None, "n": self.n, "total": self.total, "elapsed": 0}
+
+            def update(self, amount: int = 1) -> None:
+                self.n += amount
+                self.format_dict["n"] = self.n
+                got["mb"] += amount / (1024 * 1024)
+                entry["progress"] = min(got["mb"] / total_mb, 0.999)
+
+            def close(self) -> None:
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_exc) -> None:
+                pass
+
+            def __getattr__(self, _name):
+                return lambda *_a, **_k: None
+
+        try:
+            snapshot_download(
+                CATALOG[name]["repo"],
+                cache_dir=self.cache_dir,
+                allow_patterns=["*.bin", "*.json", "*.txt", "*.model"],
+                tqdm_class=Reporter,
+            )
+            entry["progress"] = 1.0
+            entry["state"] = "done"
+        except Exception as exc:  # noqa: BLE001
+            entry["state"] = "error"
+            # Причина словами, а не трассировка requests на экран человеку.
+            entry["error"] = _friendly_error(exc, "cpu")
 
     def remove(self, name: str) -> float:
         """Удалить скачанную модель. Возвращает освободившиеся мегабайты."""

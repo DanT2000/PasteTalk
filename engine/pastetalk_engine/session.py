@@ -188,7 +188,6 @@ class Session:
                 print(f"сессия {self.id}: {exc}", file=sys.stderr, flush=True)
 
     def _transcribe(self, piece: np.ndarray, offset: float) -> None:
-        first = not self._segments
         segments, info = self.models.transcribe(
             piece,
             language=self.language,
@@ -225,5 +224,19 @@ class Session:
                 "start": round(offset + segment.start, 2),
                 "end": round(offset + segment.end, 2),
             })
-        if first and getattr(info, "language", None) and not self.language:
-            self.language = info.language
+        # Язык закрепляем только при УВЕРЕННОМ определении на куске
+        # достаточной длины — и пробуем на каждом куске, пока не уверены.
+        # Раньше язык брался с первого куска без оглядки на уверенность:
+        # первый кусок после нарезки по паузам бывает в пару секунд, turbo
+        # на нём легко ошибается, а неверно закреплённый язык превращает
+        # всю дальнейшую диктовку в «перевод» на чужой язык.
+        if not self.language and getattr(info, "language", None):
+            probability = getattr(info, "language_probability", 0) or 0
+            enough_audio = len(piece) >= 4 * SAMPLE_RATE
+            if probability >= 0.7 and enough_audio:
+                self.language = info.language
+                print(
+                    f"сессия {self.id}: язык закреплён — {info.language} ({probability:.2f})",
+                    file=sys.stderr,
+                    flush=True,
+                )

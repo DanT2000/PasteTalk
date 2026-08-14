@@ -150,6 +150,10 @@ api.engine.onState((info) => {
   // заходе строить было не из чего.
   if (info.ready || info.state === 'ready') {
     refreshHealth();
+    // Закачка впрок могла пережить наш опрос (он сдаётся после серии
+    // отказов) — движок ожил, проверяем заново. Если закачек нет, опрос
+    // сам погаснет за один тик.
+    pollDownloads();
     // Порт движка известен только после его запуска, а окно к этому
     // моменту давно открыто. Без этой строки в «Интеграции» навсегда
     // оставалось бы «движок ещё не запустился».
@@ -296,6 +300,47 @@ $('models-dir-reset').addEventListener('click', () => changeModelsDir('reset'));
 
 // ---------- модели распознавания ----------
 
+// Закачки впрок: выбор и скачивание — независимые действия. Пока человек
+// диктует на одной модели, вторая спокойно тянется в фоне.
+let downloadsInfo = {};
+let downloadsTimer = null;
+
+function pollDownloads() {
+  clearInterval(downloadsTimer);
+  let failures = 0;
+  downloadsTimer = setInterval(async () => {
+    const previous = downloadsInfo;
+    try {
+      downloadsInfo = await api.models.downloads();
+      failures = 0;
+    } catch {
+      // Движок лежит — не молотим отказами вечно. Тухлые сведения о
+      // закачках стираем, иначе модель навсегда «качается впрок» с
+      // спрятанными кнопками. Опрос вернётся, когда движок оживёт.
+      failures += 1;
+      if (failures >= 5) {
+        clearInterval(downloadsTimer);
+        downloadsInfo = {};
+        renderModels();
+      }
+      return;
+    }
+    // Запись пропала, не дойдя до «done», — движок перезапускался и
+    // закачка умерла вместе с ним. Молчать нельзя: человек ждёт гигабайты.
+    for (const [name, info] of Object.entries(previous)) {
+      if (info.state === 'downloading' && !downloadsInfo[name]) {
+        say(t('Закачка модели прервалась — нажмите «Скачать» ещё раз, продолжится с того же места'));
+      }
+    }
+    renderModels();
+    if (!Object.values(downloadsInfo).some((d) => d.state === 'downloading')) {
+      clearInterval(downloadsTimer);
+      // cached-флаги каталога пересчитывает движок — перечитываем.
+      refreshHealth();
+    }
+  }, 1200);
+}
+
 function renderModels() {
   const list = $('model-list');
   const catalog = health?.catalog || [];
@@ -307,27 +352,46 @@ function renderModels() {
     const row = document.createElement('div');
     row.className = `row is-model${item.id === chosen ? ' is-chosen' : ''}`;
     const busy = status.name === item.id && ['downloading', 'loading'].includes(status.state);
+    const fetch = downloadsInfo[item.id];
+    const fetching = !item.cached && fetch?.state === 'downloading';
     const size = item.sizeMb >= 1024 ? `${(item.sizeMb / 1024).toFixed(1)} ${t('ГБ')}` : `${item.sizeMb} ${t('МБ')}`;
 
+    const progress = busy ? (status.progress || 0) : (fetching ? (fetch.progress || 0) : 0);
     row.innerHTML = `
       <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
         ${item.id === chosen ? '<path d="M20 6 9 17l-5-5"/>' : '<circle cx="12" cy="12" r="9"/>'}
       </svg>
       <div class="row-text">
         <div class="row-title">${t(item.title)}${item.id === chosen ? ` <span class="pill">${t('Выбрана')}</span>` : ''}</div>
-        <div class="row-sub">${describeModel(item, size, status)}</div>
-        ${busy ? `<div class="progress"><i style="width:${Math.round((status.progress || 0) * 100)}%"></i></div>` : ''}
+        <div class="row-sub">${describeModel(item, size, status, fetch)}</div>
+        ${busy || fetching ? `<div class="progress"><i style="width:${Math.round(progress * 100)}%"></i></div>` : ''}
       </div>
       <div class="row-control"></div>`;
 
     const controls = row.querySelector('.row-control');
     if (item.id !== chosen) {
-      controls.appendChild(button(item.cached ? t('Выбрать') : t('Скачать'), 'btn', async () => {
-        await save('model.name', item.id);
-        await api.engine.loadModel({ ...settings.model, name: item.id });
-        say(item.cached ? `${t('Переключаюсь на')} ${item.title}` : `${t('Качаю')} ${item.title}, ${size}`);
-        pollModel();
-      }));
+      // Пока модель качается впрок, «Выбрать» спрятана: переключение
+      // запустило бы вторую закачку того же и заморозило бы проценты.
+      if (!fetching) {
+        controls.appendChild(button(t('Выбрать'), 'btn', async () => {
+          await save('model.name', item.id);
+          await api.engine.loadModel({ ...settings.model, name: item.id });
+          say(item.cached ? `${t('Переключаюсь на')} ${item.title}` : `${t('Качаю')} ${item.title}, ${size}`);
+          pollModel();
+        }));
+      }
+      if (!item.cached && !fetching) {
+        controls.appendChild(button(t('Скачать'), 'btn btn-quiet', async () => {
+          try {
+            await api.models.download(item.id);
+          } catch (error) {
+            say(t(ipcErrorText(error)));
+            return;
+          }
+          say(`${t('Качаю впрок:')} ${t(item.title)} — ${t('выбранная модель продолжает работать')}`);
+          pollDownloads();
+        }));
+      }
     } else {
       controls.appendChild(button(t('Скачать заново'), 'btn', async () => {
         await api.engine.deleteModel(item.id);
@@ -347,7 +411,7 @@ function renderModels() {
   }
 }
 
-function describeModel(item, size, status) {
+function describeModel(item, size, status, fetch) {
   const notes = {
     'large-v3': 'Самая точная',
     'large-v3-turbo': 'Почти так же точна, но заметно легче и быстрее',
@@ -362,6 +426,10 @@ function describeModel(item, size, status) {
   }
   if (status.name === item.id && status.state === 'loading') return `${note} · ${t('загружаю в память')}`;
   if (status.name === item.id && status.state === 'error') return t(status.error);
+  if (!item.cached && fetch?.state === 'downloading') {
+    return `${note} · ${t('качается впрок')}, ${Math.round((fetch.progress || 0) * 100)} % ${t('из')} ${size}`;
+  }
+  if (!item.cached && fetch?.state === 'error') return `${note} · ${t('не скачалась:')} ${t(fetch.error || '')}`;
   return `${note} · ${size}${item.cached ? ` ${t('на диске')}` : `, ${t('ещё не скачана')}`}`;
 }
 
@@ -777,9 +845,11 @@ function etaText(progress) {
 async function startFile(path) {
   // Прошлую задачу гасим первым делом: её опрос не должен дожить до
   // нового файла, а движку незачем дораспознавать то, что человеку уже
-  // не нужно, — на процессоре это часы работы впустую.
+  // не нужно, — на процессоре это часы работы впустую. Конспект прошлого
+  // файла тоже отменяем: пусть не жжёт токены за спиной.
   clearInterval(jobTimer);
   if (job?.id) api.files.cancel(job.id).catch(() => {});
+  api.files.cancelImprove().catch(() => {});
   job = null;
 
   // Файл взят в работу — зона перетаскивания уходит, на её месте сразу
@@ -907,9 +977,10 @@ $('file-another').addEventListener('click', async () => {
   const path = await api.files.pick();
   if (path) { startFile(path); return; }
   // Диалог отменили — но человек явно закончил с этим файлом: гасим
-  // и опрос, и саму задачу в движке, иначе она молотит процессор дальше.
+  // опрос, задачу в движке и конспект, иначе они работают впустую.
   clearInterval(jobTimer);
   if (job?.id) api.files.cancel(job.id).catch(() => {});
+  api.files.cancelImprove().catch(() => {});
   job = null;
   fileGen += 1;
   $('file-result').classList.add('is-hidden');
@@ -1081,6 +1152,9 @@ $('file-ai-provider').addEventListener('change', async () => {
   fillFileModels(undefined, provider);
   syncFileRefresh(provider);
   syncFileProviderRows(provider);
+  // Список моделей подтягиваем сами: человек не обязан догадываться про
+  // кнопку «Обновить». Не вышло — молчим, кнопка на месте.
+  fetchFileModels(provider, { quiet: true });
 });
 
 /** Подсказка, когда провайдеру файлов не хватает ключа. У «Своего» ключ не обязателен. */
@@ -1094,8 +1168,21 @@ function fileKeyHint(provider) {
   return '';
 }
 
-$('file-ai-refresh').addEventListener('click', async () => {
-  const provider = $('file-ai-provider').value;
+/**
+ * Спросить у провайдера список моделей для файлов. quiet — тихий
+ * автозапрос при смене провайдера: не получилось — молчим, кнопка
+ * «Обновить» остаётся для явной попытки с объяснением.
+ */
+// Поколение запроса списка моделей: пока медленный сервер отвечал,
+// человек мог сменить провайдера — поздний ответ выбрасывается, а не
+// подсовывает чужие модели под новым именем.
+let fileModelsFetch = 0;
+
+async function fetchFileModels(provider, { quiet = false } = {}) {
+  const effective = provider || settings.ai?.provider || '';
+  // У агентов список известен заранее — спрашивать некого.
+  if (!providers[effective] || providers[effective].kind === 'cli') return;
+  const generation = ++fileModelsFetch;
   const overrides = provider ? { provider } : {};
   if (provider === 'custom') {
     // У файлов свой адрес и свой ключ — с настройками улучшения не мешаем.
@@ -1105,22 +1192,33 @@ $('file-ai-refresh').addEventListener('click', async () => {
     // Сохранённый адрес принадлежит основному провайдеру — чужой берёт свой.
     overrides.baseUrl = '';
   }
+  const answer = await api.llm.models(overrides);
+  if (generation !== fileModelsFetch) return;
+  if (!answer.ok) {
+    if (!quiet) say(`${t('Список моделей не пришёл:')} ${t(answer.error)}${fileKeyHint(provider)}`);
+    return;
+  }
+  // У агентов модели приходят парами {id, title} — приводим к именам.
+  const names = (answer.models || [])
+    .map((item) => (typeof item === 'string' ? item : item.id))
+    .filter(Boolean);
+  fillFileModels(names.length ? names : undefined, provider);
+}
+
+$('file-ai-refresh').addEventListener('click', async () => {
   $('file-ai-refresh').disabled = true;
   try {
-    const answer = await api.llm.models(overrides);
-    if (!answer.ok) {
-      say(`${t('Список моделей не пришёл:')} ${t(answer.error)}${fileKeyHint(provider)}`);
-      return;
-    }
-    // У агентов модели приходят парами {id, title} — приводим к именам.
-    const names = (answer.models || [])
-      .map((item) => (typeof item === 'string' ? item : item.id))
-      .filter(Boolean);
-    fillFileModels(names.length ? names : undefined, provider);
+    await fetchFileModels($('file-ai-provider').value);
   } finally {
     $('file-ai-refresh').disabled = false;
   }
 });
+
+// Свои указания видны только в режиме «Свои указания».
+function syncFileImproveMode() {
+  $('file-prompt-row').classList.toggle('is-hidden', $('file-improve-mode').value !== 'custom');
+}
+$('file-improve-mode').addEventListener('change', syncFileImproveMode);
 
 function showFileText(original) {
   fileShowingOriginal = original;
@@ -1144,10 +1242,13 @@ function renderImproveStatus() {
   $('file-info').textContent = `${improveBase} · ${t('уже')} ${formatDuration(seconds)}`;
 }
 
+// Слово для хода по кускам: конспект «конспектируется», остальное «причёсывается».
+let improveChunksWord = 'Конспектирую по кускам:';
+
 api.files.onImproveProgress((progress) => {
   // Поздний прогресс конспекта прошлого файла не топчет статус нового.
   if (fileImproveGen !== fileGen) return;
-  improveBase = `${t('Конспектирую по кускам:')} ${progress.step} ${t('из')} ${progress.total}…`;
+  improveBase = `${t(improveChunksWord)} ${progress.step} ${t('из')} ${progress.total}…`;
   renderImproveStatus();
 });
 
@@ -1170,6 +1271,7 @@ $('file-improve').addEventListener('click', async () => {
   $('file-improve').textContent = t('Думает…');
   const providerId = $('file-ai-provider').value || settings.ai?.provider || '';
   improveStartedAt = Date.now();
+  improveChunksWord = mode === 'meeting' ? 'Конспектирую по кускам:' : 'Причёсываю по кускам:';
   improveBase = t(providers[providerId]?.kind === 'cli'
     ? 'Агент думает — большая запись занимает несколько минут'
     : 'Причёсываю — у большой записи это занимает пару минут…');
@@ -1247,27 +1349,14 @@ function renderHistory(list) {
 
     // Голос без текста: распознавание сорвалось, звук сохранён. Вместо
     // «Копировать» и «Причесать» — одна кнопка второй попытки.
-    if (item.voice) {
+    if (item.voice && !item.text) {
       row.innerHTML = `
         <div class="row-sub">${whenSaid(item.at)}${item.seconds ? ` · ${item.seconds} ${t('с речи')}` : ''}`
         + ` · <span class="pill">${t('не распозналось')}</span></div>
         <div class="history-text">${t('Голос сохранён, но текст не получился — можно попробовать ещё раз')}</div>
         <div class="under-card" style="margin-bottom:0;"></div>`;
       const acts = row.querySelector('.under-card');
-      const retry = button(t('Распознать'), 'btn btn-accent', async () => {
-        retry.disabled = true;
-        retry.textContent = t('Распознаю…');
-        try {
-          renderHistory(await api.history.recognize(item.id));
-          chimeDone();
-          say(t('Готово, текст в буфере обмена'));
-        } catch (error) {
-          say(t(ipcErrorText(error)));
-          retry.disabled = false;
-          retry.textContent = t('Распознать');
-        }
-      });
-      acts.appendChild(retry);
+      appendRecognize(acts, item, 'Распознать');
       acts.appendChild(button(t('Убрать'), 'btn btn-quiet', async () => {
         renderHistory(await api.history.remove(item.id));
       }));
@@ -1310,12 +1399,76 @@ function renderHistory(list) {
       buttons.appendChild(improve);
     }
 
+    // Звук лежит рядом с текстом — запись можно прогнать другой моделью:
+    // лёгкая наврала, автоязык промахнулся, что угодно.
+    if (item.voice) appendRecognize(buttons, item, 'Распознать заново');
+
     buttons.appendChild(button(t('Убрать'), 'btn btn-quiet', async () => {
       renderHistory(await api.history.remove(item.id));
     }));
 
     card.appendChild(row);
   }
+}
+
+/**
+ * Выбор модели и кнопка второй попытки распознавания. В списке — только
+ * скачанные модели: нескачанная сначала тянулась бы гигабайтами, и кнопка
+ * выглядела бы зависшей. При распознавании на сервере выбора нет: модель
+ * там своя, наш список ей не указ.
+ */
+const recognizing = new Set();
+
+function appendRecognize(where, item, label) {
+  const local = (settings.recognition?.where || 'local') === 'local';
+  let pick = null;
+  if (local) {
+    pick = document.createElement('select');
+    const current = settings.model?.name || '';
+    for (const model of (health?.catalog || [])) {
+      if (!model.cached && model.id !== current) continue;
+      const option = document.createElement('option');
+      option.value = model.id;
+      option.textContent = t(model.title);
+      pick.appendChild(option);
+    }
+    if (!pick.options.length) {
+      const option = document.createElement('option');
+      option.value = '';
+      option.textContent = t('Текущей моделью');
+      pick.appendChild(option);
+    }
+    pick.value = [...pick.options].some((o) => o.value === current) ? current : pick.options[0].value;
+    where.appendChild(pick);
+  }
+  const again = button(t(label), item.text ? 'btn' : 'btn btn-accent', async () => {
+    if (recognizing.has(item.id)) return;
+    recognizing.add(item.id);
+    again.disabled = true;
+    if (pick) pick.disabled = true;
+    again.textContent = t('Распознаю…');
+    try {
+      const fresh = await api.history.recognize(item.id, pick ? pick.value : '');
+      recognizing.delete(item.id);
+      renderHistory(fresh);
+      chimeDone();
+      say(t('Готово, текст в буфере обмена'));
+    } catch (error) {
+      recognizing.delete(item.id);
+      say(t(ipcErrorText(error)));
+      again.disabled = false;
+      if (pick) pick.disabled = false;
+      again.textContent = t(label);
+    }
+  });
+  // Список могли перерисовать посреди распознавания (пришла новая
+  // диктовка) — кнопка обязана остаться выключенной, а не ожить.
+  if (recognizing.has(item.id)) {
+    again.disabled = true;
+    if (pick) pick.disabled = true;
+    again.textContent = t('Распознаю…');
+  }
+  where.appendChild(again);
 }
 
 $('history-refresh').addEventListener('click', refreshHistory);
@@ -1390,10 +1543,12 @@ $('report-send').addEventListener('click', async () => {
   $('report-sub').textContent = t('Отправляю…');
   try {
     await api.app.sendReport({
+      note: $('report-note').value.trim(),
       log: $('report-log').checked,
       config: $('report-config').checked,
       system: $('report-system').checked,
     });
+    $('report-note').value = '';
     $('report-sub').textContent = t('Отчёт ушёл — спасибо! Так ошибки чинятся быстрее');
   } catch (error) {
     $('report-sub').textContent = `${t('Не отправилось:')} ${t(ipcErrorText(error))}`;
@@ -1428,13 +1583,16 @@ $('update-check').addEventListener('click', async () => {
   pill.classList.remove('is-hidden');
   if (answer.newer) {
     updateLink = answer.download;
-    updateFallback = false;
+    // Портатив сам не ставится: кнопка сразу ведёт на новый Portable.exe.
+    updateFallback = Boolean(answer.portable);
     pill.className = 'pill';
     pill.textContent = `${t('есть')} ${answer.latest}`;
-    $('update-get').textContent = t('Обновить сейчас');
+    $('update-get').textContent = t(answer.portable ? 'Скачать Portable.exe' : 'Обновить сейчас');
     $('update-sub').textContent = `${t('У вас')} ${answer.current}, ${t('вышла')} ${answer.latest}`
       + (answer.sizeMb ? ` — ${t('скачается')} ${answer.sizeMb} ${t('МБ')}` : '')
-      + t('. Поставится само и перезапустится — настройки останутся на месте');
+      + t(answer.portable
+        ? '. Портативная версия обновляется заменой файла — папка «PasteTalk data» останется вашей'
+        : '. Поставится само и перезапустится — настройки останутся на месте');
     $('update-get').style.display = '';
   } else {
     pill.className = 'pill pill-ok';
@@ -1706,6 +1864,8 @@ async function maybeToastUpdate() {
     if (!answer.ok || !answer.notify) return;
     toastRelease = answer;
     updateLink = answer.download;
+    // Портатив не ставится сам — кнопка сразу ведёт на Portable.exe.
+    updateFallback = Boolean(answer.portable);
     $('update-toast-ver').textContent = answer.latest;
     const toast = $('update-toast');
     toast.classList.remove('is-hidden');
@@ -1847,6 +2007,7 @@ async function start() {
   renderHotkeys();
   renderProviders();
   fillFileProviders();
+  syncFileImproveMode();
   maybeToastUpdate();
   // Первое знакомство: один раз, можно пропустить. На самом первом
   // запуске сперва идёт страница приветствия с выбором модели — тур
@@ -1863,6 +2024,8 @@ async function start() {
   if (settings.firstRun) goto('welcome');
   showClipboardHistory();
   await refreshHealth();
+  // Закачка впрок могла идти, пока окно было закрыто, — подхватываем.
+  pollDownloads();
 
   api.config.onChanged((fresh) => {
     settings = fresh;
