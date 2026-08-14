@@ -883,7 +883,7 @@
           </div>
         </div>
 
-        <div class="group-title">Причесать расшифровку</div>
+        <div class="group-title">Что сделать с расшифровкой</div>
         <div class="card">
           <div class="row">
             <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/></svg>
@@ -898,7 +898,7 @@
                 <option value="both">Почистить и переписать</option>
                 <option value="custom">Свои указания</option>
               </select>
-              <button class="btn btn-accent" id="file-improve" disabled>Причесать</button>
+              <button class="btn btn-accent" id="file-improve" disabled>Обработать</button>
             </div>
           </div>
           <div class="row row-stack is-hidden" id="file-prompt-row">
@@ -933,6 +933,14 @@
               <div class="row-sub" id="file-ai-key-sub">Хранится только на этом компьютере, в файле настроек</div>
             </div>
             <div class="row-control"><input class="field" type="password" id="file-ai-key" placeholder="не задан"></div>
+          </div>
+          <div class="row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 6 9 17l-5-5"/></svg>
+            <div class="row-text">
+              <div class="row-title">Проверка связи</div>
+              <div class="row-sub" id="file-ai-check-sub">Прогоним короткую фразу через выбранные провайдера и модель</div>
+            </div>
+            <div class="row-control"><span class="pill pill-muted" id="file-ai-status">не проверено</span><button class="btn" id="file-ai-check">Проверить</button></div>
           </div>
         </div>
       </section>

@@ -1062,6 +1062,10 @@ function fillFileProviders() {
   fillFileModels();
   syncFileRefresh();
   syncFileProviderRows();
+  // Список моделей подтягиваем сразу при открытии окна, а не только по
+  // кнопке: у AITunnel и прочих облаков моделей десятки, и выбирать надо
+  // из готового списка — как в «Улучшении текста», только само.
+  fetchFileModels(select.value, { quiet: true });
 }
 
 /**
@@ -1207,6 +1211,7 @@ async function fetchFileModels(provider, { quiet = false } = {}) {
     .map((item) => (typeof item === 'string' ? item : item.id))
     .filter(Boolean);
   fillFileModels(names.length ? names : undefined, provider);
+  if (!quiet) say(`${t('Сервер отдал моделей:')} ${names.length}`);
 }
 
 $('file-ai-refresh').addEventListener('click', async () => {
@@ -1215,6 +1220,39 @@ $('file-ai-refresh').addEventListener('click', async () => {
     await fetchFileModels($('file-ai-provider').value);
   } finally {
     $('file-ai-refresh').disabled = false;
+  }
+});
+
+// Проверка связи — как в «Улучшении текста», но с провайдером, адресом,
+// ключом и моделью, выбранными именно для файлов.
+$('file-ai-check').addEventListener('click', async () => {
+  $('file-ai-check').disabled = true;
+  $('file-ai-status').className = 'pill pill-muted';
+  $('file-ai-status').textContent = t('проверяю');
+  $('file-ai-check-sub').textContent = t('Прогоняю короткую фразу…');
+
+  const provider = $('file-ai-provider').value;
+  const overrides = provider ? { provider } : {};
+  if (provider === 'custom') {
+    overrides.baseUrl = $('file-ai-baseurl').value.trim();
+    overrides.apiKey = $('file-ai-key').value;
+  } else if (provider && provider !== settings.ai?.provider) {
+    overrides.baseUrl = '';
+  }
+  const model = $('file-ai-model').value.trim();
+  if (model) overrides.model = model;
+  else if (provider && provider !== settings.ai?.provider) overrides.model = '';
+
+  const answer = await api.llm.check(overrides);
+  $('file-ai-check').disabled = false;
+  if (answer.ok) {
+    $('file-ai-status').className = 'pill pill-ok';
+    $('file-ai-status').textContent = `${answer.ms} ${t('мс')}`;
+    $('file-ai-check-sub').textContent = `${answer.provider} ${t('ответил:')} ${t('«')}${answer.sample}${t('»')}`;
+  } else {
+    $('file-ai-status').className = 'pill pill-bad';
+    $('file-ai-status').textContent = t('не вышло');
+    $('file-ai-check-sub').textContent = `${t(answer.error)}${fileKeyHint(provider)}`;
   }
 });
 
@@ -1275,10 +1313,10 @@ $('file-improve').addEventListener('click', async () => {
   $('file-improve').textContent = t('Думает…');
   const providerId = $('file-ai-provider').value || settings.ai?.provider || '';
   improveStartedAt = Date.now();
-  improveChunksWord = mode === 'meeting' ? 'Конспектирую по кускам:' : 'Причёсываю по кускам:';
+  improveChunksWord = mode === 'meeting' ? 'Конспектирую по кускам:' : 'Обрабатываю по кускам:';
   improveBase = t(providers[providerId]?.kind === 'cli'
     ? 'Агент думает — большая запись занимает несколько минут'
-    : 'Причёсываю — у большой записи это занимает пару минут…');
+    : 'Обрабатываю — у большой записи это занимает пару минут…');
   renderImproveStatus();
   clearInterval(improveTicker);
   // Свой хендл в замыкании: finally старого улучшения не должен гасить
@@ -1303,12 +1341,12 @@ $('file-improve').addEventListener('click', async () => {
     const message = ipcErrorText(error);
     $('file-info').textContent = message.includes('PT_CANCELLED')
       ? t('Конспект прерван')
-      : `${t('Причесать не вышло:')} ${t(message)}${fileKeyHint($('file-ai-provider').value)}`;
+      : `${t('Обработать не вышло:')} ${t(message)}${fileKeyHint($('file-ai-provider').value)}`;
   } finally {
     clearInterval(myTicker);
     if (gen === fileGen) {
       $('file-improve').disabled = false;
-      $('file-improve').textContent = t('Причесать');
+      $('file-improve').textContent = t('Обработать');
     }
   }
 });
@@ -1681,7 +1719,7 @@ function tourSteps() {
       title: 'Файлы и конспекты',
       page: 'files', target: '#file-improve', wide: true,
       body: p('Раздел «Файлы»: перетащите видео или аудио — получите расшифровку, хоть с метками времени.')
-        + p('Кнопка «Причесать» превращает её в конспект: «Конспект совещания» делает из часовой записи выжимку — темы, решения, задачи. Для больших записей можно выбрать модель посильнее обычной.'),
+        + p('Кнопка «Обработать» превращает её в конспект: «Конспект совещания» делает из часовой записи выжимку — темы, решения, задачи. Для больших записей можно выбрать модель посильнее обычной.'),
     },
     {
       title: 'Телефон и Telegram',
