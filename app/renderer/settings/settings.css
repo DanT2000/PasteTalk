@@ -416,7 +416,13 @@ a { color: var(--accent); }
 .tour-card { position: fixed; width: min(24rem, calc(100vw - 2rem)); }
 .tour-veil.is-dim .tour-card { position: static; }
 
-#file-ai-model { max-width: 11rem; }
+/* Ширины закреплены, чтобы ряд не перескакивал при смене провайдера:
+   у одних название длинное, у других есть кнопка «Обновить» — без фиксации
+   раскладка дёргается. Селект обрежет длинное имя, список раскроется целиком. */
+#file-ai-provider { width: 11rem; }
+#file-ai-model { width: 12rem; }
+/* Поле модели в «Улучшении текста» — заметной ширины даже пустое. */
+#ai-model { min-width: 16rem; max-width: 24rem; }
 
 /* Тур на крупном масштабе: карточка не выше окна, текст прокручивается. */
 .tour-card { max-height: calc(100vh - 1.5rem); }

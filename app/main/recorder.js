@@ -444,8 +444,10 @@ class Recorder extends EventEmitter {
     // Что движок счёл выдумкой — в журнал. Фильтр не должен работать
     // молча: если он однажды съест настоящую фразу, узнать об этом
     // можно будет только отсюда.
+    // Сам текст в журнал не пишем: журнал уходит в отчёты разработчику,
+    // а речь человека — не для чужих глаз. Длины и причины достаточно.
     for (const item of result.dropped || []) {
-      log.info(`выброшено как выдумка модели: «${item.text}» — ${item.reason}`);
+      log.info(`выброшено как выдумка модели: ${String(item.text || '').length} симв. — ${item.reason}`);
     }
 
     // Сессия умерла и текста нет — это не «Тишина», это причина словами.
@@ -492,12 +494,15 @@ class Recorder extends EventEmitter {
     this.audioCopy = null;
     this.lastText = text;
     const autoPaste = config.get('text.autoPaste', true);
-    const delivered = await paste.deliver(text, autoPaste);
+    const wantsAi = this.mode === 'improve' && config.get('ai.enabled', false);
+    // Когда впереди улучшение, сырой текст кладём только в буфер обмена:
+    // иначе в окно приезжали ДВА текста подряд — сырой и улучшенный.
+    // Если модель споткнётся, текст уже в буфере — подсказки так и говорят.
+    const delivered = await paste.deliver(text, autoPaste && !wantsAi);
     this.plainElevated = Boolean(delivered.elevated);
     log.info(`распознано ${text.length} символов за ${Math.round(durationS)} с звука`);
     this.emit('text', { text, improved: false, seconds: durationS });
 
-    const wantsAi = this.mode === 'improve' && config.get('ai.enabled', false);
     if (wantsAi) await this.improve(text, autoPaste);
     else {
       // Окно «от администратора» не принимает наш Ctrl+V — Windows молча
@@ -538,6 +543,9 @@ class Recorder extends EventEmitter {
         log.info('улучшение отменённой записи выброшено');
         return;
       }
+      // Пустой ответ — это ошибка, а не результат: вставка пустоты затёрла
+      // бы сырой текст в буфере, единственную копию сказанного.
+      if (!String(improved || '').trim()) throw new Error('Модель вернула пустой ответ');
       const delivered = await paste.deliver(improved, autoPaste);
       this.lastText = improved;
       this.emit('text', { text: improved, improved: true });
@@ -551,14 +559,17 @@ class Recorder extends EventEmitter {
         log.info('улучшение отменено человеком');
         this.emitState('cancelled', this.plainElevated
           ? { status: tr('Вставьте сами: Ctrl+V'), hint: tr('Окно запущено от администратора') }
-          : { hint: tr('Обычный текст остался в буфере') });
+          : { status: tr('Текст в буфере — Ctrl+V'), hint: tr('Обычный текст остался в буфере') });
         this.scheduleHide(this.plainElevated ? 5200 : 2400);
         return;
       }
       log.warn(`ИИ не справился: ${error.message}`);
+      // Сырой текст в окно не вставлялся — он ждёт в буфере. Об этом
+      // говорит СТРОКА СТАТУСА: подсказка в компактной панели скрыта,
+      // а человек должен узнать, где его текст, даже из одной строки.
       this.emitState('aierror', this.plainElevated
         ? { status: tr('Вставьте сами: Ctrl+V'), hint: tr('Окно запущено от администратора') }
-        : { hint: tr(error.message) });
+        : { status: tr('Текст в буфере — Ctrl+V'), hint: tr(error.message) });
       this.scheduleHide(this.plainElevated ? 5200 : 3600);
     }
   }

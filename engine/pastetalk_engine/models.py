@@ -272,20 +272,48 @@ class ModelManager:
             if wanted != self._wanted:
                 return
             self.state.state = "loading"
-            model = WhisperModel(
-                # Именно repo, а не имя из каталога: у faster-whisper своя
-                # таблица имён, и для turbo она указывает на ДРУГОЙ
-                # репозиторий — модель скачалась бы дважды, а удаление
-                # чистило бы не тот кэш. Строка с «/» берётся как есть.
-                CATALOG[name]["repo"],
-                device=device,
-                compute_type=compute_type,
-                download_root=self.cache_dir,
-                # На процессоре два ядра остаются системе: захват звука и
-                # интерфейс не должны стоять в очереди за матричными
-                # умножениями — это слышно как пропуски в записи.
-                cpu_threads=max(1, (os.cpu_count() or 4) - 2) if device == "cpu" else 0,
-            )
+
+            def build(local_only: bool) -> WhisperModel:
+                return WhisperModel(
+                    # Именно repo, а не имя из каталога: у faster-whisper своя
+                    # таблица имён, и для turbo она указывает на ДРУГОЙ
+                    # репозиторий — модель скачалась бы дважды, а удаление
+                    # чистило бы не тот кэш. Строка с «/» берётся как есть.
+                    CATALOG[name]["repo"],
+                    device=device,
+                    compute_type=compute_type,
+                    download_root=self.cache_dir,
+                    # Модель на диске — в интернет не ходим вовсе: без этого
+                    # флага hub при каждой загрузке сверяет файлы с сервером,
+                    # и запуск «ломится в сеть», хотя качать нечего.
+                    local_files_only=local_only,
+                    # На процессоре два ядра остаются системе: захват звука и
+                    # интерфейс не должны стоять в очереди за матричными
+                    # умножениями — это слышно как пропуски в записи.
+                    cpu_threads=max(1, (os.cpu_count() or 4) - 2) if device == "cpu" else 0,
+                )
+
+            try:
+                model = build(True)
+            except Exception as exc:  # noqa: BLE001
+                # Докачиваем ТОЛЬКО когда дело в файлах: неполный кэш или
+                # hub не нашёл что-то офлайн. Нехватку видеопамяти и прочие
+                # беды пробрасываем как есть — иначе офлайн-машина с CUDA
+                # OOM получала бы враньё «нет связи с интернетом».
+                text = str(exc).lower()
+                cache_issue = not self.is_cached(name) or any(
+                    word in text
+                    for word in ("local_files_only", "not found", "no such file",
+                                 "cannot find", "offline", "does not exist")
+                )
+                if not cache_issue:
+                    raise
+                self.state.state = "downloading"
+                self._download(name)
+                if wanted != self._wanted:
+                    return
+                self.state.state = "loading"
+                model = build(False)
             # Предполётная кроха звука. Веса копируются на карту и без
             # cuBLAS — падает только первое умножение, то есть посреди
             # диктовки человека. Лучше упасть здесь и сказать словами.

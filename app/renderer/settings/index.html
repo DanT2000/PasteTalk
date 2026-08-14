@@ -252,10 +252,6 @@
           </div>
         </div>
 
-        <div class="group-title">Для тех, кто знает, зачем</div>
-        <div class="card">
-          
-        </div>
       </section>
 
       <!-- ===== РАСПОЗНАВАНИЕ ===== -->
@@ -610,6 +606,20 @@
             <textarea class="field area" id="ai-prompt" data-cfg="ai.prompt" spellcheck="false"></textarea>
           </div>
           <div class="row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 5c-2 1-3 3-3 5.5 0 2 1.2 3.5 3 3.5s3-1.4 3-3.2C11 8.6 10 7 8 7"/><path d="M18 5c-2 1-3 3-3 5.5 0 2 1.2 3.5 3 3.5s3-1.4 3-3.2C21 8.6 20 7 18 7"/></svg>
+            <div class="row-text">
+              <div class="row-title">Кавычки</div>
+              <div class="row-sub">Какие кавычки оставлять в улучшенном тексте</div>
+            </div>
+            <div class="row-control">
+              <select data-cfg="text.quotes">
+                <option value="">Как вернула модель</option>
+                <option value="straight">Прямые "…"</option>
+                <option value="guillemets">Ёлочки «…»</option>
+              </select>
+            </div>
+          </div>
+          <div class="row">
             <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
             <div class="row-text">
               <div class="row-title">Сколько ждать модель</div>
@@ -902,6 +912,22 @@
               <button class="btn" id="file-ai-refresh">Обновить</button>
             </div>
           </div>
+          <div class="row is-hidden" id="file-ai-baseurl-row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="4" width="20" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
+            <div class="row-text">
+              <div class="row-title">Адрес сервера</div>
+              <div class="row-sub">Свой адрес только для файлов — с «Улучшением текста» он не пересекается</div>
+            </div>
+            <div class="row-control"><input class="field" type="text" id="file-ai-baseurl" data-cfg="files.aiBaseUrl" spellcheck="false" placeholder="http://localhost:1234/v1"></div>
+          </div>
+          <div class="row is-hidden" id="file-ai-key-row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="8" cy="15" r="4"/><path d="m10.8 12.2 8-8 2.2 2.2-1.6 1.6 1.6 1.6-2.4 2.4-1.6-1.6-1.8 1.8"/></svg>
+            <div class="row-text">
+              <div class="row-title">Ключ доступа</div>
+              <div class="row-sub" id="file-ai-key-sub">Хранится только на этом компьютере, в файле настроек</div>
+            </div>
+            <div class="row-control"><input class="field" type="password" id="file-ai-key" placeholder="не задан"></div>
+          </div>
         </div>
       </section>
 
@@ -1004,6 +1030,19 @@
             </div>
           </div>
           <div class="row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 3v12"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+            <div class="row-text">
+              <div class="row-title">Какие версии ставить</div>
+              <div class="row-sub">Свежая сборка сначала выходит бетой и становится стабильной, пожив без жалоб</div>
+            </div>
+            <div class="row-control">
+              <select data-cfg="updates.channel">
+                <option value="stable">Только стабильные</option>
+                <option value="beta">Свежие сборки — бета</option>
+              </select>
+            </div>
+          </div>
+          <div class="row">
             <div class="row-text">
               <div class="row-title">Файл настроек</div>
               <div class="row-sub" id="settings-path">—</div>
@@ -1026,6 +1065,39 @@
               <button class="btn" id="tour-again">Пройти знакомство</button>
               <button class="btn" id="open-guide">Инструкция на GitHub</button>
             </div>
+          </div>
+        </div>
+
+        <div class="group-title">Сообщить об ошибке</div>
+        <div class="card">
+          <div class="row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20 20 4M14 4h6v6"/></svg>
+            <div class="row-text">
+              <div class="row-title">Отправить отчёт разработчику</div>
+              <div class="row-sub" id="report-sub">Что-то не работает — нажмите, и разработчик увидит, что случилось. Ключи и токены не отправляются никогда</div>
+            </div>
+            <div class="row-control"><button class="btn btn-accent" id="report-send">Отправить</button></div>
+          </div>
+          <div class="row">
+            <div class="row-text">
+              <div class="row-title">Журнал работы и ошибки</div>
+              <div class="row-sub">Последние строки журнала — по ним видно, что пошло не так</div>
+            </div>
+            <div class="row-control"><input class="switch" type="checkbox" id="report-log" checked></div>
+          </div>
+          <div class="row">
+            <div class="row-text">
+              <div class="row-title">Настройки без ключей</div>
+              <div class="row-sub">Какая модель, какой провайдер, какие галочки — без единого секрета</div>
+            </div>
+            <div class="row-control"><input class="switch" type="checkbox" id="report-config" checked></div>
+          </div>
+          <div class="row">
+            <div class="row-text">
+              <div class="row-title">Сведения о системе</div>
+              <div class="row-sub">Версия программы и Windows, процессор, память, состояние движка</div>
+            </div>
+            <div class="row-control"><input class="switch" type="checkbox" id="report-system" checked></div>
           </div>
         </div>
 

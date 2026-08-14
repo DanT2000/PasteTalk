@@ -30,6 +30,9 @@ const DEFAULTS = {
   text: {
     autoPaste: true,
     keepPunctuation: true,
+    // Какие кавычки оставлять в улучшенном тексте: '' — как вернула модель,
+    // 'straight' — прямые "...", 'guillemets' — «ёлочки».
+    quotes: '',
   },
 
   limits: {
@@ -90,7 +93,9 @@ const DEFAULTS = {
   // aiProvider/aiModel — чем причёсывать расшифровки файлов. Пусто —
   // тем же, чем обычную диктовку. Отдельный выбор нужен, потому что
   // часовое совещание заслуживает модели посильнее, чем быстрая фраза.
-  files: { timestamps: false, aiProvider: '', aiModel: '' },
+  // aiBaseUrl/aiKey — свой сервер только для файлов: дорогая модель для
+  // совещаний и дешёвая для диктовки могут жить на разных адресах.
+  files: { timestamps: false, aiProvider: '', aiModel: '', aiBaseUrl: '', aiKey: '' },
 
   startup: { autoLaunch: true, restartOnCrash: true },
 
@@ -98,6 +103,8 @@ const DEFAULTS = {
     lastCheckedAt: 0,
     // Версия, о которой человек попросил больше не напоминать.
     skipVersion: '',
+    // 'stable' — только проверенные выпуски; 'beta' — свежие сборки сразу.
+    channel: 'stable',
   },
 
   engine: {

@@ -909,6 +909,11 @@ async function drawSettings() {
       + '<span class="why muted">' + t('«Закрыты» — коды не принимаются ни в приложениях, ни в боте. Все, кто уже привязан, продолжают работать как раньше') + '</span></label>'
     + '</div>'
 
+    + '<div class="card"><h2>' + t('Отчёты об ошибках') + '</h2>'
+    + '<p class="muted">' + t('Приходят из настольной программы по кнопке «Отправить разработчику»: журнал работы, настройки без ключей, сведения о системе') + '</p>'
+    + '<div id="reports-list" class="muted">' + t('Загружаю…') + '</div>'
+    + '</div>'
+
     + '<div class="row-actions"><button class="btn" id="save-settings">' + t('Сохранить') + '</button>'
     + '<span id="settings-note" class="muted"></span></div>';
 
@@ -1049,6 +1054,39 @@ async function drawSettings() {
     }
     $('check-proxy').disabled = false;
   });
+
+  // ---- отчёты об ошибках: список подгружается после отрисовки страницы ----
+  (async () => {
+    const box = $('reports-list');
+    if (!box) return;
+    try {
+      const data = await api('/admin/api/reports');
+      if (!data.reports.length) { box.textContent = t('Пока пусто — и это хорошо'); return; }
+      box.classList.remove('muted');
+      box.innerHTML = data.reports.map((r) =>
+        '<div style="display:flex;gap:.75rem;align-items:center;padding:.4rem 0;border-bottom:1px solid var(--line);flex-wrap:wrap;">'
+        + '<span>' + when(r.at) + '</span>'
+        + '<span>' + (r.version ? 'v' + safe(r.version) : '—') + '</span>'
+        + '<span class="muted">' + Math.max(1, Math.round(r.size / 1024)) + ' КБ</span>'
+        + '<span class="grow"></span>'
+        + '<button class="btn" data-report-view="' + r.id + '">' + t('Показать') + '</button>'
+        + '<button class="btn" data-report-del="' + r.id + '">' + t('Удалить') + '</button>'
+        + '</div>').join('')
+        + '<pre id="report-body" style="white-space:pre-wrap;max-height:26rem;overflow:auto;margin:.75rem 0 0;"></pre>';
+      box.querySelectorAll('[data-report-view]').forEach((button) => button.addEventListener('click', async () => {
+        const row = await api('/admin/api/reports/' + button.dataset.reportView);
+        let pretty = row.body;
+        try { pretty = JSON.stringify(JSON.parse(row.body), null, 2); } catch { /* показываем как есть */ }
+        $('report-body').textContent = pretty;
+      }));
+      box.querySelectorAll('[data-report-del]').forEach((button) => button.addEventListener('click', async () => {
+        await api('/admin/api/reports/' + button.dataset.reportDel, { method: 'DELETE' });
+        button.parentElement.remove();
+      }));
+    } catch (error) {
+      box.textContent = t('Отчёты не загрузились:') + ' ' + error.message;
+    }
+  })();
 
   $('save-settings').addEventListener('click', async () => {
     const note = $('settings-note');

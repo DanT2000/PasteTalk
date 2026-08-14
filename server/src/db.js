@@ -79,6 +79,17 @@ CREATE TABLE IF NOT EXISTS settings (
   value TEXT NOT NULL
 );
 
+-- Отчёты об ошибках из настольной программы. Единственное «содержимое»
+-- на сервере — и его человек отправил сам, нажав «Отправить разработчику»:
+-- журнал работы, настройки без ключей, сведения о системе. Диктовок
+-- здесь по-прежнему нет и класть их по-прежнему некуда.
+CREATE TABLE IF NOT EXISTS reports (
+  id      INTEGER PRIMARY KEY,
+  at      INTEGER NOT NULL,
+  version TEXT NOT NULL DEFAULT '',
+  body    TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS usage_at ON usage(at);
 CREATE INDEX IF NOT EXISTS devices_key ON devices(key_id);
 `;

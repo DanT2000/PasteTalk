@@ -18,14 +18,39 @@ const log = require('./logger').scoped('updates');
 const OWNER = 'DanT2000';
 const REPO = 'PasteTalk';
 
-/** «2.0.10» новее «2.0.9»: сравниваем числами, а не строками. */
+/**
+ * «2.0.10» новее «2.0.9»: сравниваем числами, а не строками.
+ * Суффикс беты понижает: «2.16.0-beta.1» СТАРШЕ «2.16.0» быть не может,
+ * иначе бета-канал застревал бы на бете и не видел одноимённый финал.
+ */
 function compare(a, b) {
-  const parse = (value) => String(value).replace(/^v/i, '').split(/[.\-+]/).map((part) => parseInt(part, 10) || 0);
-  const left = parse(a);
-  const right = parse(b);
-  for (let i = 0; i < Math.max(left.length, right.length); i++) {
-    const diff = (left[i] || 0) - (right[i] || 0);
+  const split = (value) => {
+    const [base, ...rest] = String(value).replace(/^v/i, '').split('-');
+    return {
+      base: base.split('.').map((part) => parseInt(part, 10) || 0),
+      pre: rest.join('-'),
+    };
+  };
+  const left = split(a);
+  const right = split(b);
+  for (let i = 0; i < Math.max(left.base.length, right.base.length); i++) {
+    const diff = (left.base[i] || 0) - (right.base[i] || 0);
     if (diff) return diff;
+  }
+  // База одинаковая: выпуск без суффикса новее любой своей беты.
+  if (!left.pre && right.pre) return 1;
+  if (left.pre && !right.pre) return -1;
+  if (left.pre === right.pre) return 0;
+  // Обе беты: числовые куски сравниваем числами (beta.10 новее beta.2).
+  const parts = (pre) => pre.split('.').map((s) => (/^\d+$/.test(s) ? Number(s) : s));
+  const lp = parts(left.pre);
+  const rp = parts(right.pre);
+  for (let i = 0; i < Math.max(lp.length, rp.length); i++) {
+    if (lp[i] === undefined) return -1;
+    if (rp[i] === undefined) return 1;
+    if (lp[i] === rp[i]) continue;
+    if (typeof lp[i] === 'number' && typeof rp[i] === 'number') return lp[i] - rp[i];
+    return String(lp[i]) < String(rp[i]) ? -1 : 1;
   }
   return 0;
 }
@@ -63,10 +88,32 @@ function request(url) {
   });
 }
 
+/**
+ * Канал обновлений. «Стабильные» — выпуски, проверенные в бою: свежая
+ * сборка сперва выходит бетой (pre-release на GitHub) и становится
+ * стабильной, когда пожила у первых пользователей без жалоб. «Бета» —
+ * для тех, кто хочет новое сразу и готов к шероховатостям.
+ */
+function channel() {
+  return config.get('updates.channel', 'stable') === 'beta' ? 'beta' : 'stable';
+}
+
+/** Последний выпуск выбранного канала. Черновики не считаются. */
+async function latestRelease() {
+  if (channel() === 'stable') {
+    // /releases/latest сам не выдаёт pre-release — то, что нужно.
+    return request(`https://api.github.com/repos/${OWNER}/${REPO}/releases/latest`);
+  }
+  const list = await request(`https://api.github.com/repos/${OWNER}/${REPO}/releases?per_page=10`);
+  const found = (Array.isArray(list) ? list : []).find((item) => !item.draft);
+  if (!found) throw new Error('Выпусков пока нет');
+  return found;
+}
+
 async function check() {
   const current = app.getVersion();
   try {
-    const release = await request(`https://api.github.com/repos/${OWNER}/${REPO}/releases/latest`);
+    const release = await latestRelease();
     const latest = String(release.tag_name || '').replace(/^v/i, '');
     const installer = (release.assets || []).find((asset) => /Setup\.exe$/i.test(asset.name));
     const newer = latest && compare(latest, current) > 0;
@@ -80,6 +127,7 @@ async function check() {
       // «больше не напоминать» должно работать одинаково везде.
       notify: Boolean(newer && latest !== config.get('updates.skipVersion', '')),
       name: release.name || '',
+      beta: Boolean(release.prerelease),
       notes: String(release.body || '').slice(0, 2000),
       url: release.html_url,
       download: installer ? installer.browser_download_url : release.html_url,
@@ -108,14 +156,17 @@ const DELAY_AFTER_START_MS = 45000;
 // Последний тихий ответ: окно настроек открывают часто, а спрашивать
 // GitHub чаще раза в сутки незачем — и лимит запросов у него общий.
 let quietAnswer = null;
+let quietChannel = '';
 
 async function quietCheck() {
   const lastAsked = Number(config.get('updates.lastCheckedAt', 0)) || 0;
-  if (quietAnswer && Date.now() - lastAsked < ASK_EVERY_MS) return quietAnswer;
+  // Смена канала обнуляет запомненный ответ: он получен для другого канала.
+  if (quietAnswer && quietChannel === channel() && Date.now() - lastAsked < ASK_EVERY_MS) return quietAnswer;
   const answer = await check();
   if (answer.ok) {
     config.set({ updates: { lastCheckedAt: Date.now() } });
     quietAnswer = answer;
+    quietChannel = channel();
   }
   return answer;
 }
@@ -154,6 +205,8 @@ async function downloadAndInstall(onProgress) {
   }
   module.exports.onProgress = onProgress;
 
+  // Бета-канал видит и pre-release выпуски; стабильный — только боевые.
+  autoUpdater.allowPrerelease = channel() === 'beta';
   const found = await autoUpdater.checkForUpdates();
   const version = found?.updateInfo?.version || '';
   if (!version || compare(version, app.getVersion()) <= 0) {

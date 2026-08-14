@@ -1,5 +1,6 @@
 'use strict';
 
+const fs = require('node:fs');
 const path = require('node:path');
 const { app, ipcMain, clipboard, shell, dialog, nativeTheme, systemPreferences, Notification } = require('electron');
 
@@ -22,6 +23,25 @@ const windows = require('./windows');
 
 const log = logger.scoped('app');
 const { tr } = i18n;
+
+// Портативный режим: пустой файл «portable» (или portable.txt) рядом с
+// PasteTalk.exe — и все данные (настройки, модели, журналы) живут в папке
+// «PasteTalk data» там же. Программа целиком переезжает на флешке.
+// Проверка — до замка одной копии: замок привязан к папке данных.
+try {
+  const portableRoot = path.dirname(process.execPath);
+  if (fs.existsSync(path.join(portableRoot, 'portable'))
+    || fs.existsSync(path.join(portableRoot, 'portable.txt'))) {
+    const dataDir = path.join(portableRoot, 'PasteTalk data');
+    // Пробная запись обязательна: рядом с установкой в Program Files
+    // писать нельзя, и без проверки программа молча теряла бы настройки.
+    fs.mkdirSync(dataDir, { recursive: true });
+    const probe = path.join(dataDir, '.write-check');
+    fs.writeFileSync(probe, 'ok');
+    fs.rmSync(probe, { force: true });
+    app.setPath('userData', dataDir);
+  }
+} catch { /* писать рядом нельзя — работаем как обычная установка */ }
 
 // Одна копия на систему: вторая перехватила бы горячие клавиши у первой.
 if (!app.requestSingleInstanceLock()) {
@@ -235,13 +255,27 @@ function registerHotkeys() {
     recordAndImprove: () => {
       // finish() при режиме improve улучшает сам — второй вызов прогнал бы
       // через модель уже улучшенный текст: вдвое дольше и вдвое дороже.
-      if (recorder.active) { windows.send('audio', 'audio:stop', {}); recorder.finish('done'); }
-      else startRecording('improve');
+      if (recorder.active) {
+        // Решает клавиша завершения: начали запись обычной, закончили
+        // «с улучшением» — значит, человек хочет улучшение.
+        recorder.mode = 'improve';
+        windows.send('audio', 'audio:stop', {});
+        recorder.finish('done');
+      } else startRecording('improve');
     },
     improveClipboard: () => improveClipboard(),
   });
   if (failed.length) {
     windows.send('settings', 'hotkeys:conflict', failed);
+    // Окно настроек на старте ещё не открыто — сообщение туда пропадает.
+    // Человек обязан узнать, что клавиши держит кто-то другой (например,
+    // вторая копия программы), иначе диктовка «просто не работает».
+    try {
+      new Notification({
+        title: 'PasteTalk',
+        body: tr('Горячие клавиши заняты другой программой — возможно, запущена вторая копия PasteTalk'),
+      }).show();
+    } catch { /* система без уведомлений — переживём */ }
   }
 }
 
@@ -599,14 +633,15 @@ ipcMain.handle('window:hide', (event) => event.sender.getOwnerBrowserWindow()?.h
 ipcMain.on('capsule:action', (_event, action) => {
   if (action === 'toggle') toggleRecording('plain');
   else if (action === 'improve') {
-    // Нажали ИИ во время записи — сначала заканчиваем, потом улучшаем.
     recorder.cancelHide();
     if (recorder.active) {
+      // Нажали ИИ во время записи: переводим ЭТУ запись в режим
+      // улучшения и заканчиваем — finish улучшит сам и вставит только
+      // готовый текст. Отдельный вызов improve() после finish вставлял
+      // бы и сырой, и улучшенный — два текста подряд в окне.
+      recorder.mode = 'improve';
       windows.send('audio', 'audio:stop', {});
-      // Если запись и так шла «с улучшением», finish сделает это сам —
-      // второй раз гонять текст через модель незачем.
-      const alreadyImproving = recorder.mode === 'improve';
-      recorder.finish('done').then(() => { if (!alreadyImproving) recorder.improve(); });
+      recorder.finish('done');
     } else {
       recorder.improve();
     }
@@ -676,9 +711,15 @@ ipcMain.handle('files:improve', async (_event, payload) => {
   const overrides = { mode, job: 'digest' };
   if (payload.provider) {
     overrides.provider = String(payload.provider);
-    // Сохранённые адрес и модель относятся к провайдеру из настроек
-    // улучшения; чужому провайдеру они не подходят — пусть берёт свои.
-    if (overrides.provider !== config.get('ai.provider', '')) {
+    if (overrides.provider === 'custom') {
+      // «Своё» у файлов живёт на собственных адресе и ключе: дорогой
+      // сервер для совещаний не путается с дешёвым для диктовки.
+      overrides.baseUrl = config.get('files.aiBaseUrl', '');
+      overrides.apiKey = config.get('files.aiKey', '');
+      if (!payload.model) overrides.model = '';
+    } else if (overrides.provider !== config.get('ai.provider', '')) {
+      // Сохранённые адрес и модель относятся к провайдеру из настроек
+      // улучшения; чужому провайдеру они не подходят — пусть берёт свои.
       overrides.baseUrl = '';
       if (!payload.model) overrides.model = '';
     }
@@ -720,6 +761,90 @@ ipcMain.handle('clipboard:write', (_event, text) => { paste.copy(String(text || 
 
 ipcMain.handle('updates:check', () => updates.check());
 ipcMain.handle('updates:quiet', () => updates.quietCheck());
+
+// ---------- отчёт разработчику ----------
+
+const REPORT_URL = 'https://pastetalk.dev.appswire.ru/v1/report';
+// Имена настроек, чьи значения — секреты или личное. Значение заменяется
+// длиной: разработчику важно знать, ЗАДАНО ли поле, но не его содержимое.
+// Здесь же словарь специфики и свой промпт (имена, проекты, термины) и
+// адреса серверов (в них бывают ключи прямо в URL).
+const SECRET_KEYS = new Set([
+  'keys', 'aiKey', 'apiKey', 'cloudKey', 'serverToken', 'token', 'password',
+  'vocabulary', 'prompt', 'baseUrl', 'aiBaseUrl', 'serverUrl', 'cloudUrl', 'url',
+]);
+
+function sanitizeSettings(node, hot = false) {
+  if (Array.isArray(node)) return node.map((item) => sanitizeSettings(item, hot));
+  if (node && typeof node === 'object') {
+    const out = {};
+    for (const [key, value] of Object.entries(node)) {
+      out[key] = sanitizeSettings(value, hot || SECRET_KEYS.has(key));
+    }
+    return out;
+  }
+  return hot && node ? `скрыто (${String(node).length} симв.)` : node;
+}
+
+function postJson(url, body) {
+  return new Promise((resolve, reject) => {
+    const target = new URL(url);
+    const payload = Buffer.from(JSON.stringify(body), 'utf8');
+    const request = require('node:https').request({
+      hostname: target.hostname,
+      path: target.pathname,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': payload.length },
+    }, (response) => {
+      const parts = [];
+      response.on('data', (part) => parts.push(part));
+      response.on('end', () => {
+        if (response.statusCode >= 400) {
+          // Сервер объясняет отказ словами («не так часто») — передаём их.
+          let reason = '';
+          try { reason = JSON.parse(Buffer.concat(parts).toString('utf8')).error || ''; } catch { /* без слов */ }
+          reject(new Error(reason || `Сервер ответил ${response.statusCode}`));
+        } else resolve();
+      });
+    });
+    request.setTimeout(20000, () => request.destroy(new Error('Сервер не ответил вовремя')));
+    request.on('error', (error) => reject(new Error(
+      error.code === 'ENOTFOUND' ? 'Нет связи с интернетом' : error.message)));
+    request.write(payload);
+    request.end();
+  });
+}
+
+/**
+ * Отчёт об ошибке — только по явному нажатию человека. Что именно уйдёт,
+ * он выбирает галочками; ключи и токены вычищаются всегда, без опций.
+ */
+ipcMain.handle('report:send', async (_event, choices = {}) => {
+  const body = {
+    version: app.getVersion(),
+    at: new Date().toISOString(),
+  };
+  if (choices.system !== false) {
+    const os = require('node:os');
+    body.system = {
+      windows: process.getSystemVersion(),
+      arch: process.arch,
+      electron: process.versions.electron,
+      locale: app.getLocale(),
+      cpu: os.cpus()[0]?.model || '',
+      ramGb: Math.round(os.totalmem() / (1024 ** 3)),
+    };
+    try { body.system.engine = await engine.health(); } catch { body.system.engine = 'не отвечает'; }
+  }
+  if (choices.config !== false) body.settings = sanitizeSettings(config.all());
+  if (choices.log !== false) {
+    body.errors = logger.errors(50);
+    body.log = logger.tail().slice(-200);
+  }
+  await postJson(REPORT_URL, body);
+  log.info('отчёт об ошибке отправлен разработчику');
+  return { ok: true };
+});
 
 // Обновление по кнопке из настроек: скачивает, тихо ставит и перезапускает
 // программу — на сайт никого не гоняем. Ошибка возвращается окну настроек:

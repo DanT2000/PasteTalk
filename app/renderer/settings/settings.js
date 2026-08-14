@@ -614,6 +614,9 @@ function syncProvider() {
   } else {
     $('baseurl').placeholder = preset.baseUrl || 'http://localhost:1234/v1';
     $('apikey').value = settings.ai?.keys?.[id] || '';
+    // Сохранённая модель видна сразу, а не после «Обновить»: пустой селект
+    // выглядит так, будто выбор сбросился.
+    fillModels([]);
     $('model-sub').textContent = t(id === 'lmstudio'
       ? 'Для чистки речи хватает модели уровня Gemma 3 4B и выше — задача простая. Крупные умнее, но заставляют ждать'
       : 'Нажмите «Обновить», чтобы получить список с сервера');
@@ -625,6 +628,11 @@ function syncProvider() {
 function fillModels(items) {
   const select = $('ai-model');
   const chosen = settings.ai?.model ?? '';
+  // Выбор человека не выбрасываем, даже если списка ещё нет или в нём не
+  // нашлось такого имени: пустой селект выглядит как «модель сбросилась».
+  if (chosen && !items.some((item) => item.value === chosen)) {
+    items = [...items, { value: chosen, label: chosen }];
+  }
   select.innerHTML = '';
   items.forEach(({ value, label }) => {
     const option = document.createElement('option');
@@ -632,7 +640,7 @@ function fillModels(items) {
     option.textContent = label;
     select.appendChild(option);
   });
-  select.value = items.some((item) => item.value === chosen) ? chosen : (items[0]?.value ?? '');
+  select.value = chosen || (items[0]?.value ?? '');
 }
 
 $('provider').addEventListener('change', async () => {
@@ -970,9 +978,6 @@ function fillFileProviders() {
   same.textContent = t('Как в улучшении текста');
   select.appendChild(same);
   Object.entries(providers).forEach(([id, preset]) => {
-    // «Своё» без собственного поля адреса здесь работать не может:
-    // адрес хранится один и принадлежит основному провайдеру.
-    if (id === 'custom') return;
     const option = document.createElement('option');
     option.value = id;
     option.textContent = t(preset.title);
@@ -981,7 +986,39 @@ function fillFileProviders() {
   select.value = [...select.options].some((o) => o.value === chosen) ? chosen : '';
   fillFileModels();
   syncFileRefresh();
+  syncFileProviderRows();
 }
+
+/**
+ * Поля адреса и ключа под провайдером файлов. Адрес — только у «Своего»,
+ * и он отдельный (files.aiBaseUrl): дорогой сервер для совещаний не должен
+ * толкаться с дешёвым для диктовки. Ключ у именитых провайдеров общий с
+ * «Улучшением текста» (ai.keys), у «Своего» — свой (files.aiKey).
+ */
+function syncFileProviderRows(providerOverride) {
+  const id = providerOverride ?? $('file-ai-provider').value;
+  const preset = providers[id];
+  const isCustom = id === 'custom';
+  $('file-ai-baseurl-row').classList.toggle('is-hidden', !isCustom);
+  const needsKey = Boolean(preset?.needsKey);
+  $('file-ai-key-row').classList.toggle('is-hidden', !id || !needsKey);
+  if (!id || !needsKey) return;
+  $('file-ai-key-sub').textContent = t(isCustom
+    ? 'Хранится только на этом компьютере, в файле настроек'
+    : 'Общий с «Улучшением текста»: ввели здесь — подхватится и там');
+  $('file-ai-key').value = isCustom ? (settings.files?.aiKey || '') : (settings.ai?.keys?.[id] || '');
+}
+
+$('file-ai-key').addEventListener('input', () => {
+  clearTimeout($('file-ai-key').timer);
+  $('file-ai-key').timer = setTimeout(() => {
+    const id = $('file-ai-provider').value;
+    // Провайдер мог смениться, пока таймер ждал: беcключевому ничего
+    // не пишем — иначе секрет ляжет в чужой, неиспользуемый слот.
+    if (!id || !providers[id]?.needsKey) return;
+    save(id === 'custom' ? 'files.aiKey' : `ai.keys.${id}`, $('file-ai-key').value);
+  }, 400);
+});
 
 /**
  * Модели — списком, а не полем: угадывать и печатать точное имя модели
@@ -1035,19 +1072,24 @@ function syncFileRefresh(providerOverride) {
 $('file-ai-provider').addEventListener('change', async () => {
   // Значение берём сразу: пока ждём запись, showValues может откатить селект.
   const provider = $('file-ai-provider').value;
+  // Недописанный ключ прошлого провайдера не должен сохраниться под новым.
+  clearTimeout($('file-ai-key').timer);
   // Модель принадлежит провайдеру: имя от прошлого не переносим — у нового
   // провайдера такой модели скорее всего нет.
   await save('files.aiModel', '');
   $('file-ai-model').value = '';
   fillFileModels(undefined, provider);
   syncFileRefresh(provider);
+  syncFileProviderRows(provider);
 });
 
-/** Подсказка, когда провайдеру файлов не хватает ключа: поля ключа на этой странице нет. */
+/** Подсказка, когда провайдеру файлов не хватает ключа. У «Своего» ключ не обязателен. */
 function fileKeyHint(provider) {
   const id = provider || settings.ai?.provider || '';
-  if (providers[id]?.needsKey && !settings.ai?.keys?.[id]) {
-    return ` ${t('Ключ вводится на странице «Улучшение текста»')}`;
+  if (id !== 'custom' && providers[id]?.needsKey && !settings.ai?.keys?.[id]) {
+    return provider
+      ? ` ${t('Ключ вводится в поле ниже')}`
+      : ` ${t('Ключ вводится на странице «Улучшение текста»')}`;
   }
   return '';
 }
@@ -1055,8 +1097,14 @@ function fileKeyHint(provider) {
 $('file-ai-refresh').addEventListener('click', async () => {
   const provider = $('file-ai-provider').value;
   const overrides = provider ? { provider } : {};
-  // Сохранённый адрес принадлежит основному провайдеру — чужой берёт свой.
-  if (provider && provider !== settings.ai?.provider) overrides.baseUrl = '';
+  if (provider === 'custom') {
+    // У файлов свой адрес и свой ключ — с настройками улучшения не мешаем.
+    overrides.baseUrl = $('file-ai-baseurl').value.trim();
+    overrides.apiKey = $('file-ai-key').value;
+  } else if (provider && provider !== settings.ai?.provider) {
+    // Сохранённый адрес принадлежит основному провайдеру — чужой берёт свой.
+    overrides.baseUrl = '';
+  }
   $('file-ai-refresh').disabled = true;
   try {
     const answer = await api.llm.models(overrides);
@@ -1083,10 +1131,24 @@ function showFileText(original) {
 $('file-back').addEventListener('click', () => showFileText(!fileShowingOriginal));
 
 let fileImproveGen = -1;
+// Живой счётчик времени: без него долгий агент неотличим от зависшего.
+// Каждую секунду к статусу дописывается «уже N мин NN с» — раз цифра идёт,
+// программа работает; упавший запрос закончится ошибкой, а не тишиной.
+let improveTicker = null;
+let improveStartedAt = 0;
+let improveBase = '';
+
+function renderImproveStatus() {
+  if (fileImproveGen !== fileGen) return;
+  const seconds = Math.round((Date.now() - improveStartedAt) / 1000);
+  $('file-info').textContent = `${improveBase} · ${t('уже')} ${formatDuration(seconds)}`;
+}
+
 api.files.onImproveProgress((progress) => {
   // Поздний прогресс конспекта прошлого файла не топчет статус нового.
   if (fileImproveGen !== fileGen) return;
-  $('file-info').textContent = `${t('Конспектирую по кускам:')} ${progress.step} ${t('из')} ${progress.total}…`;
+  improveBase = `${t('Конспектирую по кускам:')} ${progress.step} ${t('из')} ${progress.total}…`;
+  renderImproveStatus();
 });
 
 // Движок всегда помнит время, поэтому галочка меток действует сразу на
@@ -1106,7 +1168,17 @@ $('file-improve').addEventListener('click', async () => {
   fileImproveGen = gen;
   $('file-improve').disabled = true;
   $('file-improve').textContent = t('Думает…');
-  $('file-info').textContent = t('Причёсываю — у большой записи это занимает пару минут…');
+  const providerId = $('file-ai-provider').value || settings.ai?.provider || '';
+  improveStartedAt = Date.now();
+  improveBase = t(providers[providerId]?.kind === 'cli'
+    ? 'Агент думает — большая запись занимает несколько минут'
+    : 'Причёсываю — у большой записи это занимает пару минут…');
+  renderImproveStatus();
+  clearInterval(improveTicker);
+  // Свой хендл в замыкании: finally старого улучшения не должен гасить
+  // счётчик нового, если они вдруг перекрылись.
+  const myTicker = setInterval(renderImproveStatus, 1000);
+  improveTicker = myTicker;
   try {
     const improved = await api.files.improve({
       text: source,
@@ -1127,6 +1199,7 @@ $('file-improve').addEventListener('click', async () => {
       ? t('Конспект прерван')
       : `${t('Причесать не вышло:')} ${t(message)}${fileKeyHint($('file-ai-provider').value)}`;
   } finally {
+    clearInterval(myTicker);
     if (gen === fileGen) {
       $('file-improve').disabled = false;
       $('file-improve').textContent = t('Причесать');
@@ -1310,6 +1383,24 @@ $('errors-open').addEventListener('click', async () => api.app.openPath((await a
 $('open-github').addEventListener('click', () => api.app.openExternal('https://github.com/DanT2000/PasteTalk'));
 $('open-guide').addEventListener('click', () => api.app.openExternal('https://github.com/DanT2000/PasteTalk#readme'));
 $('tour-again').addEventListener('click', showTour);
+
+// Отчёт разработчику: уходит только по нажатию, состав — по галочкам.
+$('report-send').addEventListener('click', async () => {
+  $('report-send').disabled = true;
+  $('report-sub').textContent = t('Отправляю…');
+  try {
+    await api.app.sendReport({
+      log: $('report-log').checked,
+      config: $('report-config').checked,
+      system: $('report-system').checked,
+    });
+    $('report-sub').textContent = t('Отчёт ушёл — спасибо! Так ошибки чинятся быстрее');
+  } catch (error) {
+    $('report-sub').textContent = `${t('Не отправилось:')} ${t(ipcErrorText(error))}`;
+  } finally {
+    $('report-send').disabled = false;
+  }
+});
 
 let updateLink = '';
 // Кнопка «Обновить» ставит обновление сама, изнутри программы. Ссылка на

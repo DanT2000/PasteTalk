@@ -199,6 +199,32 @@ function stripThinking(text) {
     .trim();
 }
 
+/**
+ * Агенты любят начинать ответ с «Вот причёсанный текст:» — человеку нужен
+ * только сам текст. Срезаем ТОЛЬКО такое вступление и только когда оно
+ * безошибочно узнаётся: короткая первая строка, знакомое начало, слово о
+ * результате и двоеточие в конце. Хвосты не трогаем вовсе: «Дайте знать,
+ * если что» бывает настоящей концовкой надиктованного письма.
+ */
+function stripCourtesy(text) {
+  const lines = text.split('\n');
+  // Не \b: в JavaScript граница слова не работает с кириллицей.
+  const opener = /^(вот|конечно|разумеется|хорошо|готово|пожалуйста|here|sure|of course|below)[\s,!.:'’—-]/i;
+  // Слова, которыми модель называет свой ответ. Нарочно без голых «текст»
+  // и «итог»: «Хорошо, итог такой:» — живая речь, её резать нельзя.
+  const aboutResult = /(причёсанн|улучшенн|исправленн|переписанн|готовый|итоговый|конспект|результат|верси|вариант|cleaned|improved|final|result|summary|version)/i;
+  while (lines.length > 1) {
+    const first = lines[0].trim();
+    // Пустые строки после срезанного вступления тоже уходят.
+    if (first === '' || (first.length <= 90 && opener.test(first) && aboutResult.test(first) && /[:：]$/.test(first))) {
+      lines.shift();
+      continue;
+    }
+    break;
+  }
+  return lines.join('\n').trim();
+}
+
 // ---------- транспорт: HTTP ----------
 
 function httpJson(method, url, { body, apiKey, timeoutMs, job }) {
@@ -327,7 +353,11 @@ async function chat(settings, text, timeoutMs) {
 
   const content = answer?.choices?.[0]?.message?.content;
   if (typeof content !== 'string' || !content.trim()) throw new Error('Модель вернула пустой ответ');
-  return stripThinking(content);
+  // Пустоту проверяем ПОСЛЕ среза размышлений: ответ из одних <think>
+  // не должен превращаться в пустую строку, затирающую буфер человека.
+  const clean = stripThinking(content);
+  if (!clean) throw new Error('Модель вернула пустой ответ');
+  return clean;
 }
 
 // ---------- транспорт: установленный агент ----------
@@ -417,7 +447,9 @@ function runCli(settings, text, timeoutMs) {
       clearTimeout(timer);
       if (stops.get(jobName) === stop) stops.delete(jobName);
       if (cancelled) { reject(new Error(CANCELLED)); return; }
-      const answer = stripThinking(out);
+      // Пустоту проверяем ПОСЛЕ всех срезов: «Вот текст:» без тела не
+      // должен превращаться в пустую строку, затирающую буфер человека.
+      const answer = stripCourtesy(stripThinking(out));
       if (code !== 0 && !answer) {
         reject(new Error(`${preset.title} завершился с ошибкой: ${err.trim().slice(0, 200) || `код ${code}`}`));
         return;
@@ -427,7 +459,12 @@ function runCli(settings, text, timeoutMs) {
     });
 
     // Указания и текст уходят одним куском: агенты читают запрос из stdin.
-    child.stdin.end(`${instruction(settings)}\n\n${text}\n`, 'utf8');
+    // Явное «ты — инструмент» впереди: без него агенты норовят поздороваться,
+    // порассуждать или предложить помощь — а нужен только готовый текст.
+    const preface = 'Ты — молчаливый инструмент обработки текста, а не собеседник. '
+      + 'Ответь ТОЛЬКО итоговым текстом: без приветствий, вступлений, пояснений, '
+      + 'рассуждений, вопросов и предложений помочь ещё.';
+    child.stdin.end(`${preface}\n\n${instruction(settings)}\n\n${text}\n`, 'utf8');
   });
 }
 
@@ -519,7 +556,26 @@ async function improve(text, overrides = {}) {
     : await chat(settings, clean, timeoutMs);
 
   log.info(`${settings.preset.title}: текст улучшен за ${Date.now() - started} мс`);
-  return result;
+  return applyQuotes(result, config.get('text.quotes', ''));
+}
+
+/**
+ * Кавычки по вкусу человека: модели любят «ёлочки», а кому-то в работе
+ * нужны прямые "..." — например, чтобы вставлять текст в код или чат,
+ * где ёлочки смотрятся чужими.
+ */
+function applyQuotes(text, style) {
+  if (style === 'straight') return text.replace(/[«»„“”]/g, '"');
+  if (style === 'guillemets') {
+    return text.replace(/[„“”"]/g, (mark, at, s) => {
+      const prev = at > 0 ? s[at - 1] : '';
+      // Прямая после цифры — дюймы или минуты (5"), а не кавычка.
+      if (mark === '"' && /\d/.test(prev)) return mark;
+      // Открывающая — после пробела, скобки, двоеточия или начала строки.
+      return !prev || /[\s([{\n«:—-]/.test(prev) ? '«' : '»';
+    });
+  }
+  return text;
 }
 
 /** Список моделей сервера — чтобы человек выбирал из готового, а не печатал. */

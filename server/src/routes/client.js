@@ -14,6 +14,7 @@ const socket = require('../agent/socket');
  */
 
 const { clientIp } = require('../net');
+const db = require('../db');
 
 function who(request) {
   const header = request.headers.authorization || '';
@@ -21,7 +22,38 @@ function who(request) {
   return keys.authenticate(token);
 }
 
+// Отчёты принимаются без токена (сломаться может и непривязанная
+// программа), поэтому защита — скоростью и размером: один отчёт с адреса
+// в минуту, не больше 400 КБ.
+const reportSeen = new Map();
+
+function reportAllowed(ip) {
+  const now = Date.now();
+  const last = reportSeen.get(ip) || 0;
+  if (now - last < 60000) return false;
+  reportSeen.set(ip, now);
+  if (reportSeen.size > 1000) {
+    for (const [key, at] of reportSeen) if (now - at > 3600000) reportSeen.delete(key);
+  }
+  return true;
+}
+
 function register(app) {
+  app.post('/v1/report', { bodyLimit: 512 * 1024 }, async (request, reply) => {
+    const body = JSON.stringify(request.body || {});
+    if (body.length > 400000) return reply.code(413).send({ error: 'Отчёт слишком большой' });
+    // Минутный засов взводится после проверки размера: отвергнутый по
+    // размеру отчёт не должен съедать попытку.
+    if (!reportAllowed(clientIp(request))) {
+      return reply.code(429).send({ error: 'Отчёт уже принят — не так часто' });
+    }
+    // Версия попадает в разметку админки — чужим символам в ней не место.
+    const version = String(request.body?.version || '').replace(/[^\w.+-]/g, '').slice(0, 40);
+    db.open().prepare('INSERT INTO reports (at, version, body) VALUES (?, ?, ?)')
+      .run(Date.now(), version, body);
+    return { ok: true };
+  });
+
   app.post('/v1/activate', async (request, reply) => {
     const { code, kind, externalId = null, title = '' } = request.body || {};
     if (!['telegram', 'android', 'desktop'].includes(kind)) {

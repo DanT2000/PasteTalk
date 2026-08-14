@@ -69,6 +69,30 @@ function register(app) {
     }
   });
 
+  // Отчёты об ошибках из настольных программ: список — без тел, тело —
+  // по одному. Старые чистятся кнопкой, чтобы таблица не пухла вечно.
+  app.get('/admin/api/reports', async (request, reply) => {
+    if (!guard(request, reply)) return undefined;
+    const db = require('../db').open();
+    return {
+      reports: db.prepare('SELECT id, at, version, LENGTH(body) AS size FROM reports ORDER BY at DESC LIMIT 100').all(),
+    };
+  });
+
+  app.get('/admin/api/reports/:id', async (request, reply) => {
+    if (!guard(request, reply)) return undefined;
+    const db = require('../db').open();
+    const row = db.prepare('SELECT id, at, version, body FROM reports WHERE id = ?').get(Number(request.params.id));
+    if (!row) return reply.code(404).send({ error: 'Отчёта нет' });
+    return row;
+  });
+
+  app.delete('/admin/api/reports/:id', async (request, reply) => {
+    if (!guard(request, reply)) return undefined;
+    const db = require('../db').open();
+    return { ok: db.prepare('DELETE FROM reports WHERE id = ?').run(Number(request.params.id)).changes > 0 };
+  });
+
   app.get('/admin/api/people', async (request, reply) => {
     if (!guard(request, reply)) return undefined;
     const spend = new Map(usage.perKey().map((row) => [row.key_id, row]));

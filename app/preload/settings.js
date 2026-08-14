@@ -73,6 +73,7 @@ contextBridge.exposeInMainWorld('pastetalk', {
     checkUpdates: () => ipcRenderer.invoke('updates:check'),
     quietCheckUpdates: () => ipcRenderer.invoke('updates:quiet'),
     installUpdate: () => ipcRenderer.invoke('updates:install'),
+    sendReport: (choices) => ipcRenderer.invoke('report:send', choices),
     onUpdateProgress: on('update:progress'),
     openPath: (target) => ipcRenderer.invoke('app:openPath', target),
     openExternal: (url) => ipcRenderer.invoke('app:openExternal', url),
