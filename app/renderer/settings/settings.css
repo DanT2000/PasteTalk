@@ -431,3 +431,11 @@ a { color: var(--accent); }
 /* Ряд с провайдером, моделью и «Обновить» на 150 % шире карточки —
    пусть переносится на вторую строку, а не срезается без следа. */
 .row-control-wrap { flex: 1 1 auto; min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
+
+/* Кнопки под записью истории: без нижнего поля — раньше это делал
+   inline-стиль, который CSP окна молча выбрасывал. */
+#history-list .under-card { margin-bottom: 0; }
+
+/* Классы вместо inline-стилей: CSP окна запрещает атрибут style в разметке. */
+.mt-big { margin-top: 1.5rem; }
+.welcome-actions { margin-top: 1.5rem; display: flex; gap: .5rem; flex-wrap: wrap; }

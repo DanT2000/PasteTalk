@@ -266,7 +266,7 @@ $('sound').addEventListener('change', syncSoundDependents);
 async function refreshModelsDir() {
   const info = await api.models.dir();
   $('models-dir-sub').textContent = `${info.dir} — ${t('модели весят гигабайты, папку можно вынести на просторный диск')}`;
-  $('models-dir-reset').style.display = info.custom ? '' : 'none';
+  $('models-dir-reset').classList.toggle('is-hidden', !info.custom);
 }
 
 async function changeModelsDir(action) {
@@ -364,9 +364,13 @@ function renderModels() {
       <div class="row-text">
         <div class="row-title">${t(item.title)}${item.id === chosen ? ` <span class="pill">${t('Выбрана')}</span>` : ''}</div>
         <div class="row-sub">${describeModel(item, size, status, fetch)}</div>
-        ${busy || fetching ? `<div class="progress"><i style="width:${Math.round(progress * 100)}%"></i></div>` : ''}
+        ${busy || fetching ? '<div class="progress"><i></i></div>' : ''}
       </div>
       <div class="row-control"></div>`;
+    // Ширина — свойством, а не атрибутом style в разметке: CSP окна
+    // запрещает inline-стили, и полоса из строки навсегда стояла бы на нуле.
+    const bar = row.querySelector('.progress i');
+    if (bar) bar.style.width = `${Math.round(progress * 100)}%`;
 
     const controls = row.querySelector('.row-control');
     if (item.id !== chosen) {
@@ -863,7 +867,7 @@ async function startFile(path) {
   // пока текста нет, здесь живёт понятный статус.
   $('file-text').classList.add('is-dim');
   $('file-text').textContent = t('Разбираю запись — текст появится по ходу распознавания');
-  $('file-progress').style.display = 'block';
+  $('file-progress').classList.remove('is-hidden');
   $('file-progress').querySelector('i').style.width = '0';
   $('file-save').disabled = true;
   $('file-copy').disabled = true;
@@ -895,7 +899,7 @@ async function startFile(path) {
     $('file-info').textContent = message === 'MODEL_NOT_READY'
       ? t('Модель ещё не готова — подождите, пока она загрузится')
       : t(message);
-    $('file-progress').style.display = 'none';
+    $('file-progress').classList.add('is-hidden');
     $('file-text').textContent = '';
     $('file-text').classList.remove('is-dim');
     return;
@@ -916,7 +920,7 @@ async function startFile(path) {
     } catch (error) {
       if (gen !== fileGen) return;
       clearInterval(jobTimer);
-      $('file-progress').style.display = 'none';
+      $('file-progress').classList.add('is-hidden');
       if ($('file-text').classList.contains('is-dim')) $('file-text').textContent = '';
       $('file-text').classList.remove('is-dim');
       $('file-info').textContent = `${t('Не удалось узнать состояние:')} ${t(ipcErrorText(error))}`;
@@ -932,7 +936,7 @@ async function startFile(path) {
 
     if (status.state === 'done') {
       clearInterval(jobTimer);
-      $('file-progress').style.display = 'none';
+      $('file-progress').classList.add('is-hidden');
       $('file-info').textContent = `${formatDuration(status.durationS)} · ${t('готово')}`;
       $('file-save').disabled = false;
       $('file-copy').disabled = false;
@@ -946,7 +950,7 @@ async function startFile(path) {
       $('file-back').classList.add('is-hidden');
     } else if (status.state === 'error') {
       clearInterval(jobTimer);
-      $('file-progress').style.display = 'none';
+      $('file-progress').classList.add('is-hidden');
       // Статус-заглушку из блока текста убираем: ошибка написана ниже.
       if ($('file-text').classList.contains('is-dim')) $('file-text').textContent = '';
       $('file-text').classList.remove('is-dim');
@@ -1354,7 +1358,7 @@ function renderHistory(list) {
         <div class="row-sub">${whenSaid(item.at)}${item.seconds ? ` · ${item.seconds} ${t('с речи')}` : ''}`
         + ` · <span class="pill">${t('не распозналось')}</span></div>
         <div class="history-text">${t('Голос сохранён, но текст не получился — можно попробовать ещё раз')}</div>
-        <div class="under-card" style="margin-bottom:0;"></div>`;
+        <div class="under-card"></div>`;
       const acts = row.querySelector('.under-card');
       appendRecognize(acts, item, 'Распознать');
       acts.appendChild(button(t('Убрать'), 'btn btn-quiet', async () => {
@@ -1369,7 +1373,7 @@ function renderHistory(list) {
       <div class="row-sub">${whenSaid(item.at)}${item.seconds ? ` · ${item.seconds} ${t('с речи')}` : ''}`
       + `${item.improved ? ` · <span class="pill">${t('причёсано')}</span>` : ''}</div>
       <div class="history-text">${escapeHtml(shown)}</div>
-      <div class="under-card" style="margin-bottom:0;"></div>`;
+      <div class="under-card"></div>`;
 
     const buttons = row.querySelector('.under-card');
     buttons.appendChild(button(t('Копировать'), 'btn', async () => {
@@ -1575,7 +1579,7 @@ $('update-check').addEventListener('click', async () => {
 
   if (!answer.ok) {
     $('update-sub').textContent = `${t('Проверить не вышло:')} ${t(answer.error)}`;
-    $('update-get').style.display = 'none';
+    $('update-get').classList.add('is-hidden');
     return;
   }
 
@@ -1593,12 +1597,12 @@ $('update-check').addEventListener('click', async () => {
       + t(answer.portable
         ? '. Портативная версия обновляется заменой файла — папка «PasteTalk data» останется вашей'
         : '. Поставится само и перезапустится — настройки останутся на месте');
-    $('update-get').style.display = '';
+    $('update-get').classList.remove('is-hidden');
   } else {
     pill.className = 'pill pill-ok';
     pill.textContent = t('последняя');
     $('update-sub').textContent = `${t('У вас')} ${answer.current} — ${t('новее пока нет')}`;
-    $('update-get').style.display = 'none';
+    $('update-get').classList.add('is-hidden');
   }
 });
 async function startInstallFlow() {
@@ -1622,7 +1626,7 @@ async function startInstallFlow() {
     $('update-check').disabled = false;
     updateFallback = true;
     $('update-get').textContent = t('Скачать с сайта');
-    $('update-get').style.display = '';
+    $('update-get').classList.remove('is-hidden');
     $('update-sub').textContent = `${t('Само обновиться не вышло:')} ${t(answer.error)}. `
       + t('Можно скачать установщик и запустить его поверх — настройки сохранятся');
   }

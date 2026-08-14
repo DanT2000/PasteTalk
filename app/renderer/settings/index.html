@@ -119,12 +119,12 @@
           </div>
         </div>
 
-        <div class="note" style="margin-top:1.5rem;">
+        <div class="note mt-big">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
           <div>Горячая клавиша по умолчанию — <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Space</kbd>. Нажали, сказали, нажали ещё раз — текст в буфере обмена.</div>
         </div>
 
-        <div style="margin-top:1.5rem; display:flex; gap:.5rem; flex-wrap:wrap;">
+        <div class="welcome-actions">
           <button class="btn btn-accent" id="welcome-done">Скачать и начать</button>
           <button class="btn" id="welcome-skip">Пропустить</button>
         </div>
@@ -367,7 +367,7 @@
               <div class="row-sub" id="models-dir-sub">—</div>
             </div>
             <div class="row-control">
-              <button class="btn btn-quiet" id="models-dir-reset" style="display:none;">Сбросить</button>
+              <button class="btn btn-quiet is-hidden" id="models-dir-reset">Сбросить</button>
               <button class="btn" id="models-dir-pick">Изменить…</button>
             </div>
           </div>
@@ -836,7 +836,7 @@
               <button class="btn btn-accent" id="file-copy" disabled>Копировать всё</button>
             </div>
           </div>
-          <div class="progress" id="file-progress" style="display:none;"><i></i></div>
+          <div class="progress is-hidden" id="file-progress"><i></i></div>
           <div class="result-body" id="file-text"></div>
         </div>
 
@@ -1031,7 +1031,7 @@
             </div>
             <div class="row-control">
               <span class="pill pill-muted is-hidden" id="update-pill"></span>
-              <button class="btn" id="update-get" style="display:none;">Обновить сейчас</button>
+              <button class="btn is-hidden" id="update-get">Обновить сейчас</button>
               <button class="btn" id="update-check">Проверить</button>
             </div>
           </div>
