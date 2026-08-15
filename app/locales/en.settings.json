@@ -257,6 +257,8 @@
   "Обрабатываю — у большой записи это занимает пару минут…": "Processing — a long recording takes a couple of minutes…",
   "Обработать не вышло:": "Processing failed:",
   "Прогоним короткую фразу через выбранные провайдера и модель": "We'll run a short phrase through the provider and model chosen here",
+  "Большому совещанию — модель посильнее: можно выбрать не того, кто причёсывает обычную диктовку": "A long meeting deserves a stronger model: you can pick a different provider than the one cleaning up everyday dictation",
+  "Список приходит сам; «Обновить» — спросить сервер ещё раз": "The list arrives on its own; Refresh asks the server again",
   "Кнопка «Обработать» превращает её в конспект: «Конспект совещания» делает из часовой записи выжимку — темы, решения, задачи. Для больших записей можно выбрать модель посильнее обычной.": "The Process button turns it into a digest: Meeting digest condenses an hour-long recording into topics, decisions and action items. For long recordings you can pick a stronger model than usual.",
   "Распознать заново": "Transcribe again",
   "Текущей моделью": "With the current model",
