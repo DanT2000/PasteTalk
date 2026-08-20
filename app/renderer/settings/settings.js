@@ -2247,15 +2247,23 @@ $('relay-url')?.addEventListener('change', () => setTimeout(() => api.relay.refr
 api.relay?.onState(showRelay);
 
 /** Наполнить список экранов: их состав знает только главный процесс. */
+// Последний пришедший список — из него берётся отпечаток при выборе.
+let knownDisplays = [];
+
 async function fillDisplays() {
   const select = $('capsule-display');
   if (!select) return;
   try {
+    // Главный процесс заодно лечит сохранённую привязку по отпечатку:
+    // Windows перераздаёт номера экранов после перезагрузки, и без
+    // лечения выбор «сбрасывался» при каждом перезапуске драйвера.
     const displays = await api.app.displays();
+    knownDisplays = displays;
+    settings = await api.config.all();
     // Список строится заново при каждом вызове: мониторы подключают и
     // отключают на ходу, а однажды замороженный список делал новый экран
     // недоступным до перезапуска программы.
-    [...select.options].filter((o) => o.value !== 'cursor').forEach((o) => o.remove());
+    [...select.options].filter((o) => !['cursor', 'primary'].includes(o.value)).forEach((o) => o.remove());
     for (const display of displays) {
       const option = document.createElement('option');
       option.value = display.id;
@@ -2263,18 +2271,27 @@ async function fillDisplays() {
       select.appendChild(option);
     }
     const saved = String(settings.appearance?.capsuleDisplay || 'cursor');
-    if (saved !== 'cursor' && ![...select.options].some((o) => o.value === saved)) {
-      // Сохранённый экран отключён. Говорим это словами, а не пустой
-      // строкой: showValues() на каждое изменение настроек выставляет
-      // сохранённое значение, и без такого пункта селект просто пустел.
+    if (!['cursor', 'primary'].includes(saved) && ![...select.options].some((o) => o.value === saved)) {
+      // Экран не нашёлся даже по отпечатку — панель живёт на основном,
+      // а выбор человека не трогаем: экран могли просто выключить.
       const gone = document.createElement('option');
       gone.value = saved;
-      gone.textContent = t('Экран отключён — панель там, где курсор');
+      gone.textContent = t('Экран не найден — пока панель на основном');
       select.appendChild(gone);
     }
     select.value = saved;
   } catch { /* без списка остаётся «где курсор» */ }
 }
+
+// Вместе с номером экрана сохраняем его отпечаток: по нему привязка
+// переживает перезагрузку, переустановку и перезапуск драйвера.
+$('capsule-display')?.addEventListener('change', () => {
+  const chosen = $('capsule-display').value;
+  const info = knownDisplays.find((d) => d.id === chosen);
+  save('appearance.capsuleDisplayMark', info
+    ? { label: info.label, width: info.width, height: info.height, x: info.x, y: info.y }
+    : null);
+});
 
 // Окно настроек прячется, а не умирает, поэтому страница живёт весь сеанс.
 // Открыли окно снова или сменился состав мониторов — список перечитывается.

@@ -96,14 +96,52 @@ function capsuleSize() {
   };
 }
 
+/**
+ * Найти закреплённый экран, даже если его номер устарел. Windows раздаёт
+ * номера экранов заново после перезагрузки и перезапуска драйвера — сам
+ * номер ничего не значит. Поэтому рядом с номером хранится отпечаток
+ * (имя монитора, размер, положение): нашли по нему — тихо чиним номер
+ * в настройках, и привязка живёт дальше как ни в чём не бывало.
+ */
+function findPinnedDisplay() {
+  const wanted = String(config.get('appearance.capsuleDisplay', 'cursor'));
+  if (wanted === 'cursor' || wanted === 'primary') return null;
+  const all = screen.getAllDisplays();
+  const direct = all.find((d) => String(d.id) === wanted);
+  if (direct) return direct;
+
+  const mark = config.get('appearance.capsuleDisplayMark', null);
+  if (!mark) return null;
+  let healed = null;
+  if (mark.label) {
+    const byLabel = all.filter((d) => d.label === mark.label);
+    if (byLabel.length === 1) healed = byLabel[0];
+  }
+  if (!healed) {
+    healed = all.find((d) => d.size.width === mark.width && d.size.height === mark.height
+      && d.bounds.x === mark.x && d.bounds.y === mark.y)
+      || all.find((d) => d.size.width === mark.width && d.size.height === mark.height);
+  }
+  if (healed) config.set({ appearance: { capsuleDisplay: String(healed.id) } });
+  return healed;
+}
+
+/** Полечить привязку панели к экрану — зовётся при открытии настроек. */
+function healCapsuleDisplay() {
+  try {
+    findPinnedDisplay();
+  } catch { /* экраны могли спать — полечим в следующий раз */ }
+}
+
 /** Экран для панели: закреплённый настройкой или тот, где курсор. */
 function pickDisplay(cursor) {
   const wanted = String(config.get('appearance.capsuleDisplay', 'cursor'));
   if (wanted === 'cursor') return screen.getDisplayNearestPoint(cursor);
   if (wanted === 'primary') return screen.getPrimaryDisplay();
-  const pinned = screen.getAllDisplays().find((d) => String(d.id) === wanted);
-  // Закреплённый экран могли отключить — тогда ведём себя как раньше.
-  return pinned || screen.getDisplayNearestPoint(cursor);
+  const pinned = findPinnedDisplay();
+  // Закреплённый экран действительно отключён: основной надёжнее курсора —
+  // человек закреплял панель не для того, чтобы она прыгала за мышью.
+  return pinned || screen.getPrimaryDisplay();
 }
 
 function capsuleBounds() {
@@ -238,6 +276,7 @@ function reloadAll() {
 }
 
 module.exports = {
+  healCapsuleDisplay,
   windows,
   applyTheme,
   createSettings,

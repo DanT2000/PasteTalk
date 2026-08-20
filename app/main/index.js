@@ -539,9 +539,17 @@ ipcMain.handle('app:state', () => ({
 }));
 ipcMain.handle('app:displays', () => {
   const { screen } = require('electron');
+  // Сначала лечим сохранённую привязку: номер экрана мог смениться после
+  // перезагрузки, и селект должен показать живой экран, а не «не найден».
+  windows.healCapsuleDisplay();
   const primary = screen.getPrimaryDisplay();
   return screen.getAllDisplays().map((d, i) => ({
     id: String(d.id),
+    label: d.label || '',
+    width: d.size.width,
+    height: d.size.height,
+    x: d.bounds.x,
+    y: d.bounds.y,
     title: `${tr('Экран')} ${i + 1} — ${d.size.width}×${d.size.height}`
       + (d.id === primary.id ? ` (${tr('основной')})` : ''),
   }));

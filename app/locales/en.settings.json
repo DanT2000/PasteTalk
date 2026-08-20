@@ -548,7 +548,6 @@
   "движок ещё не запустился": "the engine hasn't started yet",
   "Вставьте ключ из раздела «Компьютеры»": "Paste the key from the \"Computers\" section",
   "Ключ принят, подключаюсь…": "Key accepted, connecting…",
-  "Экран отключён — панель там, где курсор": "That display is disconnected — the panel follows the cursor",
   "Не удалось открыть настройки:": "Couldn't open settings:",
   "Сбой в окне настроек:": "Settings window error:",
   "Процессор": "CPU",
@@ -580,5 +579,7 @@
   "Выпусков пока нет": "No releases yet",
   "GitHub ответил не JSON": "GitHub didn't return JSON",
   "Обновление не нашлось": "No update found",
-  "Модель ещё грузится": "Model is still loading"
+  "Модель ещё грузится": "Model is still loading",
+  "Основной экран": "Primary display",
+  "Экран не найден — пока панель на основном": "Display not found — the panel is on the primary one for now"
 }
