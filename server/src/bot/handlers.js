@@ -20,15 +20,16 @@ const MAX_SECONDS = 15 * 60;
 // «Почистить» Telegram ужимает до многоточия, и человек видит две
 // одинаковые кнопки. В столбик каждая занимает всю ширину.
 // Подписи — на языке того, кто их увидит.
-function modeButtons(lang) {
-  return {
-    reply_markup: {
-      inline_keyboard: [
-        [{ text: t(lang, 'buttonClean'), callback_data: 'clean' }],
-        [{ text: t(lang, 'buttonBoth'), callback_data: 'both' }],
-      ],
-    },
-  };
+function modeButtons(lang, { withModes = true } = {}) {
+  const rows = [];
+  if (withModes) {
+    rows.push([{ text: t(lang, 'buttonClean'), callback_data: 'clean' }]);
+    rows.push([{ text: t(lang, 'buttonBoth'), callback_data: 'both' }]);
+  }
+  // Вторая попытка доступна всегда: распознавание бывает корявым, а
+  // «Тишина» — ложной. Голосовое достаём из reply, ничего не храня.
+  rows.push([{ text: t(lang, 'buttonRetry'), callback_data: 'retry' }]);
+  return { reply_markup: { inline_keyboard: rows } };
 }
 
 function who(from) {
@@ -66,26 +67,16 @@ async function onCode(update, { tg }, text) {
   }
 }
 
-async function onVoice(update, { tg, queue }, device) {
-  const message = update.message;
-  const chatId = message.chat.id;
-  const lang = langOf(message.from);
-  const voice = message.voice || message.audio;
-
-  if ((voice.duration || 0) > MAX_SECONDS) {
-    await tg.sendMessage(chatId, t(lang, 'tooLong', { minutes: MAX_SECONDS / 60 }));
-    return;
-  }
-
-  // Сначала отклик, потом работа: человек должен сразу видеть, что его
-  // услышали, а не гадать, дошло ли сообщение.
-  const placeholder = await tg.sendMessage(chatId, t(lang, 'transcribing'));
-
+/**
+ * Скачать голосовое и превратить в текст, отредактировав сообщение-заглушку.
+ * Общая дорога первой попытки и кнопки «Распознать ещё раз».
+ */
+async function runTranscribe({ tg, queue }, device, chatId, messageId, voice, lang) {
   let audio;
   try {
     audio = await tg.download(voice.file_id);
   } catch (error) {
-    await tg.editMessage(chatId, placeholder.message_id, t(lang, 'downloadFailed', { message: error.message }));
+    await tg.editMessage(chatId, messageId, t(lang, 'downloadFailed', { message: error.message }));
     return;
   }
 
@@ -98,7 +89,8 @@ async function onVoice(update, { tg, queue }, device) {
     });
     const text = (result.text || '').trim();
     if (!text) {
-      await tg.editMessage(chatId, placeholder.message_id, t(lang, 'silence'));
+      // «Тишина» бывает ложной — оставляем кнопку второй попытки.
+      await tg.editMessage(chatId, messageId, t(lang, 'silence'), modeButtons(lang, { withModes: false }));
       return;
     }
 
@@ -111,10 +103,33 @@ async function onVoice(update, { tg, queue }, device) {
       sttModel: result.model || null,
     });
 
-    await tg.editMessage(chatId, placeholder.message_id, text, modeButtons(lang));
+    await tg.editMessage(chatId, messageId, text, modeButtons(lang));
   } catch (error) {
-    await tg.editMessage(chatId, placeholder.message_id, error.message);
+    // Сбой бывает мимолётным (очередь, сеть, облако) — кнопка второй
+    // попытки уместнее голой ошибки.
+    await tg.editMessage(chatId, messageId, error.message, modeButtons(lang, { withModes: false }));
   }
+}
+
+async function onVoice(update, { tg, queue }, device) {
+  const message = update.message;
+  const chatId = message.chat.id;
+  const lang = langOf(message.from);
+  const voice = message.voice || message.audio;
+
+  if ((voice.duration || 0) > MAX_SECONDS) {
+    await tg.sendMessage(chatId, t(lang, 'tooLong', { minutes: MAX_SECONDS / 60 }));
+    return;
+  }
+
+  // Сначала отклик, потом работа: человек должен сразу видеть, что его
+  // услышали, а не гадать, дошло ли сообщение. Заглушка — реплаем на
+  // голосовое: из реплая кнопка «Распознать ещё раз» достаёт запись.
+  const placeholder = await tg.sendMessage(chatId, t(lang, 'transcribing'), {
+    reply_to_message_id: message.message_id,
+  });
+
+  await runTranscribe({ tg, queue }, device, chatId, placeholder.message_id, voice, lang);
 }
 
 async function onButton(update, { tg, queue }, device) {
@@ -123,6 +138,22 @@ async function onButton(update, { tg, queue }, device) {
   const lang = langOf(query.from);
   const source = query.message.text || '';
   const mode = query.data;
+
+  // Вторая попытка распознавания: голосовое лежит в реплае нашего же
+  // сообщения — скачиваем заново и прогоняем, ничего нигде не храня.
+  if (mode === 'retry') {
+    const original = query.message.reply_to_message;
+    const voice = original && (original.voice || original.audio);
+    if (!voice) {
+      await tg.answerCallback(query.id, t(lang, 'retryLost'));
+      return;
+    }
+    await tg.answerCallback(query.id, t(lang, 'accepted'));
+    await tg.editMarkup(chatId, query.message.message_id, undefined).catch(() => {});
+    await tg.editMessage(chatId, query.message.message_id, t(lang, 'transcribing'));
+    await runTranscribe({ tg, queue }, device, chatId, query.message.message_id, voice, lang);
+    return;
+  }
 
   await tg.answerCallback(query.id, t(lang, 'accepted'));
   if (!source.trim()) return;

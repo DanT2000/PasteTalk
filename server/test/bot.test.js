@@ -107,8 +107,61 @@ test('под распознанным текстом — две кнопки с 
   await bot.handle(voice(555), { tg, queue: okQueue });
 
   const buttons = tg.sent[1].extra.reply_markup.inline_keyboard.flat();
-  assert.deepStrictEqual(buttons.map((b) => b.text), ['Почистить', 'Почистить и переписать']);
-  assert.deepStrictEqual(buttons.map((b) => b.callback_data), ['clean', 'both']);
+  assert.deepStrictEqual(buttons.map((b) => b.text), ['Почистить', 'Почистить и переписать', '🔁 Распознать ещё раз']);
+  assert.deepStrictEqual(buttons.map((b) => b.callback_data), ['clean', 'both', 'retry']);
+});
+
+test('заглушка «Распознаю» — реплаем на голосовое: из него берётся вторая попытка', async () => {
+  const key = keys.issue('Мама');
+  keys.bind(key.id, 'telegram', '555', 'Мама');
+  const tg = fakeTelegram();
+
+  await bot.handle(voice(555), { tg, queue: okQueue });
+
+  assert.strictEqual(tg.sent[0].extra.reply_to_message_id, voice(555).message.message_id);
+});
+
+test('кнопка «Распознать ещё раз» скачивает голосовое заново и правит то же сообщение', async () => {
+  const key = keys.issue('Мама');
+  keys.bind(key.id, 'telegram', '555', 'Мама');
+  const tg = fakeTelegram();
+
+  await bot.handle({
+    callback_query: {
+      id: 'q1',
+      from: { id: 555, language_code: 'ru' },
+      data: 'retry',
+      message: {
+        message_id: 42,
+        chat: { id: 555 },
+        text: 'Тишина — ничего не разобрал.',
+        reply_to_message: { message_id: 7, voice: { file_id: 'f-retry', duration: 13 } },
+      },
+    },
+  }, { tg, queue: okQueue });
+
+  const edits = tg.sent.filter((item) => item.do === 'edit');
+  assert.strictEqual(edits[edits.length - 1].messageId, 42);
+  assert.strictEqual(edits[edits.length - 1].text, 'сказанное вслух');
+});
+
+test('«Распознать ещё раз» без исходного голосового честно извиняется', async () => {
+  const key = keys.issue('Мама');
+  keys.bind(key.id, 'telegram', '555', 'Мама');
+  const tg = fakeTelegram();
+
+  await bot.handle({
+    callback_query: {
+      id: 'q2',
+      from: { id: 555, language_code: 'ru' },
+      data: 'retry',
+      message: { message_id: 43, chat: { id: 555 }, text: 'Тишина — ничего не разобрал.' },
+    },
+  }, { tg, queue: okQueue });
+
+  const answered = tg.sent.find((item) => item.do === 'answer');
+  assert.match(answered.text, /пришлите его ещё раз/i);
+  assert.strictEqual(tg.sent.filter((item) => item.do === 'edit').length, 0);
 });
 
 test('распознавание пишется в расход на нужный ключ', async () => {
@@ -272,8 +325,8 @@ test('английский пользователь получает англи�
   assert.match(tg.sent[0].text, /Transcribing/);
   // Распознанный текст остаётся как распознан, а вот подписи кнопок — английские.
   const buttons = tg.sent[1].extra.reply_markup.inline_keyboard.flat();
-  assert.deepStrictEqual(buttons.map((b) => b.text), ['Clean up', 'Clean up and rewrite']);
-  assert.deepStrictEqual(buttons.map((b) => b.callback_data), ['clean', 'both']);
+  assert.deepStrictEqual(buttons.map((b) => b.text), ['Clean up', 'Clean up and rewrite', '🔁 Transcribe again']);
+  assert.deepStrictEqual(buttons.map((b) => b.callback_data), ['clean', 'both', 'retry']);
 });
 
 test('английскому пользователю и ошибки привязки приходят по-английски', async () => {

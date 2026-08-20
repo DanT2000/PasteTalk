@@ -49,6 +49,14 @@ const STRINGS = {
     ru: 'Взял в работу',
     en: 'On it',
   },
+  buttonRetry: {
+    ru: '🔁 Распознать ещё раз',
+    en: '🔁 Transcribe again',
+  },
+  retryLost: {
+    ru: 'Не вижу исходное голосовое — пришлите его ещё раз',
+    en: "Can't find the original voice message — please send it again",
+  },
   revoked: {
     ru: 'Доступ отозван',
     en: 'Access revoked',
