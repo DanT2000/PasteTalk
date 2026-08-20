@@ -301,7 +301,7 @@ async function improveClipboard() {
   const last = history.latest();
   // Голосовая запись без текста улучшению не поддаётся — не подсовываем
   // вместо неё более старую диктовку, это обмануло бы человека.
-  const text = fromClipboard || (last && !last.voice ? (last.improved || last.text) : '');
+  const text = fromClipboard || (last && last.text ? (last.improved || last.text) : '');
 
   if (!text) {
     recorder.cancelHide();
@@ -326,7 +326,10 @@ async function improveLast() {
     recorder.scheduleHide(2600);
     return;
   }
-  if (last.voice) {
+  // Звук с 2.16.0 хранится у КАЖДОЙ записи — «не распозналось» это
+  // отсутствие текста, а не наличие голоса. Старая проверка по voice
+  // отвергала любую свежую диктовку.
+  if (!last.text) {
     windows.send('capsule', 'capsule:state', { state: 'aierror', hint: tr('Последняя запись не распознана — нажмите «Распознать» в истории') });
     recorder.scheduleHide(2600);
     return;
@@ -959,12 +962,16 @@ ipcMain.handle('history:recognize', async (_event, payload) => {
 });
 
 /** Улучшить запись из истории и запомнить результат рядом с оригиналом. */
-ipcMain.handle('history:improve', async (_event, id) => {
+ipcMain.handle('history:improve', async (_event, payload) => {
+  const id = payload && typeof payload === 'object' ? payload.id : payload;
+  const mode = payload && typeof payload === 'object' ? String(payload.mode || '') : '';
   const entry = history.find(id);
   if (!entry) throw new Error('Запись не найдена');
   if (!config.get('ai.enabled', false)) throw new Error('Улучшение выключено в настройках');
 
-  const improved = await llm.improve(entry.text);
+  // Режим — от нажатой кнопки: иногда нужно только почистить, без
+  // переписывания. Пусто — как настроено для диктовки.
+  const improved = await llm.improve(entry.text, mode ? { mode } : {});
   history.setImproved(id, improved);
   paste.copy(improved);
   windows.send('settings', 'history:changed', history.all());

@@ -102,7 +102,7 @@ contextBridge.exposeInMainWorld('pastetalk', {
   history: {
     all: () => ipcRenderer.invoke('history:all'),
     copy: (id, improved) => ipcRenderer.invoke('history:copy', { id, improved }),
-    improve: (id) => ipcRenderer.invoke('history:improve', id),
+    improve: (id, mode) => ipcRenderer.invoke('history:improve', { id, mode: mode || '' }),
     recognize: (id, model) => ipcRenderer.invoke('history:recognize', { id, model: model || '' }),
     remove: (id) => ipcRenderer.invoke('history:remove', id),
     clear: () => ipcRenderer.invoke('history:clear'),

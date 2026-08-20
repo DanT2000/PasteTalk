@@ -1424,22 +1424,32 @@ function renderHistory(list) {
         await api.history.copy(item.id, false);
         say(t('Скопирован оригинал'));
       }));
-    } else {
-      const improve = button(t('Причесать'), 'btn btn-accent', async () => {
-        improve.disabled = true;
-        improve.textContent = t('Думает…');
-        try {
-          await api.history.improve(item.id);
-          chimeDone();
-          say(t('Готово, текст в буфере обмена'));
-        } catch (error) {
-          say(t(ipcErrorText(error)));
-          improve.disabled = false;
-          improve.textContent = t('Причесать');
-        }
-      });
-      buttons.appendChild(improve);
     }
+
+    // Оба режима улучшения — как на странице ИИ: иногда нужно только
+    // почистить, без переписывания. После ошибки кнопки оживают — можно
+    // нажать ещё раз; после успеха список перерисуется сам.
+    const cleanBtn = button(t('Почистить'), item.improved ? 'btn' : 'btn btn-accent', () => runImprove('clean'));
+    const bothBtn = button(t('Почистить и переписать'), 'btn', () => runImprove('both'));
+    const runImprove = async (mode) => {
+      const pressed = mode === 'clean' ? cleanBtn : bothBtn;
+      const was = pressed.textContent;
+      cleanBtn.disabled = true;
+      bothBtn.disabled = true;
+      pressed.textContent = t('Думает…');
+      try {
+        await api.history.improve(item.id, mode);
+        chimeDone();
+        say(t('Готово, текст в буфере обмена'));
+      } catch (error) {
+        say(t(ipcErrorText(error)));
+        cleanBtn.disabled = false;
+        bothBtn.disabled = false;
+        pressed.textContent = was;
+      }
+    };
+    buttons.appendChild(cleanBtn);
+    buttons.appendChild(bothBtn);
 
     // Звук лежит рядом с текстом — запись можно прогнать другой моделью:
     // лёгкая наврала, автоязык промахнулся, что угодно.
