@@ -13,24 +13,48 @@ const socket = require('../agent/socket');
 const agents = require('../agents');
 
 /**
- * Админка: четыре экрана и ничего лишнего.
+ * Админка: несколько экранов и ничего лишнего.
  *
- * Сессии держим в памяти. Перезапуск сервера выкидывает владельца из
- * панели — это не беда, зато красть с диска нечего.
+ * Сессии живут в базе, а не в памяти: раньше каждый перезапуск сервера
+ * (то есть каждый деплой) выкидывал владельца из панели, и пароль
+ * приходилось вводить по несколько раз на день. Месяц со скользящим
+ * продлением: пользуешься панелью — сессия не протухает. В базе — хэш
+ * токена, чтобы украденный файл не дарил готовые сессии.
  */
 
-const sessions = new Map();
-const SESSION_MS = 12 * 60 * 60 * 1000;
+const SESSION_MS = 30 * 24 * 60 * 60 * 1000;
+const EXTEND_AFTER_MS = 60 * 60 * 1000;
 
 const { clientIp } = require('../net');
+const db = require('../db');
+
+const hashOf = (token) => crypto.createHash('sha256').update(String(token)).digest('hex');
+
+function issueSession() {
+  const id = crypto.randomBytes(24).toString('base64url');
+  const database = db.open();
+  database.prepare('DELETE FROM admin_sessions WHERE until < ?').run(Date.now());
+  database.prepare('INSERT INTO admin_sessions (id_hash, until) VALUES (?, ?)')
+    .run(hashOf(id), Date.now() + SESSION_MS);
+  return id;
+}
 
 function guard(request, reply) {
-  const session = sessions.get(request.headers['x-admin-session']);
-  if (!session || session.until < Date.now()) {
+  const token = request.headers['x-admin-session'];
+  const row = token
+    ? db.open().prepare('SELECT id_hash, until FROM admin_sessions WHERE id_hash = ?').get(hashOf(token))
+    : null;
+  if (!row || row.until < Date.now()) {
     reply.code(401).send({ error: 'Нужно войти заново' });
     return null;
   }
-  return session;
+  // Скользящее продление, но пишем не чаще раза в час — незачем дёргать
+  // диск на каждый запрос страницы.
+  if (row.until - Date.now() < SESSION_MS - EXTEND_AFTER_MS) {
+    db.open().prepare('UPDATE admin_sessions SET until = ? WHERE id_hash = ?')
+      .run(Date.now() + SESSION_MS, row.id_hash);
+  }
+  return row;
 }
 
 function register(app) {
@@ -45,18 +69,14 @@ function register(app) {
     } catch (error) {
       return reply.code(400).send({ error: error.message });
     }
-    const id = crypto.randomBytes(24).toString('base64url');
-    sessions.set(id, { until: Date.now() + SESSION_MS });
-    return { session: id };
+    return { session: issueSession() };
   });
 
   app.post('/admin/login', async (request, reply) => {
     const verdict = await auth.allowed((request.body || {}).password, clientIp(request));
     if (!verdict.ok) return reply.code(403).send({ error: verdict.error });
 
-    const id = crypto.randomBytes(24).toString('base64url');
-    sessions.set(id, { until: Date.now() + SESSION_MS });
-    return { session: id, mustChange: verdict.mustChange };
+    return { session: issueSession(), mustChange: verdict.mustChange };
   });
 
   app.post('/admin/password', async (request, reply) => {
