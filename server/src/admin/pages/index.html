@@ -111,6 +111,10 @@ label.field textarea { width: 100%; max-width: 44rem; display: block; margin-top
 .pair { display: flex; gap: 1rem; flex-wrap: wrap; max-width: 44rem; }
 .pair .field { flex: 1 1 14rem; }
 .pair .field.narrow { flex: 0 1 9rem; }
+/* Поля моделей — одной ширины в обеих строках, иначе «речь» растягивалась
+   на всю ширину, а «текст» ужимался ценами. */
+.pair .field.model { flex: 0 1 16rem; }
+.pair .field.model select, .pair .field.model input { width: 100%; }
 hr.sep { border: none; border-top: 1px solid var(--line); margin: 1.25rem 0; }
 label.field .why { display: block; margin-top: 0.3rem; font-size: 0.8125rem; }
 .btn {
@@ -747,6 +751,16 @@ function providerBlock(id, p, get, prices) {
   const sttPrice = prices.stt?.[sttUsed];
   const llmPrice = prices.llm?.[llmUsed] || {};
 
+  // Модель — выпадающим списком, как в приложении: «стандартная»,
+  // сохранённая, подгруженные с сервера провайдера и «вписать вручную».
+  // Голый текст с datalist работал криво: список открывался через раз.
+  const modelSelect = (key, current, standard) =>
+    '<select data-set="' + key + '" data-model-select="1">'
+    + '<option value=""' + (current ? '' : ' selected') + '>' + t('стандартная') + (standard ? ' — ' + safe(standard) : '') + '</option>'
+    + (current ? '<option value="' + safe(current) + '" selected>' + safe(current) + '</option>' : '')
+    + '<option value="__manual__">' + t('вписать вручную…') + '</option>'
+    + '</select>';
+
   let out = '<h3>' + safe(p.title) + ' — ' + t(p.stt ? 'речь и текст' : 'только текст') + '</h3>';
   // Ключ показываем и «своему» провайдеру: многие OpenAI-совместимые
   // сервисы тоже ходят по токену, просто без ключа мы не ругаемся.
@@ -763,18 +777,16 @@ function providerBlock(id, p, get, prices) {
   }
   if (p.stt) {
     out += '<div class="pair">'
-      + '<label class="field">' + t('Модель распознавания')
-      + '<input data-set="model.stt.' + id + '" list="models-stt-' + id + '" value="' + safe(sttModel) + '" placeholder="' + safe(p.defaultSttModel || t('имя модели')) + '">'
-      + '<datalist id="models-stt-' + id + '"></datalist>'
+      + '<label class="field model">' + t('Модель распознавания')
+      + modelSelect('model.stt.' + id, sttModel, p.defaultSttModel)
       + '</label>'
       + '<label class="field narrow">' + t('₽ за минуту звука')
       + '<input data-price-stt="' + id + '" type="number" step="0.01" min="0" value="' + (sttPrice ?? '') + '">'
       + '</label></div>';
   }
   out += '<div class="pair">'
-    + '<label class="field">' + t('Модель текста')
-    + '<input data-set="model.llm.' + id + '" list="models-llm-' + id + '" value="' + safe(llmModel) + '" placeholder="' + safe(p.defaultModel || t('имя модели')) + '">'
-    + '<datalist id="models-llm-' + id + '"></datalist>'
+    + '<label class="field model">' + t('Модель текста')
+    + modelSelect('model.llm.' + id, llmModel, p.defaultModel)
     + '</label>'
     + '<label class="field narrow">' + t('₽ вход, 1 млн ток.')
     + '<input data-price-in="' + id + '" type="number" step="0.01" min="0" value="' + (llmPrice.in ?? '') + '">'
@@ -947,28 +959,55 @@ async function drawSettings() {
     sttModel: formValue('model.stt.' + id),
     llmModel: formValue('model.llm.' + id),
   });
-  document.querySelectorAll('[data-models-for]').forEach((button) => button.addEventListener('click', async () => {
-    const id = button.dataset.modelsFor;
+  // Пересобрать селект модели из подгруженного списка, сохранив выбор.
+  const fillModelSelect = (key, names) => {
+    const select = document.querySelector('select[data-set="' + key + '"]');
+    if (!select) return;
+    const current = select.value === '__manual__' ? '' : select.value;
+    const standard = select.options[0].textContent;
+    const all = [...new Set([...(current ? [current] : []), ...names])];
+    select.innerHTML = '<option value="">' + safe(standard) + '</option>'
+      + all.map((name) => '<option value="' + safe(name) + '">' + safe(name) + '</option>').join('')
+      + '<option value="__manual__">' + t('вписать вручную…') + '</option>';
+    select.value = current;
+  };
+  const loadModels = async (id, { quiet = false } = {}) => {
     const out = document.querySelector('[data-probe-res="' + id + '"]');
-    out.className = 'muted';
-    out.textContent = t('Спрашиваю сервер…');
-    button.disabled = true;
+    const button = document.querySelector('[data-models-for="' + id + '"]');
+    if (!quiet && out) { out.className = 'muted'; out.textContent = t('Спрашиваю сервер…'); }
+    if (button) button.disabled = true;
     try {
       const result = await api('/admin/api/providers/' + id + '/models', { method: 'POST', body: probeBody(id) });
-      const fill = (listId, names) => {
-        const list = document.getElementById(listId);
-        if (list) list.innerHTML = names.map((name) => '<option value="' + safe(name) + '">').join('');
-      };
-      fill('models-stt-' + id, result.stt || []);
-      fill('models-llm-' + id, result.llm || []);
-      out.textContent = t('Сервер отдал моделей:') + ' ' + result.all + ' — ' + t('список раскрывается в полях моделей');
+      fillModelSelect('model.stt.' + id, result.stt || []);
+      fillModelSelect('model.llm.' + id, result.llm || []);
+      if (out) { out.className = 'muted'; out.textContent = t('Сервер отдал моделей:') + ' ' + result.all; }
     } catch (error) {
-      out.className = 'err';
-      out.textContent = error.message;
+      if (!quiet && out) { out.className = 'err'; out.textContent = error.message; }
     } finally {
-      button.disabled = false;
+      if (button) button.disabled = false;
     }
+  };
+  document.querySelectorAll('[data-models-for]').forEach((button) =>
+    button.addEventListener('click', () => loadModels(button.dataset.modelsFor)));
+
+  // «Вписать вручную…» превращает селект в поле ввода с тем же ключом.
+  document.querySelectorAll('select[data-model-select]').forEach((select) => select.addEventListener('change', () => {
+    if (select.value !== '__manual__') return;
+    const input = document.createElement('input');
+    input.dataset.set = select.dataset.set;
+    input.placeholder = t('имя модели');
+    select.replaceWith(input);
+    input.focus();
   }));
+
+  // Автоподгрузка: настроенным провайдерам список приходит сразу, а
+  // «Своему» — как только вписали адрес или ключ.
+  const configured = (id) => (id === 'custom' ? Boolean(get('url.custom', '')) : Boolean(get('key.' + id, '')));
+  Object.keys(providers).forEach((id) => { if (configured(id)) loadModels(id, { quiet: true }); });
+  document.querySelector('[data-set="url.custom"]')?.addEventListener('change', () => loadModels('custom', { quiet: true }));
+  Object.keys(providers).forEach((id) => {
+    document.querySelector('[data-set="key.' + id + '"]')?.addEventListener('change', () => loadModels(id, { quiet: true }));
+  });
   document.querySelectorAll('[data-check-for]').forEach((button) => button.addEventListener('click', async () => {
     const id = button.dataset.checkFor;
     const out = document.querySelector('[data-probe-res="' + id + '"]');
@@ -1195,8 +1234,9 @@ async function drawSettings() {
         body.settings[key] = value === (promptDefaults[key] || '') ? '' : value;
       } else if (key.startsWith('model.') || key.startsWith('url.')) {
         // Модель и адрес видны в поле целиком — пустота значит «стандарт»,
-        // а не «не трогали».
-        body.settings[key] = input.value.trim();
+        // а не «не трогали». Служебный пункт «вписать вручную» — тоже стандарт.
+        const value = input.value.trim();
+        body.settings[key] = value === '__manual__' ? '' : value;
       } else if (input.value.trim() === '-') {
         // Одинокий минус — «стереть». Пустое поле означает «не трогали»,
         // иначе сохранение формы стирало бы ключ, которого она и не

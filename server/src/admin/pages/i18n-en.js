@@ -24,11 +24,13 @@ window.PASTETALK_EN = {
   'Сохранено · Telegram через прокси отвечает за': 'Saved · Telegram responds via the proxy in',
   'Сохранено, но:': 'Saved, but:',
   // ---------- пробы провайдеров ----------
+  'стандартная': 'default',
+  'вписать вручную…': 'type manually…',
+  'имя модели': 'model name',
   'Подгрузить список моделей': 'Load model list',
   'Проверить связь': 'Test connection',
   'Спрашиваю сервер…': 'Asking the server…',
   'Сервер отдал моделей:': 'Models returned:',
-  'список раскрывается в полях моделей': 'the list opens in the model fields',
   'Проверяю…': 'Checking…',
   'текст: ответил за': 'text: replied in',
   'текст:': 'text:',
@@ -232,7 +234,6 @@ window.PASTETALK_EN = {
   'Например, http://логин:пароль@1.vpn.appswire.ru:8080. Минус — выключить':
     'For example, http://user:password@1.vpn.appswire.ru:8080. A minus sign turns it off',
   'Что пускать через прокси': 'What goes through the proxy',
-  'Проверяю…': 'Checking…',
   'Telegram отвечает через прокси за': 'Telegram replies through the proxy in',
   'Облако: провайдеры, модели и цены': 'Cloud: providers, models, and prices',
   'Облако подхватывает работу, когда домашний компьютер выключен или занят — пока он на связи, платные провайдеры не трогаются. У каждого провайдера здесь всё своё: ключ, модели и цены. По этим ценам считается расход — сам провайдер стоимость не присылает, цифры берутся из его тарифов. Пустая модель — стандартная, пустая цена — расход по этой модели считается нулём. Работа домашнего компьютера бесплатна, её модели в ценах не нуждаются — поэтому они видны в расходе, но не здесь.':
@@ -250,7 +251,6 @@ window.PASTETALK_EN = {
     "OpenAI-compatible. Empty — the provider isn't used",
   'Модель распознавания': 'Speech model',
   '₽ за минуту звука': '₽ per minute of audio',
-  'имя модели': 'model name',
   'Модель текста': 'Text model',
   '₽ вход, 1 млн ток.': '₽ input, 1M tokens',
   '₽ выход, 1 млн ток.': '₽ output, 1M tokens',
@@ -280,7 +280,6 @@ window.PASTETALK_EN = {
   'Облако стоит копейки, но избавляет от «оно висит». Второй вариант — если платить не хочется совсем':
     'The cloud costs pennies but spares you the "it\'s stuck" feeling. Pick the second if you\'d rather not pay at all',
   'Сохранить': 'Save',
-  'Сохраняю…': 'Saving…',
   'Сохранено, бот опрашивает': 'Saved, the bot is polling',
   'Сохранено': 'Saved',
   'Не сохранилось:': "Couldn't save:",
@@ -303,7 +302,6 @@ window.PASTETALK_EN = {
   'Не указан номер в телеграме': 'No Telegram ID given',
   'Не удалось подобрать свободный код': "Couldn't find a free code",
   'Доступ': 'Access',
-  'Telegram-бот': 'Telegram bot',
   'только по коду': 'code holders only',
   'открыт для всех': 'open to everyone',
   '«Открыт для всех» — любой пишет боту без кода, расход гостей виден в профиле «Гости бота». Выключили — гости теряют доступ сразу, привязанные по коду остаются':
