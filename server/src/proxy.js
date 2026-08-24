@@ -65,18 +65,34 @@ function reason(error) {
     else if (current.message && current.message !== 'fetch failed') parts.push(current.message);
     current = current.cause;
   }
-  return [...new Set(parts)].join(' ← ') || String(error && error.message) || 'неизвестный сбой';
+  // Пароль из адреса прокси не должен светиться в тексте ошибки.
+  return ([...new Set(parts)].join(' ← ') || String(error && error.message) || 'неизвестный сбой')
+    .replace(/\/\/[^@/\s]+@/g, '//***@');
 }
 
-/** Проверить прокси, не трогая ничего важного. Две ступени — две причины. */
-async function check() {
-  const current = url();
+/**
+ * Проверить прокси, не трогая ничего важного. Две ступени — две причины.
+ * candidate — адрес из ПОЛЯ формы: человек вписал новый адрес и жмёт
+ * «Проверить» до сохранения; проверять в этот момент старый — ловушка.
+ */
+async function check(candidate) {
+  const current = candidate && candidate !== '***' ? String(candidate).trim() : url();
   if (!current) return { ok: false, error: 'Прокси не задан' };
+
+  let parsed;
+  try {
+    parsed = new URL(current);
+  } catch {
+    return { ok: false, error: 'Адрес прокси записан неверно — нужен вид http://host:8080' };
+  }
 
   // Ступень 1: жив ли сам прокси. Обычный запрос на его адрес — любой
   // ответ, хоть 400, означает «достижим»; недостижим — дальше идти некуда.
+  // Логин и пароль вырезаем: fetch запрещает URL с кредами, а для «жив
+  // ли» они и не нужны.
+  const bare = new URL(parsed.origin);
   try {
-    await fetch(current, { signal: AbortSignal.timeout(8000) });
+    await fetch(bare, { signal: AbortSignal.timeout(8000) });
   } catch (error) {
     return {
       ok: false,
@@ -85,11 +101,12 @@ async function check() {
     };
   }
 
-  // Ступень 2: пропускает ли прокси туннель к Telegram.
+  // Ступень 2: пропускает ли прокси туннель к Telegram. Для адреса из
+  // поля собираем разовый переходник, кэш не трогаем.
   try {
     const started = Date.now();
     const response = await fetch('https://api.telegram.org/', {
-      dispatcher: agent(),
+      dispatcher: current === url() ? agent() : new ProxyAgent(current),
       signal: AbortSignal.timeout(20000),
     });
     // Telegram на голый корень отвечает 404 — и это ровно то, что нужно:
@@ -99,7 +116,7 @@ async function check() {
     return {
       ok: false,
       error: `Прокси отвечает, но туннель к Telegram через него не прошёл (${reason(error)}). `
-        + 'Нужен HTTP-прокси с разрешённым CONNECT на порт 443; SOCKS этот сервер не поддерживает',
+        + 'Нужен HTTP-прокси с логином-паролем в адресе и разрешённым CONNECT на порт 443; SOCKS этот сервер не поддерживает',
     };
   }
 }

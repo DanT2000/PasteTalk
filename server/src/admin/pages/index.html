@@ -1040,7 +1040,13 @@ async function drawSettings() {
     out.textContent = t('Проверяю…');
     $('check-proxy').disabled = true;
     try {
-      const result = await api('/admin/api/proxy/check', { method: 'POST' });
+      // Проверяем то, что сейчас в поле, а не сохранённое: человек вписал
+      // новый адрес и жмёт «Проверить» до «Сохранить».
+      const field = document.querySelector('[data-set="proxy.url"]');
+      const result = await api('/admin/api/proxy/check', {
+        method: 'POST',
+        body: JSON.stringify({ url: field ? field.value.trim() : '' }),
+      });
       out.className = result.ok ? 'ok' : 'err';
       out.textContent = result.ok
         ? t('Telegram отвечает через прокси за ') + result.ms + t(' мс')

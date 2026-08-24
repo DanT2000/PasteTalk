@@ -233,7 +233,9 @@ function register(app) {
 
   app.post('/admin/api/proxy/check', async (request, reply) => {
     if (!guard(request, reply)) return undefined;
-    return require('../proxy').check();
+    // Проверяем адрес из поля формы, если он передан: человек вписал
+    // новый и жмёт «Проверить» до «Сохранить» — проверка старого врала бы.
+    return require('../proxy').check(String((request.body || {}).url || ''));
   });
 
   app.post('/admin/api/agent/ping', async (request, reply) => {
