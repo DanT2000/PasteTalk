@@ -764,7 +764,8 @@ function providerBlock(id, p, get, prices) {
   if (p.stt) {
     out += '<div class="pair">'
       + '<label class="field">' + t('Модель распознавания')
-      + '<input data-set="model.stt.' + id + '" value="' + safe(sttModel) + '" placeholder="' + safe(p.defaultSttModel || t('имя модели')) + '">'
+      + '<input data-set="model.stt.' + id + '" list="models-stt-' + id + '" value="' + safe(sttModel) + '" placeholder="' + safe(p.defaultSttModel || t('имя модели')) + '">'
+      + '<datalist id="models-stt-' + id + '"></datalist>'
       + '</label>'
       + '<label class="field narrow">' + t('₽ за минуту звука')
       + '<input data-price-stt="' + id + '" type="number" step="0.01" min="0" value="' + (sttPrice ?? '') + '">'
@@ -772,14 +773,22 @@ function providerBlock(id, p, get, prices) {
   }
   out += '<div class="pair">'
     + '<label class="field">' + t('Модель текста')
-    + '<input data-set="model.llm.' + id + '" value="' + safe(llmModel) + '" placeholder="' + safe(p.defaultModel || t('имя модели')) + '">'
+    + '<input data-set="model.llm.' + id + '" list="models-llm-' + id + '" value="' + safe(llmModel) + '" placeholder="' + safe(p.defaultModel || t('имя модели')) + '">'
+    + '<datalist id="models-llm-' + id + '"></datalist>'
     + '</label>'
     + '<label class="field narrow">' + t('₽ вход, 1 млн ток.')
     + '<input data-price-in="' + id + '" type="number" step="0.01" min="0" value="' + (llmPrice.in ?? '') + '">'
     + '</label>'
     + '<label class="field narrow">' + t('₽ выход, 1 млн ток.')
     + '<input data-price-out="' + id + '" type="number" step="0.01" min="0" value="' + (llmPrice.out ?? '') + '">'
-    + '</label></div>';
+    + '</label></div>'
+    // Как в приложении: список моделей подгружается с сервера провайдера
+    // и раскрывается в полях выше, а связь проверяется короткой фразой
+    // (текст) и полсекундой тишины (речь) — по тому, что сейчас в форме.
+    + '<div class="row-actions">'
+    + '<button class="btn ghost tiny" data-models-for="' + id + '">' + t('Подгрузить список моделей') + '</button>'
+    + '<button class="btn ghost tiny" data-check-for="' + id + '">' + t('Проверить связь') + '</button>'
+    + '<span class="muted" data-probe-res="' + id + '"></span></div>';
   return out;
 }
 
@@ -930,6 +939,63 @@ async function drawSettings() {
 
   // «Вернуть стандартный» — подставляет исходный текст промпта в поле;
   // зафиксируется он только при сохранении.
+  // ---- пробы провайдеров: список моделей и проверка связи ----
+  const formValue = (key) => (document.querySelector('[data-set="' + key + '"]')?.value || '').trim();
+  const probeBody = (id) => JSON.stringify({
+    url: id === 'custom' ? formValue('url.custom') : '',
+    key: formValue('key.' + id),
+    sttModel: formValue('model.stt.' + id),
+    llmModel: formValue('model.llm.' + id),
+  });
+  document.querySelectorAll('[data-models-for]').forEach((button) => button.addEventListener('click', async () => {
+    const id = button.dataset.modelsFor;
+    const out = document.querySelector('[data-probe-res="' + id + '"]');
+    out.className = 'muted';
+    out.textContent = t('Спрашиваю сервер…');
+    button.disabled = true;
+    try {
+      const result = await api('/admin/api/providers/' + id + '/models', { method: 'POST', body: probeBody(id) });
+      const fill = (listId, names) => {
+        const list = document.getElementById(listId);
+        if (list) list.innerHTML = names.map((name) => '<option value="' + safe(name) + '">').join('');
+      };
+      fill('models-stt-' + id, result.stt || []);
+      fill('models-llm-' + id, result.llm || []);
+      out.textContent = t('Сервер отдал моделей:') + ' ' + result.all + ' — ' + t('список раскрывается в полях моделей');
+    } catch (error) {
+      out.className = 'err';
+      out.textContent = error.message;
+    } finally {
+      button.disabled = false;
+    }
+  }));
+  document.querySelectorAll('[data-check-for]').forEach((button) => button.addEventListener('click', async () => {
+    const id = button.dataset.checkFor;
+    const out = document.querySelector('[data-probe-res="' + id + '"]');
+    out.className = 'muted';
+    out.textContent = t('Проверяю…');
+    button.disabled = true;
+    try {
+      const result = await api('/admin/api/providers/' + id + '/check', { method: 'POST', body: probeBody(id) });
+      const parts = [];
+      parts.push(result.llm.ok
+        ? t('текст: ответил за') + ' ' + result.llm.ms + ' ' + t('мс')
+        : t('текст:') + ' ' + result.llm.error);
+      if (result.stt) {
+        parts.push(result.stt.ok
+          ? t('речь: ответил за') + ' ' + result.stt.ms + ' ' + t('мс')
+          : t('речь:') + ' ' + result.stt.error);
+      }
+      out.className = result.llm.ok && (!result.stt || result.stt.ok) ? 'ok' : 'err';
+      out.textContent = parts.join(' · ');
+    } catch (error) {
+      out.className = 'err';
+      out.textContent = error.message;
+    } finally {
+      button.disabled = false;
+    }
+  }));
+
   document.querySelectorAll('[data-prompt-reset]').forEach((button) => {
     button.addEventListener('click', () => {
       const area = document.querySelector('[data-set="' + button.dataset.promptReset + '"]');

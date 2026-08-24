@@ -23,6 +23,17 @@ window.PASTETALK_EN = {
   'Сохранено, проверяю…': 'Saved, checking…',
   'Сохранено · Telegram через прокси отвечает за': 'Saved · Telegram responds via the proxy in',
   'Сохранено, но:': 'Saved, but:',
+  // ---------- пробы провайдеров ----------
+  'Подгрузить список моделей': 'Load model list',
+  'Проверить связь': 'Test connection',
+  'Спрашиваю сервер…': 'Asking the server…',
+  'Сервер отдал моделей:': 'Models returned:',
+  'список раскрывается в полях моделей': 'the list opens in the model fields',
+  'Проверяю…': 'Checking…',
+  'текст: ответил за': 'text: replied in',
+  'текст:': 'text:',
+  'речь: ответил за': 'speech: replied in',
+  'речь:': 'speech:',
   // ---------- отчёты об ошибках ----------
   'Отчёты': 'Reports',
   'Отчёты об ошибках': 'Error reports',

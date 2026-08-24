@@ -251,6 +251,26 @@ function register(app) {
     return { ok: true, running: bot.sync() };
   });
 
+  // Пробы провайдера: список моделей и проверка связи. Значения из формы
+  // имеют приоритет над сохранёнными — человек проверяет то, что вписал.
+  app.post('/admin/api/providers/:id/models', async (request, reply) => {
+    if (!guard(request, reply)) return undefined;
+    try {
+      return await require('../providers/probe').models(request.params.id, request.body || {});
+    } catch (error) {
+      return reply.code(400).send({ error: error.message });
+    }
+  });
+
+  app.post('/admin/api/providers/:id/check', async (request, reply) => {
+    if (!guard(request, reply)) return undefined;
+    try {
+      return await require('../providers/probe').check(request.params.id, request.body || {});
+    } catch (error) {
+      return reply.code(400).send({ error: error.message });
+    }
+  });
+
   app.post('/admin/api/proxy/check', async (request, reply) => {
     if (!guard(request, reply)) return undefined;
     // Проверяем адрес из поля формы, если он передан: человек вписал
