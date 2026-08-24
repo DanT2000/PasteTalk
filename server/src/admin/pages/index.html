@@ -1056,7 +1056,13 @@ async function drawSettings() {
     try {
       const patch = {};
       const field = document.querySelector('[data-set="proxy.url"]');
-      if (field && field.value.trim() !== '***') patch['proxy.url'] = field.value.trim();
+      // Те же правила, что у общего «Сохранить»: пустое поле — «не
+      // трогали» (адрес уже задан и в поле не показывается), одинокий
+      // минус — стереть. Раньше пустота уходила как пустой адрес и
+      // выключала прокси одним нажатием «Сохранить и проверить».
+      const typed = field ? field.value.trim() : '';
+      if (typed === '-') patch['proxy.url'] = '';
+      else if (typed && typed !== '***') patch['proxy.url'] = typed;
       document.querySelectorAll('[data-set^="proxy.use."]').forEach((sel) => { patch[sel.dataset.set] = sel.value; });
       await api('/admin/api/settings', { method: 'POST', body: JSON.stringify({ settings: patch }) });
       out.textContent = t('Сохранено, проверяю…');
