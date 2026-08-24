@@ -840,6 +840,20 @@ async function drawSettings() {
   };
   const chainStt = get('chain.stt', ['aitunnel']) || [];
   const chainLlm = get('chain.llm', ['deepseek']) || [];
+  // Точечный прокси: явный выбор on/off, иначе — по старому общему scope.
+  const proxyScope = get('proxy.scope', 'telegram');
+  const proxyOn = (what, fallbackOn) => {
+    const explicit = get('proxy.use.' + what, '');
+    if (explicit === 'on') return true;
+    if (explicit === 'off') return false;
+    return fallbackOn;
+  };
+  const proxyUseField = (what, title, fallbackOn) =>
+    '<label class="field"><span>' + title + '</span>'
+    + '<select data-set="proxy.use.' + what + '">'
+      + '<option value="off"' + (proxyOn(what, fallbackOn) ? '' : ' selected') + '>' + t('напрямую') + '</option>'
+      + '<option value="on"' + (proxyOn(what, fallbackOn) ? ' selected' : '') + '>' + t('через прокси') + '</option>'
+    + '</select></label>';
   const sttOptions = Object.entries(providers).filter(([, p]) => p.stt).map(([id, p]) => [id, p.title]);
   const llmOptions = Object.entries(providers).map(([id, p]) => [id, p.title]);
 
@@ -854,16 +868,16 @@ async function drawSettings() {
     + '</div>'
 
     + '<div class="card"><h2>' + t('Прокси') + '</h2>'
-    + '<p class="muted">' + t('Нужен, если отсюда не достучаться до Telegram: без прокси опрос падает с «fetch failed», и бот молчит. Поддерживается HTTP-прокси; логин и пароль вписываются прямо в адрес.') + '</p>'
+    + '<p class="muted">' + t('Нужен, если отсюда не достучаться до Telegram или до провайдера. Поддерживается HTTP(S)-прокси, SOCKS — нет; логин и пароль вписываются прямо в адрес.') + '</p>'
     + keyField(t('Адрес прокси'), 'proxy.url', get('proxy.url', ''),
       t('Например, http://логин:пароль@1.vpn.appswire.ru:8080. Минус — выключить'))
-    + '<label class="field">' + t('Что пускать через прокси')
-      + '<select data-set="proxy.scope">'
-        + '<option value="telegram"' + (get('proxy.scope', 'telegram') === 'all' ? '' : ' selected') + '>' + t('только Telegram') + '</option>'
-        + '<option value="all"' + (get('proxy.scope', 'telegram') === 'all' ? ' selected' : '') + '>' + t('Telegram и облачных провайдеров') + '</option>'
-      + '</select>'
-      + '<span class="why muted">' + t('Гонять через чужой канал звук людей без нужды не стоит: AITunnel и так доступен напрямую') + '</span></label>'
-    + '<div class="row-actions"><button class="btn ghost tiny" id="check-proxy">' + t('Проверить прокси') + '</button>'
+    + '<h3>' + t('Что пускать через прокси') + '</h3>'
+    + '<p class="muted">' + t('Каждому своё: кому-то без прокси никак, а гонять через чужой канал звук людей без нужды не стоит') + '</p>'
+    + proxyUseField('telegram', t('Telegram-бот'), proxyScope === 'telegram' || proxyScope === 'all')
+    + Object.entries(providers).map(([id, p]) => proxyUseField(id, p.title, proxyScope === 'all')).join('')
+    + '<div class="row-actions">'
+      + '<button class="btn tiny" id="save-proxy">' + t('Сохранить и проверить') + '</button>'
+      + '<button class="btn ghost tiny" id="check-proxy">' + t('Проверить, не сохраняя') + '</button>'
       + '<span id="proxy-res" class="muted"></span></div>'
     + '</div>'
 
@@ -1031,6 +1045,37 @@ async function drawSettings() {
     } catch (error) {
       out.className = 'err';
       out.textContent = error.message;
+    }
+  });
+
+  $('save-proxy')?.addEventListener('click', async () => {
+    const out = $('proxy-res');
+    out.className = 'muted';
+    out.textContent = t('Сохраняю…');
+    $('save-proxy').disabled = true;
+    try {
+      const patch = {};
+      const field = document.querySelector('[data-set="proxy.url"]');
+      if (field && field.value.trim() !== '***') patch['proxy.url'] = field.value.trim();
+      document.querySelectorAll('[data-set^="proxy.use."]').forEach((sel) => { patch[sel.dataset.set] = sel.value; });
+      await api('/admin/api/settings', { method: 'POST', body: JSON.stringify({ settings: patch }) });
+      out.textContent = t('Сохранено, проверяю…');
+      const result = await api('/admin/api/proxy/check', {
+        method: 'POST',
+        body: JSON.stringify({ url: field ? field.value.trim() : '' }),
+      });
+      if (result.ok) {
+        out.className = 'ok';
+        out.textContent = t('Сохранено · Telegram через прокси отвечает за') + ' ' + result.ms + ' ' + t('мс');
+      } else {
+        out.className = 'err';
+        out.textContent = t('Сохранено, но:') + ' ' + result.error;
+      }
+    } catch (error) {
+      out.className = 'err';
+      out.textContent = error.message;
+    } finally {
+      $('save-proxy').disabled = false;
     }
   });
 

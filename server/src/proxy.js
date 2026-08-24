@@ -42,8 +42,16 @@ function agent() {
  */
 function usedFor(what) {
   if (!url()) return false;
+  // Точечная настройка на каждое назначение: proxy.use.telegram и
+  // proxy.use.<провайдер>. Кому-то прокси жизненно нужен, кому-то только
+  // мешает — общий рубильник «всё или Telegram» этого не умел.
+  const explicit = String(settings.get(`proxy.use.${what}`, '') || '');
+  if (explicit === 'on') return true;
+  if (explicit === 'off') return false;
+  // Старые настройки, где был общий scope: telegram | all.
   const scope = settings.get('proxy.scope', 'telegram');
-  return scope === 'all' || scope === what;
+  if (scope === 'all') return true;
+  return what === 'telegram' && scope === 'telegram';
 }
 
 /** Добавить прокси в параметры fetch, если он нужен для этого назначения. */

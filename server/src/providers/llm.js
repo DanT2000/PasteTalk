@@ -16,8 +16,8 @@ const proxy = require('../proxy');
 const TIMEOUT_MS = 3 * 60 * 1000;
 const NO_THINKING = { chat_template_kwargs: { enable_thinking: false }, reasoning_effort: 'none' };
 
-function ask(url, key, body) {
-  return fetch(url, proxy.through('cloud', {
+function ask(providerId, url, key, body) {
+  return fetch(url, proxy.through(providerId, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -52,11 +52,11 @@ async function improve(providerId, { text, mode }) {
     temperature: 0.3,
   };
 
-  let response = await ask(`${baseUrl}/chat/completions`, key, { ...base, ...NO_THINKING });
+  let response = await ask(providerId, `${baseUrl}/chat/completions`, key, { ...base, ...NO_THINKING });
   // Не все шлюзы знают эти поля и отвечают на них 400. Тогда повторяем без
   // них: пусть модель думает, но ответит, — это лучше, чем не ответить.
   if (response.status === 400) {
-    response = await ask(`${baseUrl}/chat/completions`, key, base);
+    response = await ask(providerId, `${baseUrl}/chat/completions`, key, base);
   }
   if (!response.ok) throw new Error(`${preset.title} ответил ${response.status}`);
 

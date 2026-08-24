@@ -10,6 +10,19 @@
  * общие строки («Админка», «на связи») не приходится держать дважды.
  */
 window.PASTETALK_EN = {
+  // ---------- прокси ----------
+  'Нужен, если отсюда не достучаться до Telegram или до провайдера. Поддерживается HTTP(S)-прокси, SOCKS — нет; логин и пароль вписываются прямо в адрес.':
+    'Needed when Telegram or a provider is unreachable from here. HTTP(S) proxies are supported, SOCKS is not; credentials go right into the address.',
+  'Каждому своё: кому-то без прокси никак, а гонять через чужой канал звук людей без нужды не стоит':
+    "To each their own: some are unreachable without a proxy, and pushing people's audio through a third-party channel without need is not worth it",
+  'напрямую': 'directly',
+  'через прокси': 'via proxy',
+  'Сохранить и проверить': 'Save and check',
+  'Проверить, не сохраняя': 'Check without saving',
+  'Сохраняю…': 'Saving…',
+  'Сохранено, проверяю…': 'Saved, checking…',
+  'Сохранено · Telegram через прокси отвечает за': 'Saved · Telegram responds via the proxy in',
+  'Сохранено, но:': 'Saved, but:',
   // ---------- отчёты об ошибках ----------
   'Отчёты': 'Reports',
   'Отчёты об ошибках': 'Error reports',
@@ -204,17 +217,10 @@ window.PASTETALK_EN = {
   'Бот перезапущен и опрашивает': 'Bot restarted and polling',
   'Бот выключен: токен не задан': 'Bot is off: no token set',
   'Прокси': 'Proxy',
-  'Нужен, если отсюда не достучаться до Telegram: без прокси опрос падает с «fetch failed», и бот молчит. Поддерживается HTTP-прокси; логин и пароль вписываются прямо в адрес.':
-    'Needed when Telegram is unreachable from here: without a proxy, polling fails with "fetch failed" and the bot goes silent. HTTP proxies are supported; username and password go right into the address.',
   'Адрес прокси': 'Proxy address',
   'Например, http://логин:пароль@1.vpn.appswire.ru:8080. Минус — выключить':
     'For example, http://user:password@1.vpn.appswire.ru:8080. A minus sign turns it off',
   'Что пускать через прокси': 'What goes through the proxy',
-  'только Telegram': 'Telegram only',
-  'Telegram и облачных провайдеров': 'Telegram and cloud providers',
-  'Гонять через чужой канал звук людей без нужды не стоит: AITunnel и так доступен напрямую':
-    "No point routing people's audio through someone else's channel: AITunnel is reachable directly anyway",
-  'Проверить прокси': 'Check the proxy',
   'Проверяю…': 'Checking…',
   'Telegram отвечает через прокси за': 'Telegram replies through the proxy in',
   'Облако: провайдеры, модели и цены': 'Cloud: providers, models, and prices',
