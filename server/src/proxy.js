@@ -52,10 +52,40 @@ function through(what, options = {}) {
   return dispatcher ? { ...options, dispatcher } : options;
 }
 
-/** Проверить прокси, не трогая ничего важного. */
+/**
+ * Причина сбоя словами. undici на любой сетевой сбой говорит «fetch
+ * failed», а настоящий код (ECONNREFUSED, ETIMEDOUT…) прячет в цепочке
+ * cause — без раскрутки владелец видел ошибку ни о чём.
+ */
+function reason(error) {
+  const parts = [];
+  let current = error;
+  while (current && parts.length < 5) {
+    if (current.code) parts.push(current.code);
+    else if (current.message && current.message !== 'fetch failed') parts.push(current.message);
+    current = current.cause;
+  }
+  return [...new Set(parts)].join(' ← ') || String(error && error.message) || 'неизвестный сбой';
+}
+
+/** Проверить прокси, не трогая ничего важного. Две ступени — две причины. */
 async function check() {
   const current = url();
   if (!current) return { ok: false, error: 'Прокси не задан' };
+
+  // Ступень 1: жив ли сам прокси. Обычный запрос на его адрес — любой
+  // ответ, хоть 400, означает «достижим»; недостижим — дальше идти некуда.
+  try {
+    await fetch(current, { signal: AbortSignal.timeout(8000) });
+  } catch (error) {
+    return {
+      ok: false,
+      error: `Сам прокси недоступен из контейнера сервера (${reason(error)}). `
+        + 'Проверьте, что он слушает на этом адресе для всей сети, а не только localhost, и что файрвол пускает',
+    };
+  }
+
+  // Ступень 2: пропускает ли прокси туннель к Telegram.
   try {
     const started = Date.now();
     const response = await fetch('https://api.telegram.org/', {
@@ -66,7 +96,11 @@ async function check() {
     // значит канал до него есть.
     return { ok: true, ms: Date.now() - started, status: response.status };
   } catch (error) {
-    return { ok: false, error: error.message };
+    return {
+      ok: false,
+      error: `Прокси отвечает, но туннель к Telegram через него не прошёл (${reason(error)}). `
+        + 'Нужен HTTP-прокси с разрешённым CONNECT на порт 443; SOCKS этот сервер не поддерживает',
+    };
   }
 }
 
