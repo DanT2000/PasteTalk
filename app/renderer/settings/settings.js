@@ -717,8 +717,12 @@ function fillModels(items) {
 
 $('provider').addEventListener('change', async () => {
   const chosen = $('provider').value;
+  const previous = settings.ai?.provider || '';
+  // Адрес запоминаем за прежним провайдером и достаём адрес нового:
+  // переключился со «Своего» и обратно — адрес на месте, а не стёрт.
+  if (previous) await save(`ai.urls.${previous}`, $('baseurl').value.trim());
   await save('ai.provider', chosen);
-  await save('ai.baseUrl', '');
+  await save('ai.baseUrl', settings.ai?.urls?.[chosen] || '');
   await save('ai.model', '');
   $('ai-model').innerHTML = '';
   syncProvider();
@@ -753,6 +757,11 @@ $('ai-enabled').addEventListener('change', syncModeHint);
 
 $('ai-mode').addEventListener('change', () => { syncProvider(); syncModeHint(); });
 
+// Адрес правят руками — кладём его и в карту адресов текущего провайдера.
+$('baseurl').addEventListener('change', () => {
+  save(`ai.urls.${$('provider').value}`, $('baseurl').value.trim());
+});
+
 $('apikey').addEventListener('input', () => {
   clearTimeout($('apikey').timer);
   $('apikey').timer = setTimeout(() => save(`ai.keys.${$('provider').value}`, $('apikey').value), 400);
@@ -785,6 +794,7 @@ $('ai-check').addEventListener('click', async () => {
     baseUrl: $('baseurl').value,
     apiKey: $('apikey').value,
     model: $('ai-model').value,
+    noBackup: true,
   });
 
   $('ai-check').disabled = false;
@@ -1223,6 +1233,156 @@ $('file-ai-refresh').addEventListener('click', async () => {
   }
 });
 
+// ---------- запасной провайдер ----------
+
+/** Провайдеры для запасного: любой, кроме «не выбран». */
+function fillBackupProviders() {
+  const select = $('backup-provider');
+  const chosen = settings.ai?.backup?.provider || '';
+  select.innerHTML = '';
+  const none = document.createElement('option');
+  none.value = '';
+  none.textContent = t('— не выбран —');
+  select.appendChild(none);
+  Object.entries(providers).forEach(([id, preset]) => {
+    const option = document.createElement('option');
+    option.value = id;
+    option.textContent = t(preset.title);
+    select.appendChild(option);
+  });
+  select.value = [...select.options].some((o) => o.value === chosen) ? chosen : '';
+  fillBackupModels();
+  syncBackupRows();
+  fetchBackupModels({ quiet: true });
+}
+
+function fillBackupModels(fetched, providerOverride) {
+  const select = $('backup-model');
+  const chosen = select.value || settings.ai?.backup?.model || '';
+  select.innerHTML = '';
+  const def = document.createElement('option');
+  def.value = '';
+  def.textContent = t('Стандартная модель');
+  select.appendChild(def);
+  const preset = providers[providerOverride ?? $('backup-provider').value];
+  let items = [];
+  if (fetched) items = fetched.map((name) => ({ value: name, label: name }));
+  else if (preset?.kind === 'cli') {
+    items = (preset.models || []).filter((m) => m.id).map((m) => ({ value: m.id, label: t(m.title) }));
+  }
+  if (chosen && !items.some((item) => item.value === chosen)) items.push({ value: chosen, label: chosen });
+  for (const item of items) {
+    const option = document.createElement('option');
+    option.value = item.value;
+    option.textContent = item.label;
+    select.appendChild(option);
+  }
+  select.value = chosen;
+}
+
+/** Какие ряды показывать: всё под переключателем, адрес — только «Своему». */
+function syncBackupRows(providerOverride) {
+  const on = $('backup-enabled').checked;
+  const id = providerOverride ?? $('backup-provider').value;
+  const preset = providers[id];
+  $('backup-provider-row').classList.toggle('is-hidden', !on);
+  $('backup-baseurl-row').classList.toggle('is-hidden', !on || id !== 'custom');
+  $('backup-key-row').classList.toggle('is-hidden', !on || !id || !preset?.needsKey);
+  $('backup-model-row').classList.toggle('is-hidden', !on || !id);
+  $('backup-check-row').classList.toggle('is-hidden', !on || !id);
+  $('backup-refresh').classList.toggle('is-hidden', preset?.kind === 'cli');
+  if (!on || !id || !preset?.needsKey) return;
+  const isCustom = id === 'custom';
+  $('backup-key-sub').textContent = t(isCustom
+    ? 'Хранится только на этом компьютере, в файле настроек'
+    : 'Общий с основным: ввели здесь — подхватится и там');
+  $('backup-key').value = isCustom ? (settings.ai?.backup?.key || '') : (settings.ai?.keys?.[id] || '');
+}
+
+/** Переопределения для запасного: свой адрес и ключ у «Своего». */
+function backupOverrides(providerOverride) {
+  const provider = providerOverride ?? $('backup-provider').value;
+  const overrides = { provider, noBackup: true };
+  if (provider === 'custom') {
+    overrides.baseUrl = $('backup-baseurl').value.trim();
+    overrides.apiKey = $('backup-key').value;
+  } else {
+    overrides.baseUrl = '';
+  }
+  return overrides;
+}
+
+let backupModelsFetch = 0;
+async function fetchBackupModels({ quiet = false, provider: providerOverride } = {}) {
+  const provider = providerOverride ?? $('backup-provider').value;
+  if (!provider || !providers[provider] || providers[provider].kind === 'cli') return;
+  const generation = ++backupModelsFetch;
+  const answer = await api.llm.models(backupOverrides(provider));
+  if (generation !== backupModelsFetch) return;
+  if (!answer.ok) {
+    if (!quiet) say(`${t('Список моделей не пришёл:')} ${t(answer.error)}`);
+    return;
+  }
+  const names = (answer.models || []).map((m) => (typeof m === 'string' ? m : m.id)).filter(Boolean);
+  fillBackupModels(names.length ? names : undefined, provider);
+  if (!quiet) say(`${t('Сервер отдал моделей:')} ${names.length}`);
+}
+
+$('backup-enabled').addEventListener('change', syncBackupRows);
+
+$('backup-provider').addEventListener('change', async () => {
+  // Значение берём сразу: пока ждём запись, showValues может откатить селект.
+  const provider = $('backup-provider').value;
+  clearTimeout($('backup-key').timer);
+  // Провайдер и сброс модели — одним патчем: между двумя записями селект
+  // успевал откатиться к старому провайдеру, и новый выбор пропадал.
+  settings = await api.config.set({ ai: { backup: { provider, model: '' } } });
+  $('backup-provider').value = provider;
+  $('backup-model').value = '';
+  fillBackupModels(undefined, provider);
+  syncBackupRows(provider);
+  fetchBackupModels({ quiet: true, provider });
+});
+
+$('backup-key').addEventListener('input', () => {
+  clearTimeout($('backup-key').timer);
+  $('backup-key').timer = setTimeout(() => {
+    const id = $('backup-provider').value;
+    if (!id || !providers[id]?.needsKey) return;
+    save(id === 'custom' ? 'ai.backup.key' : `ai.keys.${id}`, $('backup-key').value);
+  }, 400);
+});
+
+$('backup-refresh').addEventListener('click', async () => {
+  $('backup-refresh').disabled = true;
+  try {
+    await fetchBackupModels();
+  } finally {
+    $('backup-refresh').disabled = false;
+  }
+});
+
+$('backup-check').addEventListener('click', async () => {
+  $('backup-check').disabled = true;
+  $('backup-status').className = 'pill pill-muted';
+  $('backup-status').textContent = t('проверяю');
+  $('backup-check-sub').textContent = t('Прогоняю короткую фразу…');
+  const overrides = backupOverrides();
+  const model = $('backup-model').value.trim();
+  overrides.model = model;
+  const answer = await api.llm.check(overrides);
+  $('backup-check').disabled = false;
+  if (answer.ok) {
+    $('backup-status').className = 'pill pill-ok';
+    $('backup-status').textContent = `${answer.ms} ${t('мс')}`;
+    $('backup-check-sub').textContent = `${answer.provider} ${t('ответил:')} ${t('«')}${answer.sample}${t('»')}`;
+  } else {
+    $('backup-status').className = 'pill pill-bad';
+    $('backup-status').textContent = t('не вышло');
+    $('backup-check-sub').textContent = t(answer.error);
+  }
+});
+
 // Проверка связи — как в «Улучшении текста», но с провайдером, адресом,
 // ключом и моделью, выбранными именно для файлов.
 $('file-ai-check').addEventListener('click', async () => {
@@ -1242,6 +1402,7 @@ $('file-ai-check').addEventListener('click', async () => {
   const model = $('file-ai-model').value.trim();
   if (model) overrides.model = model;
   else if (provider && provider !== settings.ai?.provider) overrides.model = '';
+  overrides.noBackup = true;
 
   const answer = await api.llm.check(overrides);
   $('file-ai-check').disabled = false;
@@ -2059,6 +2220,7 @@ async function start() {
   renderHotkeys();
   renderProviders();
   fillFileProviders();
+  fillBackupProviders();
   syncFileImproveMode();
   maybeToastUpdate();
   // Первое знакомство: один раз, можно пропустить. На самом первом

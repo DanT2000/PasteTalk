@@ -978,8 +978,15 @@ ipcMain.handle('history:improve', async (_event, payload) => {
   if (!config.get('ai.enabled', false)) throw new Error('Улучшение выключено в настройках');
 
   // Режим — от нажатой кнопки: иногда нужно только почистить, без
-  // переписывания. Пусто — как настроено для диктовки.
-  const improved = await llm.improve(entry.text, mode ? { mode } : {});
+  // переписывания. Пусто — как настроено для диктовки. Сбой — в журнал:
+  // раньше ошибка уходила только тостом в окно и следа не оставляла.
+  let improved;
+  try {
+    improved = await llm.improve(entry.text, mode ? { mode } : {});
+  } catch (error) {
+    log.warn(`улучшение из истории не вышло: ${error.message}`);
+    throw error;
+  }
   history.setImproved(id, improved);
   paste.copy(improved);
   windows.send('settings', 'history:changed', history.all());

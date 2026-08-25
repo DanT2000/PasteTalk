@@ -584,6 +584,61 @@
           </div>
         </div>
 
+        <div class="group-title">Запасной провайдер</div>
+        <div class="card">
+          <div class="row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/><circle cx="12" cy="12" r="4"/></svg>
+            <div class="row-text">
+              <div class="row-title">Пробовать запасного</div>
+              <div class="row-sub">Основной не ответил — тот же текст уходит запасному. Действует везде: диктовка, история, файлы</div>
+            </div>
+            <div class="row-control"><input class="switch" type="checkbox" id="backup-enabled" data-cfg="ai.backup.enabled"></div>
+          </div>
+          <div class="row is-hidden" id="backup-provider-row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h10M7 13h6"/></svg>
+            <div class="row-text">
+              <div class="row-title">Провайдер</div>
+              <div class="row-sub">Лучше другой, чем основной: если лёг сервер, второй ключ к нему не поможет</div>
+            </div>
+            <div class="row-control"><select id="backup-provider" data-cfg="ai.backup.provider"></select></div>
+          </div>
+          <div class="row is-hidden" id="backup-baseurl-row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="4" width="20" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
+            <div class="row-text">
+              <div class="row-title">Адрес сервера</div>
+              <div class="row-sub">Свой адрес запасного — с основным не пересекается</div>
+            </div>
+            <div class="row-control"><input class="field" type="text" id="backup-baseurl" data-cfg="ai.backup.baseUrl" spellcheck="false" placeholder="http://localhost:1234/v1"></div>
+          </div>
+          <div class="row is-hidden" id="backup-key-row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="8" cy="15" r="4"/><path d="m10.8 12.2 8-8 2.2 2.2-1.6 1.6 1.6 1.6-2.4 2.4-1.6-1.6-1.8 1.8"/></svg>
+            <div class="row-text">
+              <div class="row-title">Ключ доступа</div>
+              <div class="row-sub" id="backup-key-sub">Хранится только на этом компьютере, в файле настроек</div>
+            </div>
+            <div class="row-control"><input class="field" type="password" id="backup-key" placeholder="не задан"></div>
+          </div>
+          <div class="row is-hidden" id="backup-model-row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M10 3v4M14 3v4M10 17v4M14 17v4M3 10h4M3 14h4M17 10h4M17 14h4"/></svg>
+            <div class="row-text">
+              <div class="row-title">Модель</div>
+              <div class="row-sub">Список приходит сам; «Обновить» — спросить сервер ещё раз</div>
+            </div>
+            <div class="row-control row-control-wrap">
+              <select id="backup-model" data-cfg="ai.backup.model"></select>
+              <button class="btn" id="backup-refresh">Обновить</button>
+            </div>
+          </div>
+          <div class="row is-hidden" id="backup-check-row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 6 9 17l-5-5"/></svg>
+            <div class="row-text">
+              <div class="row-title">Проверка связи</div>
+              <div class="row-sub" id="backup-check-sub">Прогоним короткую фразу через запасного</div>
+            </div>
+            <div class="row-control"><span class="pill pill-muted" id="backup-status">не проверено</span><button class="btn" id="backup-check">Проверить</button></div>
+          </div>
+        </div>
+
         <div class="group-title">Что делать с текстом</div>
         <div class="card">
           <div class="row">

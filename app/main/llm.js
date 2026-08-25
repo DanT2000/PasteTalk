@@ -188,6 +188,12 @@ function instruction(settings) {
  */
 function timeoutFor(text, settings) {
   if (settings.timeoutMs && settings.timeoutMs > 0) return settings.timeoutMs;
+  // Агенты (Claude Code, Codex) стартуют холодно и думают десятки секунд
+  // даже над короткой фразой — минута с небольшим для них обычное дело.
+  // Без этого запаса первое улучшение после переключения на агента
+  // рвалось по таймауту, а «Проверить связь» с минутным лимитом
+  // проходила — и выглядело так, будто выбор «не применился».
+  if (settings.preset?.kind === 'cli') return Math.max(120000, Math.min(45000 + text.length * 60, 240000));
   // Запас щедрый намеренно: обычный текст уже лежит в буфере, так что
   // ожидание ничего не стоит, кроме кружка на панели. А первый запрос к
   // локальному серверу может уйти на минуту — он ещё поднимает модель
@@ -572,7 +578,47 @@ async function meetingNotes(text, overrides = {}, onProgress = null) {
 
 // ---------- наружу ----------
 
+/**
+ * Запасной провайдер: основной не ответил — тот же текст уходит запасному.
+ * Настраивается в «Улучшении текста», действует на все улучшения:
+ * диктовку, историю, файлы. Отмена человеком запасному не передаётся,
+ * и проверка связи ходит только к тому, кого проверяют.
+ */
+function backupFor(overrides) {
+  if (overrides.noBackup) return null;
+  const backup = config.get('ai.backup', {}) || {};
+  if (!backup.enabled || !backup.provider || !PROVIDERS[backup.provider]) return null;
+  const primary = overrides.provider || config.get('ai.provider', 'lmstudio');
+  if (primary === backup.provider) return null;
+  // Адрес и ключ из настроек запасного принадлежат только «Своему»:
+  // человек побывал на нём, вписал адрес, вернулся к AITunnel — и этот
+  // адрес не должен утащить запросы к AITunnel на локальный порт.
+  const custom = backup.provider === 'custom';
+  const out = {
+    ...overrides,
+    provider: backup.provider,
+    baseUrl: custom ? (backup.baseUrl || '') : '',
+    model: backup.model || '',
+    noBackup: true,
+  };
+  if (custom) out.apiKey = backup.key || '';
+  else delete out.apiKey;
+  return out;
+}
+
 async function improve(text, overrides = {}) {
+  try {
+    return await improveOnce(text, overrides);
+  } catch (error) {
+    if (isCancelled(error)) throw error;
+    const backup = backupFor(overrides);
+    if (!backup) throw error;
+    log.warn(`основной провайдер не справился (${error.message}) — пробую запасной: ${PROVIDERS[backup.provider].title}`);
+    return improveOnce(text, backup);
+  }
+}
+
+async function improveOnce(text, overrides = {}) {
   const clean = String(text || '').trim();
   if (!clean) return clean;
 
@@ -653,6 +699,8 @@ async function check(overrides = {}) {
       ...overrides,
       mode: 'clean',
       timeoutMs: 60000,
+      // Проверяют именно этого провайдера — запасной бы всё замаскировал.
+      noBackup: true,
     });
     return { ok: true, ms: Date.now() - started, provider: settings.preset.title, sample: sample.slice(0, 120) };
   } catch (error) {

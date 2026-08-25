@@ -581,5 +581,14 @@
   "Обновление не нашлось": "No update found",
   "Модель ещё грузится": "Model is still loading",
   "Основной экран": "Primary display",
-  "Экран не найден — пока панель на основном": "Display not found — the panel is on the primary one for now"
+  "Экран не найден — пока панель на основном": "Display not found — the panel is on the primary one for now",
+  "Запасной провайдер": "Backup provider",
+  "Пробовать запасного": "Try the backup",
+  "Основной не ответил — тот же текст уходит запасному. Действует везде: диктовка, история, файлы": "If the main one fails, the same text goes to the backup. Applies everywhere: dictation, history, files",
+  "Лучше другой, чем основной: если лёг сервер, второй ключ к нему не поможет": "Better a different one than the main: if that server is down, a second key to it will not help",
+  "Свой адрес запасного — с основным не пересекается": "The backup has its own address — it never clashes with the main one",
+  "Прогоним короткую фразу через запасного": "We will run a short phrase through the backup",
+  "— не выбран —": "— not chosen —",
+  "Общий с основным: ввели здесь — подхватится и там": "Shared with the main provider: enter it here and it works there too",
+  "Что сделать с текстом": "What to do with the text"
 }
