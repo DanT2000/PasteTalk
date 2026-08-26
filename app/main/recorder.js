@@ -56,6 +56,9 @@ class Recorder extends EventEmitter {
     this.state = 'idle';
     this.sessionId = null;
     this.mode = 'plain';
+    // Режим одного ближайшего улучшения (правая кнопка на панели); пусто —
+    // как в настройках. Съедается первым же improve().
+    this.improveMode = '';
     this.startedAt = 0;
     this.everSpoke = false;
     this.hadSignal = false;
@@ -129,6 +132,7 @@ class Recorder extends EventEmitter {
       });
       this.sessionId = session.id;
       this.mode = mode;
+    this.improveMode = '';
       this.startedAt = Date.now();
       this.everSpoke = false;
       this.hadSignal = false;
@@ -165,6 +169,7 @@ class Recorder extends EventEmitter {
     this.sessionId = null;
     this.chunks = [];
     this.mode = mode;
+    this.improveMode = '';
     this.startedAt = Date.now();
     this.everSpoke = false;
     this.hadSignal = false;
@@ -533,6 +538,9 @@ class Recorder extends EventEmitter {
 
   /** Прогнать последний текст через языковую модель. */
   async improve(source, autoPaste = config.get('text.autoPaste', true)) {
+    const mode = this.improveMode || '';
+    this.improveMode = '';
+    if (mode) log.info(`улучшение в разовом режиме: ${mode}`);
     const text = source || this.lastText;
     if (!text) {
       this.emitState('aierror', { hint: tr('Улучшать пока нечего') });
@@ -550,7 +558,7 @@ class Recorder extends EventEmitter {
     this.emitState('ai');
     const attempt = this.attempt;
     try {
-      const improved = await llm.improve(text);
+      const improved = await llm.improve(text, mode ? { mode } : {});
       // llm.cancel() бьёт по общему запросу и на чужой задаче с телефона
       // может не сработать вовсе. Номер попытки надёжнее: он говорит, что
       // человек уже передумал, и вставлять текст в чужое окно нельзя.
@@ -597,6 +605,7 @@ class Recorder extends EventEmitter {
    * Человеку не надо помнить, в каком она состоянии.
    */
   cancelCurrent() {
+    this.improveMode = '';
     if (this.state === 'listening') {
       // Крестик во время записи — это «передумал». Показывать после него
       // ещё три секунды надпись «Запись отменена» незачем: человек и так

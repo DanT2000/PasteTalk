@@ -65,12 +65,22 @@ body { display: grid; place-items: center; padding: .5rem; }
   background: radial-gradient(60% 55% at 50% 55%, var(--halo) 0%,
     color-mix(in srgb, var(--halo) 45%, transparent) 45%, transparent 78%);
 }
-/* Компактный вид: остаётся только необходимое — микрофон, уровень,
-   улучшение и выход. Возврат к прошлому тексту доступен из настроек. */
+/* Компактный вид: та же панель, только уже и без истории с настройками.
+   Порядок как в полной: [улучшить] [волна] [микрофон] [волна] [крестик] —
+   микрофон по центру, а не сдвинут к краю. Боковые группы распускаем
+   (display: contents), чтобы кнопки встали в общий ряд и слушались order.
+   «Улучшить» ужимаем до размера крестика — иначе центр уезжает. */
 html[data-size="compact"] .capsule { width: min(100%, 15rem); }
-html[data-size="compact"] .wave.left { display: none; }
 html[data-size="compact"] .cap-hint { display: none; }
-html[data-size="compact"] .cap-side:first-child { display: none; }
+html[data-size="compact"] .cap-side { display: contents; }
+html[data-size="compact"] #last,
+html[data-size="compact"] #prefs { display: none; }
+html[data-size="compact"] #ai { order: -2; width: 1.75rem; height: 1.75rem; }
+html[data-size="compact"] #ai svg { width: 1rem; height: 1rem; }
+html[data-size="compact"] .wave.left { order: -1; }
+html[data-size="compact"] .cap-mic { order: 0; }
+html[data-size="compact"] .wave.right { order: 1; }
+html[data-size="compact"] #close { order: 2; }
 
 .cap-row { display: flex; align-items: center; gap: .5rem; }
 

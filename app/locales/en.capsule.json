@@ -36,5 +36,9 @@
   "Взять прошлый текст и причесать": "Take the last text and tidy it up",
   "Настройки": "Settings",
   "Начать или закончить запись": "Start or stop recording",
-  "Отменить и закрыть": "Cancel and close"
+  "Отменить и закрыть": "Cancel and close",
+  "Улучшить текст (правой кнопкой — только почистить)": "Improve text (right-click: clean up only)",
+  "Улучшить текст (правой кнопкой — почистить и переписать)": "Improve text (right-click: clean up and rewrite)",
+  "Взять прошлый текст и причесать (правой кнопкой — только почистить)": "Take the last text and polish it (right-click: clean up only)",
+  "Взять прошлый текст и причесать (правой кнопкой — почистить и переписать)": "Take the last text and polish it (right-click: clean up and rewrite)"
 }

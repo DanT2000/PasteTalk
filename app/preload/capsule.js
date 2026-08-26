@@ -14,6 +14,6 @@ contextBridge.exposeInMainWorld('capsule', {
   onPartial: on('capsule:partial'),
   onConfig: on('config:changed'),
   onTheme: on('theme:changed'),
-  action: (name) => ipcRenderer.send('capsule:action', name),
+  action: (name, extra) => ipcRenderer.send('capsule:action', name, extra || null),
   config: () => ipcRenderer.invoke('config:all'),
 });

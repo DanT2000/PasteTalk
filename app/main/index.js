@@ -317,7 +317,7 @@ async function improveClipboard() {
 }
 
 /** Прогнать через модель последнюю надиктованную запись, минуя буфер. */
-async function improveLast() {
+async function improveLast(mode = '') {
   const last = history.latest();
   recorder.cancelHide();
   windows.showCapsule();
@@ -334,6 +334,7 @@ async function improveLast() {
     recorder.scheduleHide(2600);
     return;
   }
+  recorder.improveMode = mode;
   await recorder.improve(last.text);
 }
 
@@ -657,10 +658,15 @@ ipcMain.handle('window:hide', (event) => event.sender.getOwnerBrowserWindow()?.h
 
 // ---------- панель записи ----------
 
-ipcMain.on('capsule:action', (_event, action) => {
+ipcMain.on('capsule:action', (_event, action, extra) => {
+  // Правая кнопка на панели присылает другой режим: настроено «почистить
+  // и переписать» — будет только почистить, и наоборот. Разово, на одно
+  // улучшение; пусто — как в настройках.
+  const mode = extra && extra.mode ? String(extra.mode) : '';
   if (action === 'toggle') toggleRecording('plain');
   else if (action === 'improve') {
     recorder.cancelHide();
+    recorder.improveMode = mode;
     if (recorder.active) {
       // Нажали ИИ во время записи: переводим ЭТУ запись в режим
       // улучшения и заканчиваем — finish улучшит сам и вставит только
@@ -675,7 +681,7 @@ ipcMain.on('capsule:action', (_event, action) => {
   }
   else if (action === 'settings') windows.showSettings();
   else if (action === 'history') windows.showSettings('history');
-  else if (action === 'improveLast') improveLast();
+  else if (action === 'improveLast') improveLast(mode);
   else if (action === 'cancel') {
     // Отсчёт перед записью тоже отменяем — иначе она начнётся уже после
     // того, как человек передумал.

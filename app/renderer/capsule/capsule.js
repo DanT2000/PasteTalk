@@ -186,7 +186,38 @@ lastBtn.addEventListener('mouseup', () => {
   window.capsule.action('improveLast');
 });
 lastBtn.addEventListener('mouseleave', () => { clearTimeout(holdTimer); holdTimer = null; });
+/**
+ * Правая кнопка — другой режим улучшения, без похода в настройки:
+ * настроено «почистить и переписать» — будет только почистить, и наоборот.
+ * Иногда текст нужно лишь причесать, не переписывая.
+ */
+function altMode() {
+  return config && config.ai && config.ai.mode === 'both' ? 'clean' : 'both';
+}
+
+function syncAiTitles() {
+  const onlyClean = altMode() === 'clean';
+  aiBtn.title = t(onlyClean
+    ? 'Улучшить текст (правой кнопкой — только почистить)'
+    : 'Улучшить текст (правой кнопкой — почистить и переписать)');
+  lastBtn.title = t(onlyClean
+    ? 'Взять прошлый текст и причесать (правой кнопкой — только почистить)'
+    : 'Взять прошлый текст и причесать (правой кнопкой — почистить и переписать)');
+}
+
+lastBtn.addEventListener('contextmenu', (event) => {
+  event.preventDefault();
+  clearTimeout(holdTimer);
+  holdTimer = null;
+  window.capsule.action('improveLast', { mode: altMode() });
+});
+
 let hintTimer = null;
+aiBtn.addEventListener('contextmenu', (event) => {
+  event.preventDefault();
+  if (cap.dataset.state === 'ai' || aiBtn.classList.contains('is-off')) return;
+  window.capsule.action('improve', { mode: altMode() });
+});
 aiBtn.addEventListener('click', () => {
   // Модель уже думает — второе нажатие её останавливает.
   if (cap.dataset.state === 'ai') { window.capsule.action('cancel'); return; }
@@ -213,6 +244,7 @@ window.addEventListener('keydown', (event) => {
 function applyConfig(settings) {
   if (!settings) return;
   config = settings;
+  syncAiTitles();
   root.dataset.scale = String(settings.appearance?.scale || 100);
   root.dataset.size = settings.appearance?.capsuleSize || 'full';
   const theme = settings.appearance?.theme || 'system';
