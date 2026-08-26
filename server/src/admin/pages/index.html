@@ -895,6 +895,7 @@ async function drawSettings() {
     + '<h3>' + t('Что пускать через прокси') + '</h3>'
     + '<p class="muted">' + t('Каждому своё: кому-то без прокси никак, а гонять через чужой канал звук людей без нужды не стоит') + '</p>'
     + proxyUseField('telegram', t('Telegram-бот'), proxyScope === 'telegram' || proxyScope === 'all')
+    + proxyUseField('links', t('Ссылки в боте (VK, YouTube, Rutube)'), proxyScope === 'all')
     + Object.entries(providers).map(([id, p]) => proxyUseField(id, p.title, proxyScope === 'all')).join('')
     + '<div class="row-actions">'
       + '<button class="btn tiny" id="save-proxy">' + t('Сохранить и проверить') + '</button>'
