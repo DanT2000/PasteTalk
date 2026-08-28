@@ -42,7 +42,10 @@ async function check() {
   if (restarting) return;
 
   // Движок и сам знает, что он не запустился, — тогда его лечит engine.js.
-  if (engine.state === 'starting' || engine.state === 'stopped') return;
+  // Спящий движок — не упавший: он отдал память по простою и проснётся от
+  // записи. Будить его каждые полминуты значило бы отменять сон вовсе —
+  // ровно это и происходило: «не ответил: Движок спит» → перезапуск.
+  if (engine.state === 'starting' || engine.state === 'stopped' || engine.state === 'sleeping') return;
 
   try {
     await engine.health();
@@ -52,6 +55,8 @@ async function check() {
     warned = false;
     return;
   } catch (error) {
+    // Уснул, пока шёл наш запрос, — это не сбой, а обрыв по нашей же воле.
+    if (engine.state === 'sleeping' || engine.state === 'stopped') return;
     failures += 1;
     // После признания поражения тем же сообщением журнал не засоряем.
     if (!warned) log.warn(`движок не ответил (${failures}): ${error.message}`);

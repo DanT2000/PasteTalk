@@ -58,6 +58,9 @@ nsis:
   installerHeaderIcon: build/icon.ico
   deleteAppDataOnUninstall: false
   runAfterFinish: true
+  # Свои шаги установщика: папка «PasteTalk models» в папке установки
+  # переживает обновление (см. build/installer.nsh).
+  include: build/installer.nsh
   artifactName: PasteTalk-${version}-Setup.${ext}
   # Оставляем русский первым: программа русскоязычная.
   installerLanguages: [ru_RU, en_US]
