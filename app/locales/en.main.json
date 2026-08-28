@@ -104,8 +104,5 @@
   "GitHub не ответил вовремя": "GitHub took too long to respond",
   "GitHub ответил не JSON": "GitHub didn't return JSON",
   "Обновление не нашлось": "No update found",
-  "Спит — проснётся при записи": "Asleep — wakes up when you record",
-  "Папка моделей перенесена из папки установки:": "The models folder was moved out of the installation folder:",
-  "Обновление стирает папку установки целиком — там моделям не место.": "Updates wipe the installation folder entirely — models must not live there.",
-  "Нельзя в папку установки: обновление стирает её целиком. Выберите папку рядом, например": "Not inside the installation folder: updates wipe it entirely. Pick a folder next to it, for example"
+  "Спит — проснётся при записи": "Asleep — wakes up when you record"
 }

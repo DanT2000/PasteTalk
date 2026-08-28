@@ -30,14 +30,12 @@ const { tr } = i18n;
 // подставляет PORTABLE_EXECUTABLE_DIR — папку, где лежит сам exe) или
 // пустым файлом «portable» рядом с обычной установкой.
 // Проверка — до замка одной копии: замок привязан к папке данных.
-let portableMode = false;
 try {
   const portableRoot = process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(process.execPath);
   const marker = Boolean(process.env.PORTABLE_EXECUTABLE_DIR)
     || fs.existsSync(path.join(portableRoot, 'portable'))
     || fs.existsSync(path.join(portableRoot, 'portable.txt'));
   if (marker) {
-    portableMode = true;
     const dataDir = path.join(portableRoot, 'PasteTalk data');
     // Пробная запись обязательна: рядом с установкой в Program Files
     // писать нельзя, и без проверки программа молча теряла бы настройки.
@@ -48,63 +46,6 @@ try {
     app.setPath('userData', dataDir);
   }
 } catch { /* писать рядом нельзя — работаем как обычная установка */ }
-
-/**
- * Папка установки. Обновление ставится установщиком, который сначала
- * удаляет прежнюю версию ЦЕЛИКОМ, вместе со всем, что в её папку положили.
- * Модели на гигабайты там лежать не должны — один человек уже потерял их
- * дважды подряд. В портативном режиме всё наоборот: рядом с exe и есть
- * дом, а обновление там — замена одного файла.
- */
-function installDir() {
-  if (portableMode || !app.isPackaged) return '';
-  return path.dirname(process.execPath);
-}
-
-function insideInstall(dir) {
-  const root = installDir();
-  if (!root || !dir) return false;
-  const norm = (p) => (process.platform === 'win32' ? path.resolve(p).toLowerCase() : path.resolve(p));
-  const rel = path.relative(norm(root), norm(dir));
-  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
-}
-
-/** Куда предложить вместо папки установки: рядом с ней, тем же диском. */
-function safeModelsDirNearInstall() {
-  return path.join(path.dirname(installDir()), 'PasteTalk models');
-}
-
-/**
- * Модели уже лежат в папке установки (выбрали до того, как это стало
- * запрещено) — выносим их рядом до запуска движка. Тот же диск — это
- * переименование, мгновенно; другой — копия и удаление.
- */
-function rescueModelsFromInstallDir() {
-  const custom = String(config.get('engine.modelsDir', '') || '');
-  if (!custom || !insideInstall(custom)) return;
-  const to = safeModelsDirNearInstall();
-  try {
-    if (fs.existsSync(custom)) {
-      fs.mkdirSync(path.dirname(to), { recursive: true });
-      try {
-        if (fs.existsSync(to)) throw new Error('target exists');
-        fs.renameSync(custom, to);
-      } catch {
-        fs.cpSync(custom, to, { recursive: true, force: true });
-        fs.rmSync(custom, { recursive: true, force: true });
-      }
-    }
-    config.set({ engine: { modelsDir: to } });
-    config.flush();
-    log.warn(`модели лежали в папке установки — перенёс: ${custom} → ${to}`);
-    new Notification({
-      title: 'PasteTalk',
-      body: `${tr('Папка моделей перенесена из папки установки:')} ${to}. ${tr('Обновление стирает папку установки целиком — там моделям не место.')}`,
-    }).show();
-  } catch (error) {
-    log.error(`не удалось вынести модели из папки установки: ${error.message}`);
-  }
-}
 
 // Одна копия на систему: вторая перехватила бы горячие клавиши у первой.
 if (!app.requestSingleInstanceLock()) {
@@ -131,9 +72,6 @@ app.whenReady().then(async () => {
 
   windows.createAudio();
   windows.createCapsule();
-
-  // До запуска движка: он открыл бы файлы, которые мы переносим.
-  rescueModelsFromInstallDir();
 
   tray.create({
     record: () => startRecording('plain'),
@@ -552,13 +490,6 @@ ipcMain.handle('models:changeDir', async (_event, target) => {
   const rel = path.relative(norm(from), norm(to));
   if (rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel)) {
     return { ok: false, error: 'Нельзя переносить модели внутрь их же папки' };
-  }
-  // Папка установки стирается при каждом обновлении — вместе с моделями.
-  if (insideInstall(to)) {
-    return {
-      ok: false,
-      error: `${tr('Нельзя в папку установки: обновление стирает её целиком. Выберите папку рядом, например')} ${path.dirname(installDir())}`,
-    };
   }
 
   movingModels = true;
