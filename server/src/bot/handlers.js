@@ -3,7 +3,6 @@
 const keys = require('../keys');
 const usage = require('../usage');
 const { langOf, text: t, activateError } = require('./strings');
-const links = require('./links');
 
 /**
  * Что бот делает с одним обновлением от Telegram.
@@ -69,17 +68,24 @@ async function onCode(update, { tg }, text) {
 }
 
 /**
- * Превратить уже скачанный звук в текст, отредактировав сообщение-заглушку.
- * Общая дорога голосовых и записей по ссылке, первой попытки и кнопки
- * «Распознать ещё раз».
+ * Скачать голосовое и превратить в текст, отредактировав сообщение-заглушку.
+ * Общая дорога первой попытки и кнопки «Распознать ещё раз».
  */
-async function transcribeMedia({ tg, queue }, device, chatId, messageId, media, lang) {
+async function runTranscribe({ tg, queue }, device, chatId, messageId, voice, lang) {
+  let audio;
+  try {
+    audio = await tg.download(voice.file_id);
+  } catch (error) {
+    await tg.editMessage(chatId, messageId, t(lang, 'downloadFailed', { message: error.message }));
+    return;
+  }
+
   try {
     const result = await queue.transcribe({
-      audio: media.audio, filename: media.filename, language: null,
-      // Длительность знает источник (Telegram или загрузчик) — своей
-      // оценки для сжатого звука у нас нет, а без неё расход считается нулём.
-      clientSeconds: media.seconds || 0,
+      audio, filename: 'voice.oga', language: null,
+      // Telegram сам говорит, сколько секунд в голосовом, — своей оценки
+      // для ogg у нас нет, а без длительности расход считается нулём.
+      clientSeconds: voice.duration || 0,
     });
     const text = (result.text || '').trim();
     if (!text) {
@@ -105,56 +111,6 @@ async function transcribeMedia({ tg, queue }, device, chatId, messageId, media, 
   }
 }
 
-/** Скачать голосовое из Telegram и распознать. */
-async function runTranscribe({ tg, queue }, device, chatId, messageId, voice, lang) {
-  let audio;
-  try {
-    audio = await tg.download(voice.file_id);
-  } catch (error) {
-    await tg.editMessage(chatId, messageId, t(lang, 'downloadFailed', { message: error.message }));
-    return;
-  }
-  await transcribeMedia({ tg, queue }, device, chatId, messageId, {
-    audio, filename: 'voice.oga', seconds: voice.duration || 0,
-  }, lang);
-}
-
-/**
- * Скачать запись по ссылке (VK Видео, YouTube, Rutube) и распознать.
- * Загрузчик подменяется через deps.links — так бот проверяется без сети.
- */
-async function runLink({ tg, queue, links: fetchLink }, device, chatId, messageId, url, lang) {
-  let media;
-  try {
-    media = await (fetchLink || links.download)(url, { maxSeconds: links.MAX_SECONDS });
-  } catch (error) {
-    if (error.code === 'tooLong') {
-      await tg.editMessage(chatId, messageId, t(lang, 'linkTooLong', {
-        minutes: Math.round((error.seconds || 0) / 60), limit: links.MAX_SECONDS / 60,
-      }));
-      return;
-    }
-    // Сайт мог моргнуть — кнопка второй попытки скачает заново.
-    await tg.editMessage(chatId, messageId, t(lang, 'linkFailed', { message: error.message }),
-      modeButtons(lang, { withModes: false }));
-    return;
-  }
-  await tg.editMessage(chatId, messageId, t(lang, 'transcribing'));
-  await transcribeMedia({ tg, queue }, device, chatId, messageId, media, lang);
-}
-
-async function onLink(update, deps, device, url) {
-  const message = update.message;
-  const chatId = message.chat.id;
-  const lang = langOf(message.from);
-  // Заглушка — реплаем на сообщение со ссылкой: из реплая «Распознать
-  // ещё раз» достанет адрес и скачает заново.
-  const placeholder = await deps.tg.sendMessage(chatId, t(lang, 'linkFetching'), {
-    reply_to_message_id: message.message_id,
-  });
-  await runLink(deps, device, chatId, placeholder.message_id, url, lang);
-}
-
 async function onVoice(update, { tg, queue }, device) {
   const message = update.message;
   const chatId = message.chat.id;
@@ -176,33 +132,26 @@ async function onVoice(update, { tg, queue }, device) {
   await runTranscribe({ tg, queue }, device, chatId, placeholder.message_id, voice, lang);
 }
 
-async function onButton(update, deps, device) {
-  const { tg, queue } = deps;
+async function onButton(update, { tg, queue }, device) {
   const query = update.callback_query;
   const chatId = query.message.chat.id;
   const lang = langOf(query.from);
   const source = query.message.text || '';
   const mode = query.data;
 
-  // Вторая попытка распознавания: голосовое или ссылка лежат в реплае
-  // нашего же сообщения — скачиваем заново и прогоняем, ничего не храня.
+  // Вторая попытка распознавания: голосовое лежит в реплае нашего же
+  // сообщения — скачиваем заново и прогоняем, ничего нигде не храня.
   if (mode === 'retry') {
     const original = query.message.reply_to_message;
     const voice = original && (original.voice || original.audio);
-    const link = !voice && original ? links.find(original) : null;
-    if (!voice && !(link && !link.unsupported)) {
+    if (!voice) {
       await tg.answerCallback(query.id, t(lang, 'retryLost'));
       return;
     }
     await tg.answerCallback(query.id, t(lang, 'accepted'));
     await tg.editMarkup(chatId, query.message.message_id, undefined).catch(() => {});
-    if (voice) {
-      await tg.editMessage(chatId, query.message.message_id, t(lang, 'transcribing'));
-      await runTranscribe({ tg, queue }, device, chatId, query.message.message_id, voice, lang);
-    } else {
-      await tg.editMessage(chatId, query.message.message_id, t(lang, 'linkFetching'));
-      await runLink(deps, device, chatId, query.message.message_id, link.url, lang);
-    }
+    await tg.editMessage(chatId, query.message.message_id, t(lang, 'transcribing'));
+    await runTranscribe({ tg, queue }, device, chatId, query.message.message_id, voice, lang);
     return;
   }
 
@@ -298,18 +247,6 @@ async function handle(update, deps) {
 
   if (message.voice || message.audio) {
     await onVoice(update, deps, device);
-    return;
-  }
-
-  // Ссылка на запись: VK Видео, стена ВКонтакте, YouTube, Rutube. Чужой
-  // сайт — честный отказ, а не молчание и не попытка скачать что попало.
-  const link = links.find(message);
-  if (link) {
-    if (link.unsupported) {
-      await tg.sendMessage(chatId, t(lang, 'linkUnsupported'));
-      return;
-    }
-    await onLink(update, deps, device, link.url);
     return;
   }
 

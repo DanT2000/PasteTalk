@@ -11,16 +11,6 @@ FROM node:22
 
 WORKDIR /app
 
-# ffmpeg и yt-dlp — для ссылок в боте (VK Видео, YouTube, Rutube): запись
-# скачивается на сервере и уходит в распознавание как обычное аудио.
-# yt-dlp берём свежий с GitHub: сайты меняются, и версия из apt отстаёт
-# на месяцы. Новый деплой = новый yt-dlp.
-RUN apt-get update \
- && apt-get install -y --no-install-recommends ffmpeg ca-certificates curl \
- && rm -rf /var/lib/apt/lists/* \
- && curl -fsSL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp \
- && chmod a+rx /usr/local/bin/yt-dlp
-
 COPY server/package.json server/package-lock.json ./server/
 RUN cd server && npm ci --omit=dev
 

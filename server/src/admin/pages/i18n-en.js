@@ -17,7 +17,6 @@ window.PASTETALK_EN = {
     "To each their own: some are unreachable without a proxy, and pushing people's audio through a third-party channel without need is not worth it",
   'напрямую': 'directly',
   'через прокси': 'via proxy',
-  'Ссылки в боте (VK, YouTube, Rutube)': 'Links in the bot (VK, YouTube, Rutube)',
   'Сохранить и проверить': 'Save and check',
   'Проверить, не сохраняя': 'Check without saving',
   'Сохраняю…': 'Saving…',

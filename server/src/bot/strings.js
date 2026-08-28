@@ -14,24 +14,8 @@ const STRINGS = {
     en: 'You need an access code. Ask the owner for one and send the six digits here.',
   },
   linked: {
-    ru: 'Готово, вы привязаны. Присылайте голосовое или ссылку на запись.',
-    en: "Done — you're linked. Send a voice message or a link to a recording.",
-  },
-  linkFetching: {
-    ru: 'Забираю запись по ссылке…',
-    en: 'Fetching the recording from the link…',
-  },
-  linkUnsupported: {
-    ru: 'Ссылки беру только с ВКонтакте (включая VK Видео), YouTube и Rutube.',
-    en: 'I only take links from VK (including VK Video), YouTube and Rutube.',
-  },
-  linkTooLong: {
-    ru: 'Слишком длинная запись: {minutes} мин, предел для ссылок — {limit} мин.',
-    en: 'That recording is too long: {minutes} min, the limit for links is {limit} min.',
-  },
-  linkFailed: {
-    ru: 'Не удалось забрать запись по ссылке: {message}',
-    en: "Couldn't fetch the recording from the link: {message}",
+    ru: 'Готово, вы привязаны. Присылайте голосовое.',
+    en: "Done — you're linked. Send a voice message.",
   },
   tooLong: {
     ru: 'Слишком длинная запись. Предел — {minutes} минут.',
@@ -70,8 +54,8 @@ const STRINGS = {
     en: '🔁 Transcribe again',
   },
   retryLost: {
-    ru: 'Не вижу исходное голосовое или ссылку — пришлите ещё раз',
-    en: "Can't find the original voice message or link — please send it again",
+    ru: 'Не вижу исходное голосовое — пришлите его ещё раз',
+    en: "Can't find the original voice message — please send it again",
   },
   revoked: {
     ru: 'Доступ отозван',
@@ -82,8 +66,8 @@ const STRINGS = {
     en: 'Your Telegram ID: {id}',
   },
   start: {
-    ru: 'Присылайте голосовое или ссылку на запись (VK Видео, YouTube, Rutube) — верну текстом. Под текстом будут кнопки, чтобы его причесать.',
-    en: "Send a voice message or a link to a recording (VK Video, YouTube, Rutube) and I'll reply with the text. The buttons under it will polish it.",
+    ru: 'Присылайте голосовое — верну текстом. Под текстом будут кнопки, чтобы его причесать.',
+    en: "Send a voice message and I'll reply with the text. The buttons under it will polish it.",
   },
   buttonClean: {
     ru: 'Почистить',
