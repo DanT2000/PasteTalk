@@ -108,6 +108,15 @@ app.whenReady().then(async () => {
 
   updates.scheduleStartupCheck(announceUpdate);
 
+  // Сон движка: простой дольше срока выгрузки — гасим процесс целиком.
+  // Открытое окно настроек считается работой: оно спрашивает движок о
+  // моделях и железе, и будить его каждые полминуты было бы глупо.
+  setInterval(() => {
+    const win = windows.windows.settings;
+    const settingsOpen = Boolean(win && !win.isDestroyed() && win.isVisible());
+    engine.maybeSleep({ busy: recorder.active || recorder.busy || settingsOpen });
+  }, 30 * 1000);
+
   // Мониторы подключают и отключают на ходу — окно настроек должно узнать
   // об этом сразу, иначе новый экран не выбрать до перезапуска программы.
   const { screen } = require('electron');
@@ -236,7 +245,8 @@ function toggleRecording(mode) {
 
 recorder.on('state', (payload) => {
   windows.send('capsule', 'capsule:state', payload);
-  if (payload.state !== 'listening') windows.send('audio', 'audio:stop', {});
+  // Пока движок просыпается, звук уже пишется — глушить его нельзя.
+  if (payload.state !== 'listening' && payload.state !== 'waking') windows.send('audio', 'audio:stop', {});
 });
 
 recorder.on('partial', (payload) => windows.send('capsule', 'capsule:partial', payload));

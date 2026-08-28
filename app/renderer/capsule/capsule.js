@@ -30,6 +30,7 @@ const ICONS = {
 
 const STATES = {
   listening:  { tone: 'live',   wave: 'live', mic: 'mic',   status: 'Говорите',        hint: 'Ещё раз — закончу', ai: true },
+  waking:     { tone: 'live',   wave: 'live', mic: 'mic',   status: 'Просыпаюсь',      hint: 'Говорите — запись идёт', ai: false },
   thinking:   { tone: 'accent', wave: 'busy', mic: 'spin',  status: 'Распознаю',       hint: '',                  ai: false },
   limit:      { tone: 'accent', wave: 'busy', mic: 'spin',  status: '20 минут — предел', hint: 'Отправил в работу', ai: false },
   done:       { tone: 'ok',     wave: 'flat', mic: 'check', status: 'Текст в буфере',  hint: 'Вставить — Ctrl+V',  ai: true },

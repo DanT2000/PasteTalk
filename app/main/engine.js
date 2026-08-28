@@ -26,18 +26,91 @@ const READY_TIMEOUT_MS = 60000;
 const MAX_RESTARTS = 10;
 const RESTART_WINDOW_MS = 30 * 60 * 1000;
 const RESTART_DELAYS_MS = [1000, 2000, 4000, 8000, 15000, 30000];
+// Сон целиком — не раньше пяти минут простоя, даже если модель просят
+// отпускать «сразу»: холодный старт процесса дороже перезагрузки модели,
+// и гасить движок между двумя фразами одной мысли было бы вредительством.
+const MIN_SLEEP_MS = Number(process.env.PASTETALK_MIN_SLEEP_MS) || 5 * 60 * 1000;
+const SLEEP_GRACE_MS = process.env.PASTETALK_MIN_SLEEP_MS ? 0 : 30 * 1000;
 
 class Engine {
   constructor() {
     this.child = null;
     this.port = 0;
     this.token = '';
-    this.state = 'stopped';   // stopped | starting | ready | failed
+    this.state = 'stopped';   // stopped | starting | ready | failed | sleeping
     this.lastError = '';
     this.restarts = 0;
     this.firstRestartAt = 0;
     this.stopping = false;
     this.onState = () => {};
+    // Когда движку в последний раз давали работу. Опросы состояния не в
+    // счёт: окно настроек спрашивает «как дела» каждые секунды.
+    this.lastUsedAt = Date.now();
+    this.waking = null;
+  }
+
+  // ---------- сон ----------
+
+  /**
+   * Уснуть: остановить процесс целиком и отдать всю память.
+   *
+   * Выгрузка модели по простою отдаёт видеопамять, но процесс с живым
+   * контекстом CUDA держит ещё ~2 ГБ commit и до гигабайта резидентной —
+   * ровно то, на что жалуются игры и браузеры. Сон отдаёт и это.
+   */
+  async sleep() {
+    if (this.state !== 'ready' || !this.child) return;
+    log.info('засыпаю: работы давно не было — отдаю память целиком');
+    await this.stop();
+    this.stopping = false;
+    this.setState('sleeping');
+  }
+
+  /** Пора ли спать: простой дольше срока выгрузки, и никто не работает. */
+  maybeSleep({ busy = false } = {}) {
+    if (!config.get('engine.deepSleep', true)) return;
+    // Только на видеокарте: там после выгрузки модели процесс держит ~2 ГБ
+    // контекста CUDA. На процессоре выгрузка отдаёт почти всё сама, а
+    // холодная загрузка большой модели длится минуту — сон не окупается.
+    const testMode = Boolean(process.env.PASTETALK_MIN_SLEEP_MS);
+    if (!testMode && config.get('model.device', 'cuda') !== 'cuda') return;
+    const idle = Number(config.get('engine.idleUnloadMs', -1));
+    if (idle < 0 || busy || this.state !== 'ready' || (this.inflight || 0) > 0) return;
+    if (Date.now() - this.lastUsedAt < Math.max(idle, MIN_SLEEP_MS) + SLEEP_GRACE_MS) return;
+    this.sleep().catch((error) => log.warn(`не уснул: ${error.message}`));
+  }
+
+  /** Разбудить (если спит) и дождаться готовности. Ошибка — словами. */
+  wake() {
+    if (this.waking) return this.waking;
+    this.waking = (async () => {
+      if (this.state === 'sleeping') {
+        log.info('просыпаюсь: понадобилась работа');
+        this.lastUsedAt = Date.now();
+        await this.start();
+      }
+      await this.waitReady();
+    })().finally(() => { this.waking = null; });
+    return this.waking;
+  }
+
+  waitReady(timeoutMs = READY_TIMEOUT_MS + 5000) {
+    return new Promise((resolve, reject) => {
+      const started = Date.now();
+      const tick = () => {
+        if (this.isReady) { resolve(); return; }
+        if (this.state === 'failed') { reject(new Error(this.lastError || 'Движок не запустился')); return; }
+        if (this.state === 'stopped' || this.state === 'sleeping') { reject(new Error('Движок остановлен')); return; }
+        if (Date.now() - started > timeoutMs) { reject(new Error('Движок не ответил за минуту')); return; }
+        setTimeout(tick, 100);
+      };
+      tick();
+    });
+  }
+
+  /** Может ли движок взять работу — сразу или после пробуждения. */
+  get canWork() {
+    return this.isReady || this.state === 'sleeping';
   }
 
   // ---------- где искать движок ----------
@@ -228,7 +301,29 @@ class Engine {
   // ---------- HTTP-клиент ----------
 
   request(method, route, body, timeoutMs = 30000) {
-    return new Promise((resolve, reject) => {
+    // Опросы состояния — не работа: от них движок не просыпается, и срок
+    // сна по ним не сдвигается. Всё остальное будит спящий движок само,
+    // так что вызывающим не нужно знать, спит он или нет.
+    const passive = (method === 'GET' && (route === '/health' || route === '/model' || route === '/model/downloads'))
+      || route === '/idle';
+    if (this.state === 'sleeping') {
+      if (passive) return Promise.reject(new Error('Движок спит'));
+      return this.wake().then(() => this.request(method, route, body, timeoutMs));
+    }
+    // Запросы в полёте считаем: остановка сессии на слабом процессоре
+    // длится минуту, и по одной лишь отметке «когда начали» движок
+    // засыпал прямо под расшифровкой. Отметка времени — и в начале, и
+    // в конце: простой отсчитывается от конца работы.
+    if (!passive) {
+      this.inflight = (this.inflight || 0) + 1;
+      this.lastUsedAt = Date.now();
+    }
+    const settle = () => {
+      if (passive) return;
+      this.inflight = Math.max(0, (this.inflight || 1) - 1);
+      this.lastUsedAt = Date.now();
+    };
+    const pending = new Promise((resolve, reject) => {
       if (!this.port) {
         reject(new Error('Движок ещё не запустился'));
         return;
@@ -277,6 +372,8 @@ class Engine {
       if (payload) request.write(payload);
       request.end();
     });
+    pending.then(settle, settle);
+    return pending;
   }
 
   health() { return this.request('GET', '/health', null, 5000); }

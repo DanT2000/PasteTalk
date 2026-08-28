@@ -77,6 +77,9 @@ function createSettings() {
 
 function showSettings(page) {
   const win = createSettings();
+  // Окну настроек нужен живой движок: список моделей, проверка железа.
+  // Спящий будим заранее, чтобы страница не встречала пустотой.
+  require('./engine').wake().catch(() => {});
   if (win.isMinimized()) win.restore();
   win.show();
   win.focus();

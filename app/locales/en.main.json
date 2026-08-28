@@ -103,5 +103,6 @@
   "Нет связи с интернетом": "No internet connection",
   "GitHub не ответил вовремя": "GitHub took too long to respond",
   "GitHub ответил не JSON": "GitHub didn't return JSON",
-  "Обновление не нашлось": "No update found"
+  "Обновление не нашлось": "No update found",
+  "Спит — проснётся при записи": "Asleep — wakes up when you record"
 }

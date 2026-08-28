@@ -590,5 +590,8 @@
   "Прогоним короткую фразу через запасного": "We will run a short phrase through the backup",
   "— не выбран —": "— not chosen —",
   "Общий с основным: ввели здесь — подхватится и там": "Shared with the main provider: enter it here and it works there too",
-  "Что сделать с текстом": "What to do with the text"
+  "Что сделать с текстом": "What to do with the text",
+  "Спит — проснётся при записи": "Asleep — wakes up when you record",
+  "Усыплять движок целиком": "Put the engine fully to sleep",
+  "Только на видеокарте: после выгрузки модели процесс всё равно держит около 2 ГБ под CUDA. Сон отдаёт и их: первая диктовка после долгой паузы начнётся на 5–8 с позже, но запись идёт с первой секунды. Не раньше 5 минут простоя": "GPU only: even after the model is unloaded, the process still holds about 2 GB for CUDA. Sleep returns that too: the first dictation after a long pause starts 5–8 s later, but recording runs from the first second. Never sooner than 5 minutes of idle time"
 }

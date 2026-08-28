@@ -86,7 +86,7 @@ class Recorder extends EventEmitter {
   }
 
   get active() {
-    return this.state === 'listening';
+    return this.state === 'listening' || this.state === 'waking';
   }
 
   emitState(state, extra = {}) {
@@ -97,7 +97,7 @@ class Recorder extends EventEmitter {
   // ---------- запуск ----------
 
   async start(mode = 'plain') {
-    if (this.busy || this.state === 'listening') return;
+    if (this.busy || this.state === 'listening' || this.state === 'waking') return;
 
     // Хвост прежней записи не должен дотягиваться до новой. Таймер
     // «спрятать панель» от только что показанного результата иначе
@@ -117,6 +117,33 @@ class Recorder extends EventEmitter {
     // слабом компьютере модель может быть вообще не загружена.
     if (remote.isRemote()) return this.startRemote(mode);
 
+    // Движок спит — отдал память по простою. Будим, а звук копим с
+    // первой секунды: человек нажал клавишу и уже говорит, и терять
+    // начало фразы из-за нашей бережливости нельзя.
+    let preroll = [];
+    if (engine.state === 'sleeping') {
+      this.busy = true;
+      this.preroll = [];
+      this.stopAfterWake = '';
+      this.lastChunkAt = Date.now();
+      this.emitState('waking', {});
+      try {
+        await engine.wake();
+      } catch (error) {
+        this.busy = false;
+        this.preroll = null;
+        if (this.state !== 'waking') return;
+        this.emitState('engineDown', { hint: tr(error.message) });
+        this.scheduleHide(3000);
+        return;
+      }
+      this.busy = false;
+      // Пока просыпались, человек мог передумать (крестик, Esc).
+      if (this.state !== 'waking') { this.preroll = null; return; }
+      preroll = this.preroll || [];
+      this.preroll = null;
+    }
+
     if (!engine.isReady) {
       this.emitState('engineDown', { hint: tr(engine.lastError || 'Движок ещё запускается') });
       this.scheduleHide(3000);
@@ -132,7 +159,7 @@ class Recorder extends EventEmitter {
       });
       this.sessionId = session.id;
       this.mode = mode;
-    this.improveMode = '';
+      this.improveMode = '';
       this.startedAt = Date.now();
       this.everSpoke = false;
       this.hadSignal = false;
@@ -140,8 +167,23 @@ class Recorder extends EventEmitter {
       this.lastText = '';
       this.audioCopy = [];
       this.audioBytes = 0;
+      // Накопленное за пробуждение — в копию и в очередь на отправку:
+      // уйдёт первой же пачкой, как только придёт следующий кусок.
+      for (const piece of preroll) {
+        this.keepCopy(piece.chunk);
+        this.pending.push(piece.chunk);
+        this.pendingBytes += piece.chunk.length;
+        if (piece.peak > 0.0005) this.hadSignal = true;
+      }
+      if (this.hadSignal) this.silentSince = Date.now();
       this.emitState('listening', { elapsedMs: 0 });
       this.watchStream();
+      // Клавишу отпустили, пока движок просыпался, — заканчиваем сразу.
+      if (this.stopAfterWake) {
+        const reason = this.stopAfterWake;
+        this.stopAfterWake = '';
+        setTimeout(() => this.finish(reason), 0);
+      }
       // Модель может ещё качаться или грузиться — запись при этом идёт,
       // но человек обязан знать, чего ждёт: раньше «Распознаю…» висело
       // молча, и неделя такой тишины выглядела как сломанная программа.
@@ -258,6 +300,14 @@ class Recorder extends EventEmitter {
   // ---------- поток звука из окна записи ----------
 
   async pushAudio(chunk, peak) {
+    if (this.state === 'waking' && this.preroll) {
+      // Движок ещё просыпается — копим. Две минуты — с запасом: столько
+      // холодный старт не длится, а без потолка память росла бы вечно.
+      this.lastChunkAt = Date.now();
+      this.preroll.push({ chunk, peak });
+      while (this.preroll.length > 600) this.preroll.shift();
+      return;
+    }
     if (this.state !== 'listening') return;
     this.lastChunkAt = Date.now();
     this.keepCopy(chunk);
@@ -427,6 +477,12 @@ class Recorder extends EventEmitter {
 
   /** Закончить и отдать текст. reason определяет только подпись на панели. */
   async finish(reason = 'done') {
+    // Отпустили клавишу, пока движок просыпался: запомним и закончим
+    // сразу после того, как сессия откроется и звук уйдёт.
+    if (this.state === 'waking') {
+      this.stopAfterWake = reason;
+      return;
+    }
     if (this.state !== 'listening') return;
     if (this.chunks) return this.finishRemote(reason);
     if (!this.sessionId) return;
@@ -606,7 +662,7 @@ class Recorder extends EventEmitter {
    */
   cancelCurrent() {
     this.improveMode = '';
-    if (this.state === 'listening') {
+    if (this.state === 'listening' || this.state === 'waking') {
       // Крестик во время записи — это «передумал». Показывать после него
       // ещё три секунды надпись «Запись отменена» незачем: человек и так
       // знает, что нажал, а панель мешает тому, к чему он вернулся.
@@ -685,7 +741,7 @@ class Recorder extends EventEmitter {
 
   /** Переключатель по горячей клавише: не идёт — начать, идёт — закончить. */
   toggle(mode = 'plain') {
-    if (this.state === 'listening') return this.finish('done');
+    if (this.state === 'listening' || this.state === 'waking') return this.finish('done');
     return this.start(mode);
   }
 

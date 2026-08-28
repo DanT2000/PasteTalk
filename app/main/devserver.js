@@ -79,7 +79,10 @@ async function feed(query) {
   for (let i = 0; i < target; i++) pcm.writeInt16LE(samples[Math.floor(i * ratio)] || 0, i * 2);
 
   windows.showCapsule();
-  await recorder.start(query.get('mode') || 'plain');
+  // nowait — не ждать открытия сессии: звук идёт, пока движок ещё
+  // просыпается. Так проверяется копилка звука при сне движка.
+  const starting = recorder.start(query.get('mode') || 'plain');
+  if (!query.has('nowait')) await starting;
   const chunk = 3200 * 2;   // 200 мс, как отдаёт настоящее окно записи
   // mute — кормить с нулевым пиком, как микрофон, не дающий ни звука.
   const peak = query.has('mute') ? 0 : 0.3;
@@ -113,6 +116,7 @@ async function feed(query) {
     return waitOutcome();
   }
 
+  await starting;
   await recorder.finish('done');
   return { seconds: +(target / 16000).toFixed(2), state: recorder.state, text: recorder.lastText };
 }

@@ -40,6 +40,7 @@ function stateLine() {
   switch (engine.state) {
     case 'ready': return `${tr('Готов')} · ${config.get('model.name', 'large-v3')}`;
     case 'starting': return tr('Движок запускается…');
+    case 'sleeping': return tr('Спит — проснётся при записи');
     case 'failed': return `${tr('Сбой:')} ${tr(engine.lastError)}`;
     default: return tr('Движок остановлен');
   }
@@ -53,7 +54,7 @@ function build() {
     { type: 'separator' },
     {
       label: `${tr('Начать запись')}\t${hotkeys.label(map.record)}`,
-      enabled: !paused && engine.isReady,
+      enabled: !paused && engine.canWork,
       click: () => actions.record(),
     },
     {

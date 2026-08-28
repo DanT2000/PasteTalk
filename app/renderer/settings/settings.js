@@ -134,6 +134,9 @@ function showEngine(info) {
   } else if (info.state === 'starting') {
     dot.classList.add('is-busy');
     text.textContent = t('Движок запускается…');
+  } else if (info.state === 'sleeping') {
+    dot.classList.add('is-ok');
+    text.textContent = t('Спит — проснётся при записи');
   } else if (info.state === 'failed') {
     dot.classList.add('is-bad');
     text.textContent = t(info.error || 'Движок не запустился');
