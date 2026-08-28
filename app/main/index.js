@@ -47,6 +47,16 @@ try {
   }
 } catch { /* писать рядом нельзя — работаем как обычная установка */ }
 
+/** Приоритет процесса «выше обычного»; не вышло — не беда, просто медленнее. */
+function raisePriority(pid, what) {
+  try {
+    const os = require('node:os');
+    os.setPriority(pid, os.constants.priority.PRIORITY_ABOVE_NORMAL);
+  } catch (error) {
+    log.warn(`приоритет (${what}) не поднялся: ${error.message}`);
+  }
+}
+
 // Одна копия на систему: вторая перехватила бы горячие клавиши у первой.
 if (!app.requestSingleInstanceLock()) {
   app.quit();
@@ -62,6 +72,12 @@ app.on('second-instance', () => windows.showSettings());
 
 app.whenReady().then(async () => {
   log.info(`PasteTalk ${app.getVersion()} запускается`);
+  // Диктовка — задача на живом голосе: захват звука и ответ модели не
+  // должны стоять в очереди за компилятором или виртуалкой. При загруженном
+  // на 100 % процессоре именно это растягивало загрузку модели в разы и
+  // роняло качество: захват звука спотыкался. «Выше обычного» — как у
+  // звуковых программ; дочерние процессы (окна, движок) наследуют.
+  raisePriority(process.pid, 'приложение');
   windows.applyTheme();
 
   // Записывать звук без спроса нельзя — и Windows это проверяет.
@@ -72,6 +88,10 @@ app.whenReady().then(async () => {
 
   windows.createAudio();
   windows.createCapsule();
+  for (const name of ['audio', 'capsule']) {
+    const win = windows.windows[name];
+    if (win && !win.isDestroyed()) raisePriority(win.webContents.getOSProcessId(), `окно ${name}`);
+  }
 
   tray.create({
     record: () => startRecording('plain'),

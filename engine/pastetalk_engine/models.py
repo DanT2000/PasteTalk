@@ -277,6 +277,7 @@ class ModelManager:
             if wanted != self._wanted:
                 return
             self.state.state = "loading"
+            started = time.time()
 
             def build(local_only: bool) -> WhisperModel:
                 return WhisperModel(
@@ -352,6 +353,9 @@ class ModelManager:
             self._used_at = time.time()
             self.state.state = "ready"
             self.state.progress = 1.0
+            # В журнал приложения: когда «долго грузится», по этой строке
+            # видно, сколько именно и на чём считаем.
+            print(f"модель {name} загружена на {device} ({compute_type}) за {time.time() - started:.1f} с", flush=True)
         except Exception as exc:  # noqa: BLE001 — наружу уходит текстом
             if wanted != self._wanted:
                 return

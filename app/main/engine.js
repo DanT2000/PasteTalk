@@ -178,6 +178,14 @@ class Engine {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     this.child = child;
+    // Движок считает голос человека, который ждёт результата прямо сейчас —
+    // ему приоритет выше обычного, как и приложению.
+    try {
+      const os = require('node:os');
+      os.setPriority(child.pid, os.constants.priority.PRIORITY_ABOVE_NORMAL);
+    } catch (error) {
+      log.warn(`приоритет движка не поднялся: ${error.message}`);
+    }
 
     child.stdout.setEncoding('utf8');
     child.stdout.on('data', (chunk) => this.readStdout(chunk));
