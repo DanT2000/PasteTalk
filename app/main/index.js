@@ -46,6 +46,9 @@ try {
     app.setPath('userData', dataDir);
   }
 } catch { /* писать рядом нельзя — работаем как обычная установка */ }
+// Стенд: отдельная папка данных для собранного, но не портативного exe —
+// чтобы проверять обновления, не трогая настоящий профиль.
+if (process.env.PASTETALK_DATA_DIR) app.setPath('userData', process.env.PASTETALK_DATA_DIR);
 
 /** Приоритет процесса «выше обычного»; не вышло — не беда, просто медленнее. */
 function raisePriority(pid, what) {
@@ -165,8 +168,9 @@ async function announceUpdate(release) {
   });
 
   if (response === 0) {
-    // Портатив не умеет ставиться сам — открываем страницу с Portable.exe.
-    if (release.portable) shell.openExternal(release.download || release.url);
+    // Портатив не умеет ставиться сам — открываем Portable.exe с зеркала
+    // (прямая ссылка на CDN GitHub у части провайдеров не открывается).
+    if (release.portable) shell.openExternal(release.mirror || release.download || release.url);
     else await selfUpdate(release);
   } else if (response === 1) shell.openExternal(release.url);
   else if (response === 3) config.set({ updates: { skipVersion: release.latest } });
@@ -196,7 +200,9 @@ async function selfUpdate(release) {
       cancelId: 1,
       noLink: true,
     });
-    if (response === 0) shell.openExternal(release.download);
+    // Само не скачалось — скорее всего, заблокирован CDN GitHub; ссылка на
+    // зеркало у человека откроется там, где не открылась прямая.
+    if (response === 0) shell.openExternal(release.mirror || release.download);
   }
 }
 

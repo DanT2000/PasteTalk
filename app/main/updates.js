@@ -18,6 +18,22 @@ const log = require('./logger').scoped('updates');
 const OWNER = 'DanT2000';
 const REPO = 'PasteTalk';
 
+/**
+ * Зеркало файлов выпуска. Сам GitHub и его API доступны почти везде, а
+ * вот CDN с файлами (release-assets.githubusercontent.com) у части
+ * провайдеров заблокирован: проверка проходит, скачивание рвётся с
+ * ERR_CONNECTION_CLOSED. Зеркало — наш сервер, который забирает файлы
+ * через свой прокси и раздаёт их как generic-фид electron-updater.
+ * Подпись sha512 из yml проверяется как обычно.
+ */
+const DEFAULT_MIRROR = 'https://pastetalk.dev.appswire.ru/updates/';
+
+function mirrorUrl() {
+  const custom = String(config.get('updates.mirror', '') || '').trim();
+  const url = custom || DEFAULT_MIRROR;
+  return url.endsWith('/') ? url : `${url}/`;
+}
+
 // Портативная сборка: electron-builder подставляет папку, где лежит exe.
 function isPortable() {
   return Boolean(process.env.PORTABLE_EXECUTABLE_DIR);
@@ -140,6 +156,8 @@ async function check() {
       notes: String(release.body || '').slice(0, 2000),
       url: release.html_url,
       download: installer ? installer.browser_download_url : release.html_url,
+      // Та же ссылка через зеркало — для тех, у кого CDN GitHub не открывается.
+      mirror: installer ? `${mirrorUrl()}${installer.name}` : '',
       sizeMb: installer ? Math.round(installer.size / 1048576) : 0,
       publishedAt: release.published_at || '',
     };
@@ -224,14 +242,40 @@ async function downloadAndInstall(onProgress) {
 
   // Бета-канал видит и pre-release выпуски; стабильный — только боевые.
   autoUpdater.allowPrerelease = channel() === 'beta';
-  const found = await autoUpdater.checkForUpdates();
-  const version = found?.updateInfo?.version || '';
-  if (!version || compare(version, app.getVersion()) <= 0) {
-    throw new Error('Обновление не нашлось');
+
+  const fetchVia = async (source) => {
+    const found = await autoUpdater.checkForUpdates();
+    const version = found?.updateInfo?.version || '';
+    if (!version || compare(version, app.getVersion()) <= 0) {
+      throw new Error('Обновление не нашлось');
+    }
+    log.info(`скачиваю обновление ${version} (${source})`);
+    await autoUpdater.downloadUpdate();
+    return version;
+  };
+
+  // Сначала GitHub, при обрыве — зеркало. «Не нашлось» — не обрыв: на
+  // зеркале тот же список выпусков, и ходить туда незачем.
+  try {
+    autoUpdater.setFeedURL({ provider: 'github', owner: OWNER, repo: REPO });
+    await fetchVia('GitHub');
+  } catch (error) {
+    if (/не нашлось/.test(error.message)) throw error;
+    log.warn(`GitHub не отдал обновление (${error.message}) — пробую зеркало ${mirrorUrl()}`);
+    autoUpdater.setFeedURL({
+      provider: 'generic',
+      url: mirrorUrl(),
+      channel: channel() === 'beta' ? 'beta' : 'latest',
+    });
+    await fetchVia('зеркало');
   }
-  log.info(`скачиваю обновление ${version}`);
-  await autoUpdater.downloadUpdate();
   log.info('обновление скачано — ставлю и перезапускаюсь');
+  // Стенд: скачать по-настоящему, но не ставить — иначе установщик пошёл
+  // бы обновлять настоящую установку на машине разработчика.
+  if (process.env.PASTETALK_UPDATE_DRY_RUN) {
+    log.warn('PASTETALK_UPDATE_DRY_RUN: установку пропускаю');
+    return;
+  }
   // Тихая установка и запуск свежей версии: человеку не нужно
   // прокликивать установщик, который он уже прокликивал при первой
   // установке. Настройки и модели переезжают сами.

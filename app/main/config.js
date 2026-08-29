@@ -124,6 +124,9 @@ const DEFAULTS = {
     skipVersion: '',
     // 'stable' — только проверенные выпуски; 'beta' — свежие сборки сразу.
     channel: 'stable',
+    // Зеркало файлов выпуска на случай, когда CDN GitHub заблокирован.
+    // Пусто — зеркало на сервере PasteTalk; свой адрес — «https://…/updates/».
+    mirror: '',
   },
 
   engine: {

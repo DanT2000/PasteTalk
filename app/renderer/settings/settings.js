@@ -1798,7 +1798,8 @@ $('update-check').addEventListener('click', async () => {
   const pill = $('update-pill');
   pill.classList.remove('is-hidden');
   if (answer.newer) {
-    updateLink = answer.download;
+    // Ссылка «Скачать с сайта» — через зеркало: CDN GitHub у части провайдеров закрыт.
+    updateLink = answer.mirror || answer.download;
     // Портатив сам не ставится: кнопка сразу ведёт на новый Portable.exe.
     updateFallback = Boolean(answer.portable);
     pill.className = 'pill';
@@ -2079,7 +2080,8 @@ async function maybeToastUpdate() {
     const answer = await api.app.quietCheckUpdates();
     if (!answer.ok || !answer.notify) return;
     toastRelease = answer;
-    updateLink = answer.download;
+    // Ссылка «Скачать с сайта» — через зеркало: CDN GitHub у части провайдеров закрыт.
+    updateLink = answer.mirror || answer.download;
     // Портатив не ставится сам — кнопка сразу ведёт на Portable.exe.
     updateFallback = Boolean(answer.portable);
     $('update-toast-ver').textContent = answer.latest;
