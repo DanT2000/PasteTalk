@@ -17,6 +17,7 @@ window.PASTETALK_EN = {
     "To each their own: some are unreachable without a proxy, and pushing people's audio through a third-party channel without need is not worth it",
   'напрямую': 'directly',
   'через прокси': 'via proxy',
+  'GitHub — зеркало обновлений': 'GitHub — update mirror',
   'Сохранить и проверить': 'Save and check',
   'Проверить, не сохраняя': 'Check without saving',
   'Сохраняю…': 'Saving…',
