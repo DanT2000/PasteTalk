@@ -55,8 +55,9 @@ async function check() {
     warned = false;
     return;
   } catch (error) {
-    // Уснул, пока шёл наш запрос, — это не сбой, а обрыв по нашей же воле.
-    if (engine.state === 'sleeping' || engine.state === 'stopped') return;
+    // Уснул (или засыпает), пока шёл наш запрос, — это не сбой, а обрыв
+    // по нашей же воле.
+    if (engine.state === 'sleeping' || engine.state === 'stopped' || engine.stopping) return;
     failures += 1;
     // После признания поражения тем же сообщением журнал не засоряем.
     if (!warned) log.warn(`движок не ответил (${failures}): ${error.message}`);

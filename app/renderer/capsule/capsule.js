@@ -92,12 +92,20 @@ let countdownTimer = null;
  * когда улучшение доделалось: модель иногда думает долго, и человек
  * успевает отвернуться от экрана.
  */
+// «Просыпаюсь» — это тоже запись: звук уже пишется, движок догоняет.
+// Считать его выходом из записи нельзя: при спящем движке панель шла
+// «слушаю → просыпаюсь → слушаю», и человек слышал старт, стоп и снова
+// старт — «дважды перезапускается».
+const RECORDING = new Set(['listening', 'waking']);
+
 function chime(next) {
   const sound = config?.sound;
   if (!sound || sound.preset === 'none') return;
-  if (next === 'listening' && previous !== 'listening') {
+  const wasRecording = RECORDING.has(previous);
+  const isRecording = RECORDING.has(next);
+  if (isRecording && !wasRecording) {
     window.pastetalkSounds.playSound(sound.preset, sound.volume, true);
-  } else if (previous === 'listening' && next !== 'listening') {
+  } else if (wasRecording && !isRecording) {
     window.pastetalkSounds.playSound(sound.preset, sound.volume, false);
   } else if (next === 'aidone' && previous === 'ai' && sound.aiDone !== false) {
     window.pastetalkSounds.playSound(sound.preset, sound.volume, 'done');

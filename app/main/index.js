@@ -239,7 +239,11 @@ let startTimer = null;
 
 function begin(mode) {
   startTimer = null;
-  windows.send('capsule', 'capsule:state', { state: 'listening', elapsedMs: 0 });
+  // Спящий движок: панель сразу говорит «просыпаюсь», а не мигает
+  // «говорите → просыпаюсь → говорите».
+  windows.send('capsule', 'capsule:state', {
+    state: engine.state === 'sleeping' ? 'waking' : 'listening', elapsedMs: 0,
+  });
   windows.send('audio', 'audio:start', {
     deviceId: config.get('microphoneId', 'default'),
   });
