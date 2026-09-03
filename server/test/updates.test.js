@@ -28,7 +28,7 @@ function fakeFetch(url) {
   if (url.includes('/releases?per_page')) return json([{ tag_name: 'v2.16.10', draft: false, prerelease: true }, { tag_name: 'v2.16.7', draft: false }]);
   if (url.includes('/releases/tags/')) return json({ assets: [{ name: 'latest.yml' }, { name: 'PasteTalk-2.16.10-Setup.exe' }] });
   if (url.endsWith('/latest.yml')) return new Response(YML, { status: 200 });
-  if (url.endsWith('-Setup.exe')) return new Response(EXE, { status: 200 });
+  if (url.endsWith('-Setup.exe')) return new Response(EXE, { status: 200, headers: { 'content-length': String(EXE.length) } });
   return new Response('nope', { status: 404 });
 }
 

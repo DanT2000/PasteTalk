@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const path = require('node:path');
 const { pipeline } = require('node:stream/promises');
-const { Readable } = require('node:stream');
+const { Readable, PassThrough } = require('node:stream');
 
 const proxy = require('../proxy');
 
@@ -32,6 +32,7 @@ const PREFETCH_EVERY_MS = 30 * 60 * 1000;
 
 const tagCache = new Map();          // channel → { tag, at }
 const downloads = new Map();         // file path → Promise
+const prefetched = new Map();        // tag → когда грели; лимит GitHub API — 60 запросов в час
 let fetchImpl = (...args) => fetch(...args);
 
 function cacheDir() {
@@ -96,7 +97,12 @@ function fetchAsset(tag, name) {
 }
 
 /** Все файлы выпуска — впрок, чтобы приложение не ждало нашу закачку. */
-async function prefetch(tag) {
+async function prefetch(tag, { force = false } = {}) {
+  // Не чаще раза в полчаса на тег: каждый запрос фида иначе стоил бы
+  // похода в GitHub API, а его лимит без ключа — 60 в час на адрес.
+  const last = prefetched.get(tag) || 0;
+  if (!force && Date.now() - last < PREFETCH_EVERY_MS) return;
+  prefetched.set(tag, Date.now());
   const release = await ghJson(`https://api.github.com/repos/${OWNER}/${REPO}/releases/tags/${tag}`);
   const names = (release.assets || []).map((asset) => asset.name).filter((name) => NAME.test(name));
   for (const name of names) {
@@ -132,8 +138,49 @@ async function warm() {
       process.stderr.write(`зеркало обновлений: канал ${channel} — ${error.message}\n`);
     }
   }
-  for (const tag of new Set(tags)) await prefetch(tag);
-  if (tags.length) await sweep([...new Set(tags)]);
+  const unique = [...new Set(tags)];
+  for (const tag of unique) await prefetch(tag, { force: true });
+  // Чистим только когда знаем оба канала: иначе сбой одного запроса
+  // стёр бы выпуск другого канала, который вот-вот попросят.
+  if (unique.length && tags.length === 2) await sweep(unique);
+}
+
+/**
+ * Холодный запрос: тянем из GitHub и одновременно отдаём клиенту и пишем
+ * в кэш. Оборвался клиент — кэш дописываем до конца, файл пригодится.
+ */
+async function streamThrough(tag, name, shownAs, reply) {
+  const target = path.join(cacheDir(), tag, name);
+  await fsp.mkdir(path.dirname(target), { recursive: true });
+  const url = `https://github.com/${OWNER}/${REPO}/releases/download/${tag}/${name}`;
+  const response = await fetchImpl(url, options({ Accept: 'application/octet-stream' }));
+  if (!response.ok || !response.body) throw new Error(`GitHub не отдал ${name}: ${response.status}`);
+  const temp = `${target}.part`;
+  const source = Readable.fromWeb(response.body);
+  const toClient = new PassThrough();
+  const toDisk = fs.createWriteStream(temp);
+  const job = (async () => {
+    try {
+      await pipeline(source, toDisk);
+      await fsp.rename(temp, target);
+    } catch (error) {
+      await fsp.rm(temp, { force: true });
+      throw error;
+    }
+    return target;
+  })().finally(() => downloads.delete(target));
+  downloads.set(target, job);
+  job.catch(() => {});
+  source.on('data', (chunk) => { if (!toClient.write(chunk)) source.pause(); });
+  toClient.on('drain', () => source.resume());
+  source.on('end', () => toClient.end());
+  source.on('error', (error) => toClient.destroy(error));
+  reply.header('Accept-Ranges', 'bytes');
+  reply.header('Content-Type', contentType(shownAs));
+  reply.header('Cache-Control', shownAs.endsWith('.yml') ? 'no-cache' : 'public, max-age=86400');
+  const length = response.headers.get('content-length');
+  if (length) reply.header('Content-Length', length);
+  return reply.send(toClient);
 }
 
 function contentType(name) {
@@ -183,6 +230,14 @@ function register(app) {
       } else {
         tag = `v${parsed[2]}`;
       }
+      const cachedPath = path.join(cacheDir(), tag, asset);
+      // Холодный кэш и целиком: отдаём поток сразу, параллельно кладя в
+      // кэш, — иначе апдейтер ждал бы всю нашу закачку молча и отваливался
+      // по своему минутному таймауту. Range на холодном кэше редок — там
+      // честно ждём файл.
+      if (!fs.existsSync(cachedPath) && !downloads.has(cachedPath) && !request.headers.range) {
+        return await streamThrough(tag, asset, name, reply);
+      }
       const file = await fetchAsset(tag, asset);
       return await serve(request, reply, file, name);
     } catch (error) {
@@ -196,7 +251,7 @@ function register(app) {
   // Прогрев при старте и по расписанию: приложение не должно ждать нашу
   // закачку, а на диске лежат только два последних выпуска.
   if (process.env.NODE_ENV !== 'test') {
-    setTimeout(() => warm().catch(() => {}), 15 * 1000);
+    setTimeout(() => warm().catch(() => {}), 15 * 1000).unref();
     setInterval(() => warm().catch(() => {}), PREFETCH_EVERY_MS).unref();
   }
 }

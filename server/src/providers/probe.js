@@ -105,7 +105,9 @@ async function check(providerId, overrides = {}) {
   const { preset, baseUrl, key, sttModel, llmModel } = resolve(providerId, overrides);
   if (!baseUrl) return { llm: { ok: false, error: 'не задан адрес' }, stt: preset.stt ? { ok: false, error: 'не задан адрес' } : null };
 
-  const llm = await (async () => {
+  // Текст и речь проверяем одновременно: у каждой пробы свой таймаут в
+  // полминуты, и ждать их сумму, когда провайдер молчит, незачем.
+  const llmJob = (async () => {
     if (!llmModel) return { ok: false, error: 'не выбрана модель текста' };
     const started = Date.now();
     try {
@@ -131,7 +133,7 @@ async function check(providerId, overrides = {}) {
     }
   })();
 
-  const stt = preset.stt ? await (async () => {
+  const sttJob = preset.stt ? (async () => {
     const started = Date.now();
     try {
       const form = new FormData();
@@ -150,8 +152,9 @@ async function check(providerId, overrides = {}) {
     } catch (error) {
       return { ok: false, error: reason(error) };
     }
-  })() : null;
+  })() : Promise.resolve(null);
 
+  const [llm, stt] = await Promise.all([llmJob, sttJob]);
   return { llm, stt };
 }
 

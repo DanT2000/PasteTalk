@@ -93,6 +93,10 @@ async function check(candidate) {
   } catch {
     return { ok: false, error: 'Адрес прокси записан неверно — нужен вид http://host:8080' };
   }
+  // socks5:// и прочее: у таких URL нет origin, и дальше упало бы с 500.
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    return { ok: false, error: 'Поддерживается только HTTP(S)-прокси — SOCKS этот сервер не умеет' };
+  }
 
   // Ступень 1: жив ли сам прокси. Обычный запрос на его адрес — любой
   // ответ, хоть 400, означает «достижим»; недостижим — дальше идти некуда.
@@ -100,7 +104,8 @@ async function check(candidate) {
   // ли» они и не нужны.
   const bare = new URL(parsed.origin);
   try {
-    await fetch(bare, { signal: AbortSignal.timeout(8000) });
+    const probe = await fetch(bare, { signal: AbortSignal.timeout(8000) });
+    await probe.body?.cancel().catch(() => {});
   } catch (error) {
     return {
       ok: false,
@@ -111,12 +116,16 @@ async function check(candidate) {
 
   // Ступень 2: пропускает ли прокси туннель к Telegram. Для адреса из
   // поля собираем разовый переходник, кэш не трогаем.
+  // Для адреса из поля — разовый переходник, который после проверки
+  // закрываем: иначе каждая «Проверить» оставляла бы пул соединений.
+  const throwaway = current === url() ? null : new ProxyAgent(current);
   try {
     const started = Date.now();
     const response = await fetch('https://api.telegram.org/', {
-      dispatcher: current === url() ? agent() : new ProxyAgent(current),
+      dispatcher: throwaway || agent(),
       signal: AbortSignal.timeout(20000),
     });
+    await response.body?.cancel().catch(() => {});
     // Telegram на голый корень отвечает 404 — и это ровно то, что нужно:
     // значит канал до него есть.
     return { ok: true, ms: Date.now() - started, status: response.status };
@@ -126,6 +135,8 @@ async function check(candidate) {
       error: `Прокси отвечает, но туннель к Telegram через него не прошёл (${reason(error)}). `
         + 'Нужен HTTP-прокси с логином-паролем в адресе и разрешённым CONNECT на порт 443; SOCKS этот сервер не поддерживает',
     };
+  } finally {
+    if (throwaway) throwaway.close().catch(() => {});
   }
 }
 
