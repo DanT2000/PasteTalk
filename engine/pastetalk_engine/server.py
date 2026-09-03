@@ -357,6 +357,15 @@ def watch_parent(server: ThreadingHTTPServer) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Приложение читает наш stdout/stderr как UTF-8. Через трубу Python на
+    # Windows берёт ANSI-кодировку системы: на русской — кракозябры в
+    # журнале, на английской — UnicodeEncodeError на первой же русской
+    # букве. Переключаем оба потока явно.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:  # noqa: BLE001 — не все потоки умеют reconfigure
+            pass
     parser = argparse.ArgumentParser(prog="pastetalk-engine")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=0, help="0 — занять свободный")

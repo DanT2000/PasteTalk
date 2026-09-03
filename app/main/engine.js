@@ -47,6 +47,10 @@ class Engine {
     // счёт: окно настроек спрашивает «как дела» каждые секунды.
     this.lastUsedAt = Date.now();
     this.waking = null;
+    // Запросы в полёте и идущее засыпание — чтобы не уснуть под работой и
+    // не начать запись в процесс, который уже гасится.
+    this.inflight = 0;
+    this.sleepJob = null;
   }
 
   // ---------- сон ----------
@@ -59,11 +63,20 @@ class Engine {
    * ровно то, на что жалуются игры и браузеры. Сон отдаёт и это.
    */
   async sleep() {
-    if (this.state !== 'ready' || !this.child) return;
+    if (this.state !== 'ready' || !this.child || this.sleepJob) return;
     log.info('засыпаю: работы давно не было — отдаю память целиком');
-    await this.stop();
-    this.stopping = false;
-    this.setState('sleeping');
+    // Пока гасим процесс (до ~4 с), снаружи движок уже «не готов»: запись,
+    // начатая в этот момент, идёт путём пробуждения, а не в мёртвый порт.
+    this.sleepJob = (async () => {
+      await this.stop();
+      this.stopping = false;
+      this.setState('sleeping');
+    })();
+    try {
+      await this.sleepJob;
+    } finally {
+      this.sleepJob = null;
+    }
   }
 
   /** Пора ли спать: простой дольше срока выгрузки, и никто не работает. */
@@ -75,7 +88,7 @@ class Engine {
     const testMode = Boolean(process.env.PASTETALK_MIN_SLEEP_MS);
     if (!testMode && config.get('model.device', 'cuda') !== 'cuda') return;
     const idle = Number(config.get('engine.idleUnloadMs', -1));
-    if (idle < 0 || busy || this.state !== 'ready' || (this.inflight || 0) > 0) return;
+    if (idle < 0 || busy || this.state !== 'ready' || this.inflight > 0) return;
     if (Date.now() - this.lastUsedAt < Math.max(idle, MIN_SLEEP_MS) + SLEEP_GRACE_MS) return;
     this.sleep().catch((error) => log.warn(`не уснул: ${error.message}`));
   }
@@ -84,6 +97,7 @@ class Engine {
   wake() {
     if (this.waking) return this.waking;
     this.waking = (async () => {
+      if (this.sleepJob) await this.sleepJob;
       if (this.state === 'sleeping') {
         log.info('просыпаюсь: понадобилась работа');
         this.lastUsedAt = Date.now();
@@ -110,7 +124,12 @@ class Engine {
 
   /** Может ли движок взять работу — сразу или после пробуждения. */
   get canWork() {
-    return this.isReady || this.state === 'sleeping';
+    return this.isReady || this.dormant;
+  }
+
+  /** Спит, засыпает или поднимается — запись должна ждать его, а не отказывать. */
+  get dormant() {
+    return this.state === 'sleeping' || this.state === 'starting' || Boolean(this.sleepJob);
   }
 
   // ---------- где искать движок ----------
@@ -287,6 +306,9 @@ class Engine {
         try { child.kill(); } catch { resolve(); }
       });
     }
+    // Порт и токен принадлежали убитому процессу: следующий получит свои.
+    this.port = 0;
+    this.token = '';
     this.setState('stopped');
   }
 
@@ -303,7 +325,7 @@ class Engine {
   }
 
   get isReady() {
-    return this.state === 'ready' && this.port > 0;
+    return this.state === 'ready' && this.port > 0 && !this.sleepJob;
   }
 
   // ---------- HTTP-клиент ----------
@@ -312,7 +334,9 @@ class Engine {
     // Опросы состояния — не работа: от них движок не просыпается, и срок
     // сна по ним не сдвигается. Всё остальное будит спящий движок само,
     // так что вызывающим не нужно знать, спит он или нет.
-    const passive = (method === 'GET' && (route === '/health' || route === '/model' || route === '/model/downloads'))
+    // Опрос закачек — не пассивный: пока модель качается впрок, движок
+    // занят, и усыплять его значит оборвать закачку.
+    const passive = (method === 'GET' && (route === '/health' || route === '/model'))
       || route === '/idle';
     if (this.state === 'sleeping') {
       if (passive) return Promise.reject(new Error('Движок спит'));
@@ -323,12 +347,12 @@ class Engine {
     // засыпал прямо под расшифровкой. Отметка времени — и в начале, и
     // в конце: простой отсчитывается от конца работы.
     if (!passive) {
-      this.inflight = (this.inflight || 0) + 1;
+      this.inflight += 1;
       this.lastUsedAt = Date.now();
     }
     const settle = () => {
       if (passive) return;
-      this.inflight = Math.max(0, (this.inflight || 1) - 1);
+      this.inflight = Math.max(0, this.inflight - 1);
       this.lastUsedAt = Date.now();
     };
     const pending = new Promise((resolve, reject) => {
@@ -355,6 +379,11 @@ class Engine {
         },
       }, (response) => {
         const parts = [];
+        // Оборванный посреди тела ответ (движок упал или перезапущен) обязан
+        // завершить обещание: иначе счётчик запросов в полёте зависает и
+        // движок больше никогда не засыпает.
+        response.on('error', reject);
+        response.on('aborted', () => reject(new Error('Движок оборвал ответ')));
         response.on('data', (part) => parts.push(part));
         response.on('end', () => {
           const text = Buffer.concat(parts).toString('utf8');

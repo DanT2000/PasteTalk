@@ -51,61 +51,22 @@ try {
 if (process.env.PASTETALK_DATA_DIR) app.setPath('userData', process.env.PASTETALK_DATA_DIR);
 
 /**
- * Установщик узнаёт, где стоит программа, из реестра: Software\<guid>\
- * InstallLocation (electron-builder пишет его при установке; guid — uuid v5
- * от appId). Если запись потерялась (чистильщики реестра, перенос), новая
- * версия, поставленная руками с сайта, уехала бы в папку по умолчанию, а
- * старая осталась бы лежать рядом. Поэтому при каждом запуске проверяем
- * запись и чиним — но только когда деинсталлятор в реестре указывает
- * именно на нашу папку: тестовая копия в другом месте чужую установку
- * трогать не должна. HKLM без прав не пишется — тогда просто скажем в журнал.
+ * Установщик на время обновления переименовывает «PasteTalk models» из
+ * папки установки в «<папка>.models-keep» и после установки возвращает.
+ * Если установку отменили или выбрали другую папку, возвращать некому —
+ * подбираем сами: настроенной папки нет, а «.models-keep» рядом есть.
  */
-function installGuid() {
-  const crypto = require('node:crypto');
-  const ns = Buffer.from('50e065bc-3134-11e6-9bab-38c9862bdaf3'.replace(/-/g, ''), 'hex');
-  const h = crypto.createHash('sha1').update(Buffer.concat([ns, Buffer.from('ru.appswire.pastetalk', 'utf8')])).digest();
-  h[6] = (h[6] & 0x0f) | 0x50;
-  h[8] = (h[8] & 0x3f) | 0x80;
-  const hex = h.subarray(0, 16).toString('hex');
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
-}
-
-/** Папка из UninstallString вида "D:\X\Uninstall PasteTalk.exe" /allusers. */
-function uninstallDir(uninstallString) {
-  const quoted = /^"([^"]+)"/.exec(String(uninstallString || '').trim());
-  const exe = quoted ? quoted[1] : String(uninstallString || '').trim().split(' /')[0];
-  return exe ? path.dirname(exe) : '';
-}
-
-function healInstallLocation() {
-  if (process.platform !== 'win32' || !app.isPackaged || portableMode) return;
-  const { execFileSync } = require('node:child_process');
-  const guid = installGuid();
-  const here = path.dirname(process.execPath);
-  const same = (a, b) => path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase();
-  const query = (key, name) => {
-    try {
-      const out = execFileSync('reg', ['query', key, '/v', name], { encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
-      const match = new RegExp(`${name}\\s+REG_\\w+\\s+(.*)$`, 'm').exec(out);
-      return match ? match[1].trim() : '';
-    } catch {
-      return '';
-    }
-  };
-  for (const hive of ['HKCU', 'HKLM']) {
-    const uninstall = query(`${hive}\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${guid}`, 'UninstallString');
-    if (!uninstall) continue;
-    // Не наша установка (тест из другой папки) — не лезем.
-    if (!same(uninstallDir(uninstall), here)) return;
-    const location = query(`${hive}\\Software\\${guid}`, 'InstallLocation');
-    if (location && same(location, here)) return;
-    try {
-      execFileSync('reg', ['add', `${hive}\\Software\\${guid}`, '/v', 'InstallLocation', '/t', 'REG_SZ', '/d', here, '/f'], { windowsHide: true, stdio: 'ignore' });
-      log.warn(`в реестре не было папки установки — записал: ${hive}\\Software\\${guid}\\InstallLocation = ${here}`);
-    } catch (error) {
-      log.warn(`папка установки в реестре (${hive}) не записана: ${error.message}`);
-    }
-    return;
+function recoverKeptModels() {
+  const custom = String(config.get('engine.modelsDir', '') || '');
+  if (!custom || fs.existsSync(custom)) return;
+  const kept = `${path.dirname(custom)}.models-keep`;
+  if (!fs.existsSync(kept)) return;
+  try {
+    fs.mkdirSync(path.dirname(custom), { recursive: true });
+    fs.renameSync(kept, custom);
+    log.warn(`папка моделей осталась после обновления в стороне — вернул: ${kept} → ${custom}`);
+  } catch (error) {
+    log.error(`не удалось вернуть модели из ${kept}: ${error.message}`);
   }
 }
 
@@ -154,8 +115,6 @@ app.whenReady().then(async () => {
     const win = windows.windows[name];
     if (win && !win.isDestroyed()) raisePriority(win.webContents.getOSProcessId(), `окно ${name}`);
   }
-  // Реестр — фоном, старту это не нужно.
-  setTimeout(() => { try { healInstallLocation(); } catch (error) { log.warn(`проверка папки установки: ${error.message}`); } }, 5000);
 
   tray.create({
     record: () => startRecording('plain'),
@@ -164,6 +123,10 @@ app.whenReady().then(async () => {
     restartEngine: () => restartEngine(),
     quit: () => quit(),
   });
+
+  // Обновление могло не дойти до конца (отмена в мастере): установщик
+  // выносит папку моделей в сторону, а вернуть её тогда некому, кроме нас.
+  recoverKeptModels();
 
   engine.onState = (info) => {
     tray.refresh();
@@ -1058,7 +1021,9 @@ ipcMain.handle('history:recognize', async (_event, payload) => {
     // WAV писали мы сами: 44 байта заголовка, дальше PCM 16 кГц.
     text = (await remote.transcribe(wav.subarray(44))).text;
   } else {
-    if (!engine.isReady) throw new Error(engine.lastError || 'Движок ещё запускается');
+    // Спящий или поднимающийся движок будим и ждём; отказываем только
+    // упавшему — wake() сам скажет словами, что случилось.
+    await engine.wake();
     const answer = await engine.transcribeBuffer(wav, {
       filename: 'history.wav',
       model: model || undefined,

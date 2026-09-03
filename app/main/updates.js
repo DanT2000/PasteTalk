@@ -247,7 +247,7 @@ async function downloadAndInstall(onProgress) {
     const found = await autoUpdater.checkForUpdates();
     const version = found?.updateInfo?.version || '';
     if (!version || compare(version, app.getVersion()) <= 0) {
-      throw new Error('Обновление не нашлось');
+      throw Object.assign(new Error('Обновление не нашлось'), { notFound: true });
     }
     log.info(`скачиваю обновление ${version} (${source})`);
     await autoUpdater.downloadUpdate();
@@ -260,12 +260,15 @@ async function downloadAndInstall(onProgress) {
     autoUpdater.setFeedURL({ provider: 'github', owner: OWNER, repo: REPO });
     await fetchVia('GitHub');
   } catch (error) {
-    if (/не нашлось/.test(error.message)) throw error;
+    if (error.notFound) throw error;
     log.warn(`GitHub не отдал обновление (${error.message}) — пробую зеркало ${mirrorUrl()}`);
     autoUpdater.setFeedURL({
       provider: 'generic',
       url: mirrorUrl(),
       channel: channel() === 'beta' ? 'beta' : 'latest',
+      // Зеркало отдаёт по одному диапазону за запрос; без этого апдейтер
+      // просил бы несколько сразу, получал весь файл и качал его дважды.
+      useMultipleRangeRequest: false,
     });
     await fetchVia('зеркало');
   }

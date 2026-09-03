@@ -354,8 +354,12 @@ class ModelManager:
             self.state.state = "ready"
             self.state.progress = 1.0
             # В журнал приложения: когда «долго грузится», по этой строке
-            # видно, сколько именно и на чём считаем.
-            print(f"модель {name} загружена на {device} ({compute_type}) за {time.time() - started:.1f} с", flush=True)
+            # видно, сколько именно и на чём считаем. Печать не имеет права
+            # уронить уже загруженную модель — отдельный try.
+            try:
+                print(f"модель {name} загружена на {device} ({compute_type}) за {time.time() - started:.1f} с", flush=True)
+            except Exception:  # noqa: BLE001
+                pass
         except Exception as exc:  # noqa: BLE001 — наружу уходит текстом
             if wanted != self._wanted:
                 return

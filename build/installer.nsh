@@ -16,22 +16,40 @@
 ; закрыто; при ручной установке поверх — файлы моделей движок держит
 ; закрытыми, переименование проходит.
 
+; Откуда вынесли модели: в мастере человек может выбрать другую папку,
+; и возвращать надо из старого места в новое, а не искать рядом с новым.
+; Только установщику: в сборке деинсталлятора макросы не вставляются, и
+; NSIS счёл бы переменную лишней (а предупреждение здесь — ошибка).
+!ifndef BUILD_UNINSTALLER
+  Var ptModelsKept
+!endif
+
 !macro customInit
-  ${if} ${FileExists} "$INSTDIR\PasteTalk models\*.*"
+  StrCpy $ptModelsKept ""
+  ; Где стоит прежняя версия — из реестра: при запуске с /D=другая_папка
+  ; $INSTDIR уже указывает на новую, а модели лежат в старой.
+  ReadRegStr $R7 SHELL_CONTEXT "${INSTALL_REGISTRY_KEY}" InstallLocation
+  ${if} $R7 == ""
+    StrCpy $R7 $INSTDIR
+  ${endif}
+  ${if} ${FileExists} "$R7\PasteTalk models\*.*"
     ClearErrors
-    Rename "$INSTDIR\PasteTalk models" "$INSTDIR.models-keep"
+    Rename "$R7\PasteTalk models" "$R7.models-keep"
     ${if} ${Errors}
       DetailPrint "PasteTalk models: не удалось вынести на время обновления"
+    ${else}
+      StrCpy $ptModelsKept "$R7.models-keep"
     ${endif}
   ${endif}
 !macroend
 
 !macro customInstall
-  ${if} ${FileExists} "$INSTDIR.models-keep\*.*"
+  ${if} $ptModelsKept != ""
+  ${andIf} ${FileExists} "$ptModelsKept\*.*"
     ClearErrors
-    Rename "$INSTDIR.models-keep" "$INSTDIR\PasteTalk models"
+    Rename "$ptModelsKept" "$INSTDIR\PasteTalk models"
     ${if} ${Errors}
-      DetailPrint "PasteTalk models: не удалось вернуть на место, папка осталась рядом: $INSTDIR.models-keep"
+      DetailPrint "PasteTalk models: не удалось вернуть на место, папка осталась: $ptModelsKept"
     ${endif}
   ${endif}
 !macroend

@@ -594,10 +594,13 @@ function backupFor(overrides) {
   // человек побывал на нём, вписал адрес, вернулся к AITunnel — и этот
   // адрес не должен утащить запросы к AITunnel на локальный порт.
   const custom = backup.provider === 'custom';
+  // У именитых адрес — из общей карты адресов (LM Studio на другой
+  // машине), у «Своего» — собственный.
+  const urls = config.get('ai.urls', {}) || {};
   const out = {
     ...overrides,
     provider: backup.provider,
-    baseUrl: custom ? (backup.baseUrl || '') : '',
+    baseUrl: custom ? (backup.baseUrl || '') : (urls[backup.provider] || ''),
     model: backup.model || '',
     noBackup: true,
   };

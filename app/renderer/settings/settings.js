@@ -1256,7 +1256,9 @@ function fillBackupProviders() {
   select.value = [...select.options].some((o) => o.value === chosen) ? chosen : '';
   fillBackupModels();
   syncBackupRows();
-  fetchBackupModels({ quiet: true });
+  // Список моделей — только если запасной вообще включён: иначе это
+  // сетевой запрос ради спрятанного селекта.
+  if (settings.ai?.backup?.enabled) fetchBackupModels({ quiet: true });
 }
 
 function fillBackupModels(fetched, providerOverride) {
@@ -1310,7 +1312,9 @@ function backupOverrides(providerOverride) {
     overrides.baseUrl = $('backup-baseurl').value.trim();
     overrides.apiKey = $('backup-key').value;
   } else {
-    overrides.baseUrl = '';
+    // У именитых адрес общий с основным: LM Studio на другой машине
+    // запомнен в ai.urls — запасному он нужен тот же.
+    overrides.baseUrl = settings.ai?.urls?.[provider] || '';
   }
   return overrides;
 }
@@ -1331,7 +1335,7 @@ async function fetchBackupModels({ quiet = false, provider: providerOverride } =
   if (!quiet) say(`${t('Сервер отдал моделей:')} ${names.length}`);
 }
 
-$('backup-enabled').addEventListener('change', syncBackupRows);
+$('backup-enabled').addEventListener('change', () => syncBackupRows());
 
 $('backup-provider').addEventListener('change', async () => {
   // Значение берём сразу: пока ждём запись, showValues может откатить селект.

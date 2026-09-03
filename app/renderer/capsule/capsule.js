@@ -147,7 +147,8 @@ function syncAiButton(state) {
   const off = !config || config.ai?.enabled === false;
   aiBtn.classList.toggle('is-off', off);
   aiBtn.disabled = !off && !state.ai;
-  aiBtn.title = off ? t('Улучшение текста выключено в настройках') : t('Улучшить текст');
+  if (off) aiBtn.title = t('Улучшение текста выключено в настройках');
+  else syncAiTitles();
 }
 
 // ---------- связь с приложением ----------
