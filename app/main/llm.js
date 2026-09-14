@@ -404,6 +404,38 @@ function resolveCommand(command) {
   return found;
 }
 
+/**
+ * Агенты сообщают об ошибке обычным текстом в stdout: Claude Code при
+ * истёкшем входе печатает «Failed to authenticate. API Error: 401 OAuth
+ * access token has expired…». Раньше такой текст принимался за результат —
+ * вставлялся в окно человека и сохранялся в историю как «причёсанный».
+ * Узнаём ошибку по коду выхода и по тому, с чего начинается ответ.
+ */
+const CLI_ERROR = /^(?:failed to authenticate|invalid api key|api error\b|error:|credit balance is too low|please run \/login|oauth\b|not logged in|authentication (?:failed|error)|unauthori[sz]ed|claude ai usage limit reached|you've hit your|usage limit|rate[_ ]limit|unexpected status \d{3})/i;
+
+function cliFailure(preset, code, answer, err, source) {
+  // Сам диктованный текст может начинаться так же («API Error: 401 — это…»):
+  // тогда совпадение — не ошибка агента, а честная обработка.
+  const looksLikeError = CLI_ERROR.test(answer) && !CLI_ERROR.test(String(source || '').trim());
+  if (code === 0 && !looksLikeError) return null;
+  const all = `${answer}\n${err}`;
+  // В журнал — только сам текст ошибки. Ответ с ненулевым кодом может
+  // оказаться обрывком текста человека, а журналы уходят в отчёты.
+  const detail = (looksLikeError ? answer : err).trim().split(/\r?\n/)[0].slice(0, 200) || `код ${code}`;
+  const login = preset.command === 'codex' ? 'codex login' : '/login';
+  let message;
+  if (/\b401\b|oauth|authenticat|log ?in\b|invalid api key|unauthori[sz]ed/i.test(all)) {
+    message = `вход истёк или не выполнен — откройте терминал, запустите «${preset.command}» и войдите заново (${login})`;
+  } else if (/usage limit|rate[_ ]?limit|\b429\b|hit your/i.test(all)) {
+    message = 'упёрлись в лимит подписки — подождите или выберите другого провайдера';
+  } else if (/credit balance/i.test(all)) {
+    message = 'на счёте закончились средства';
+  } else {
+    message = `завершился с ошибкой: ${detail}`;
+  }
+  return { message, detail };
+}
+
 function runCli(settings, text, timeoutMs) {
   return new Promise((resolve_, reject) => {
     const preset = settings.preset;
@@ -465,8 +497,12 @@ function runCli(settings, text, timeoutMs) {
       // Пустоту проверяем ПОСЛЕ всех срезов: «Вот текст:» без тела не
       // должен превращаться в пустую строку, затирающую буфер человека.
       const answer = stripCourtesy(stripThinking(out));
-      if (code !== 0 && !answer) {
-        reject(new Error(`${preset.title} завершился с ошибкой: ${err.trim().slice(0, 200) || `код ${code}`}`));
+      // Ненулевой код — всегда ошибка, даже если что-то напечатано: вывод
+      // упавшего агента нельзя вставлять человеку в документ.
+      const failure = cliFailure(preset, code, answer, err, text);
+      if (failure) {
+        log.warn(`${preset.title} ответил ошибкой вместо текста (код ${code}): ${failure.detail}`);
+        reject(new Error(`${preset.title}: ${failure.message}`));
         return;
       }
       if (!answer) { reject(new Error(`${preset.title} вернул пустой ответ`)); return; }
