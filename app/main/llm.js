@@ -418,7 +418,9 @@ function cliFailure(preset, code, answer, err, source) {
   // тогда совпадение — не ошибка агента, а честная обработка.
   const looksLikeError = CLI_ERROR.test(answer) && !CLI_ERROR.test(String(source || '').trim());
   if (code === 0 && !looksLikeError) return null;
-  const all = `${answer}\n${err}`;
+  // Причину ищем только в тексте ошибки: слово «login» в диктовке человека
+  // не должно превращаться в подсказку про вход.
+  const all = looksLikeError ? `${answer}\n${err}` : err;
   // В журнал — только сам текст ошибки. Ответ с ненулевым кодом может
   // оказаться обрывком текста человека, а журналы уходят в отчёты.
   const detail = (looksLikeError ? answer : err).trim().split(/\r?\n/)[0].slice(0, 200) || `код ${code}`;
