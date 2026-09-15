@@ -32,8 +32,17 @@ function applyTheme() {
 
 // ---------- настройки ----------
 
+// В окне шла расшифровка файла: её результат есть только здесь, поэтому
+// такое окно при закрытии прячется, а не уничтожается.
+let keepSettings = false;
+
+function keepSettingsAlive() {
+  keepSettings = true;
+}
+
 function createSettings() {
   if (windows.settings && !windows.settings.isDestroyed()) return windows.settings;
+  keepSettings = false;
 
   // С запасом под крупный масштаб (150 %): подсветке знакомства и карточке
   // сбоку от неё должно хватать места. Но не больше рабочей области:
@@ -62,13 +71,19 @@ function createSettings() {
   win.loadFile(path.join(RENDERER, 'settings', 'index.html'));
   win.once('ready-to-show', () => win.show());
 
-  // Крестик прячет окно. Программа продолжает слушать горячую клавишу —
-  // ради этого она и живёт в трее.
+  // Крестик закрывает окно по-настоящему: программа живёт в трее и без
+  // него, а спрятанное окно держало бы свой процесс (20–40 МБ) весь день.
+  // Открывается оно заново за доли секунды. Исключение — в окне шла
+  // расшифровка файла: её результат живёт только здесь, окно прячем.
   win.on('close', (event) => {
-    if (!global.pastetalkQuitting) {
+    if (global.pastetalkQuitting) return;
+    if (keepSettings) {
       event.preventDefault();
       win.hide();
     }
+  });
+  win.on('closed', () => {
+    if (windows.settings === win) windows.settings = null;
   });
 
   windows.settings = win;
@@ -279,6 +294,7 @@ function reloadAll() {
 }
 
 module.exports = {
+  keepSettingsAlive,
   healCapsuleDisplay,
   windows,
   applyTheme,

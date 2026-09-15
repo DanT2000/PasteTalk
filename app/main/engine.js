@@ -31,6 +31,10 @@ const RESTART_DELAYS_MS = [1000, 2000, 4000, 8000, 15000, 30000];
 // и гасить движок между двумя фразами одной мысли было бы вредительством.
 const MIN_SLEEP_MS = Number(process.env.PASTETALK_MIN_SLEEP_MS) || 5 * 60 * 1000;
 const SLEEP_GRACE_MS = process.env.PASTETALK_MIN_SLEEP_MS ? 0 : 30 * 1000;
+// «Отпускать сразу после диктовки»: человек прямо попросил отдавать память.
+// Выгрузка модели отдаёт только видеопамять — оперативные ~600 МБ держит сам
+// процесс, — поэтому засыпаем через минуту, а не через пять.
+const QUICK_SLEEP_MS = 60 * 1000;
 
 class Engine {
   constructor() {
@@ -89,7 +93,10 @@ class Engine {
     if (!testMode && config.get('model.device', 'cuda') !== 'cuda') return;
     const idle = Number(config.get('engine.idleUnloadMs', -1));
     if (idle < 0 || busy || this.state !== 'ready' || this.inflight > 0) return;
-    if (Date.now() - this.lastUsedAt < Math.max(idle, MIN_SLEEP_MS) + SLEEP_GRACE_MS) return;
+    const quick = idle === 0;
+    const floor = quick ? Math.min(QUICK_SLEEP_MS, MIN_SLEEP_MS) : MIN_SLEEP_MS;
+    const grace = quick ? 0 : SLEEP_GRACE_MS;
+    if (Date.now() - this.lastUsedAt < Math.max(idle, floor) + grace) return;
     this.sleep().catch((error) => log.warn(`не уснул: ${error.message}`));
   }
 

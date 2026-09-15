@@ -164,11 +164,25 @@ function applyAutoLaunch(enabled) {
   log.info(`автозапуск ${enabled ? 'включён' : 'выключен'}`);
 }
 
+/**
+ * Прежние версии записывали автозапуск под идентификатором приложения. В
+ * «Автозагрузке» Windows это вторая строка — «Голос в текст по горячей
+ * клавише», по описанию exe. При входе программа запускалась дважды, и
+ * вторая копия открывала окно настроек. Удаляли её только при смене
+ * настройки, поэтому у многих она жила годами. Теперь — при каждом запуске.
+ */
+function removeLegacyLoginItem() {
+  try {
+    app.setLoginItemSettings({ openAtLogin: false, name: LEGACY_LOGIN_ITEM });
+  } catch { /* её могло и не быть */ }
+}
+
 /** Совпадает ли реальное состояние автозапуска с настройкой. */
 function syncAutoLaunch() {
   const wanted = config.get('startup.autoLaunch', true);
   if (!app.isPackaged) return;
   if (process.env.PORTABLE_EXECUTABLE_DIR) return;
+  removeLegacyLoginItem();
   const actual = app.getLoginItemSettings({
     name: LOGIN_ITEM_NAME,
     path: process.execPath,

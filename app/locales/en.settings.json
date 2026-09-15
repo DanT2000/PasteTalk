@@ -92,7 +92,6 @@
   "Отправим полсекунды тишины и посмотрим, что ответят": "We'll send half a second of silence and see what comes back",
   "Видеопамять": "Video memory",
   "Отпускать память при простое": "Free memory when idle",
-  "Модель занимает несколько гигабайт. Обратно она грузится три-четыре секунды — меньше, чем длится обычная диктовка": "The model takes up a few gigabytes. Loading it back takes three to four seconds — less than a typical dictation",
   "сразу после диктовки": "right after dictation",
   "через 5 минут": "after 5 minutes",
   "через 30 минут": "after 30 minutes",
@@ -593,5 +592,9 @@
   "Что сделать с текстом": "What to do with the text",
   "Спит — проснётся при записи": "Asleep — wakes up when you record",
   "Усыплять движок целиком": "Put the engine fully to sleep",
-  "Только на видеокарте: после выгрузки модели процесс всё равно держит около 2 ГБ под CUDA. Сон отдаёт и их. Цена — запуск процесса, 1–3 с сверх обычной перезагрузки модели после простоя; запись идёт с первой секунды. Не раньше 5 минут простоя": "GPU only: even after the model is unloaded, the process still holds about 2 GB for CUDA. Sleep returns that too. The cost is one process start, 1–3 s on top of the usual model reload after idle; recording runs from the first second. Never sooner than 5 minutes of idle time"
+  "Модель держит гигабайты видеопамяти, а сам движок — ещё около 600 МБ оперативной. Через этот срок всё это отдаётся системе. Первая фраза после паузы распознаётся на несколько секунд дольше, пока модель грузится обратно": "The model holds gigabytes of video memory, and the engine itself about 600 MB of RAM. After this time all of it goes back to the system. The first phrase after a pause takes a few seconds longer while the model loads back",
+  "Только на видеокарте. Без этого после простоя отдаётся лишь видеопамять, а движок держит свои 600 МБ оперативной. Сон гасит процесс целиком; запись при этом идёт с первой секунды. При «сразу после диктовки» движок засыпает через минуту": "GPU only. Without it, only video memory is released after idle time, and the engine keeps its 600 MB of RAM. Sleep stops the process entirely; recording still runs from the first second. With “right after dictation” the engine sleeps after a minute",
+  "Память": "Memory",
+  "Рисовать окна видеокартой": "Draw windows with the graphics card",
+  "Выключено — окна рисует процессор: выглядит так же, а в фоне на 15–30 МБ памяти меньше. Включите, если панель рисуется рывками. Действует после перезапуска программы": "Off: windows are drawn by the processor. They look the same, and background memory use is 15–30 MB lower. Turn it on if the panel stutters. Takes effect after restarting the program"
 }

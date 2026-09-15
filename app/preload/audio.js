@@ -8,4 +8,5 @@ contextBridge.exposeInMainWorld('recorderBridge', {
   chunk: (pcm, peak) => ipcRenderer.send('audio:chunk', { pcm, peak }),
   level: (value) => ipcRenderer.send('audio:level', { level: value }),
   failed: (message) => ipcRenderer.send('audio:error', { message }),
+  note: (message) => ipcRenderer.send('audio:note', { message }),
 });

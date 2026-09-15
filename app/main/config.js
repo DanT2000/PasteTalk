@@ -75,6 +75,9 @@ const DEFAULTS = {
     // привязка лечится сама.
     capsuleDisplayMark: null,
     capsuleSize: 'full',    // full | compact
+    // Рисовать окна видеокартой. По умолчанию — процессором: выглядит так
+    // же, а в фоне на 15–30 МБ памяти меньше.
+    hardwareAcceleration: false,
   },
 
   ai: {

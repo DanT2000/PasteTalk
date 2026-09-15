@@ -13,20 +13,68 @@ let stream = null;
 let node = null;
 let source = null;
 
+/**
+ * Открыть микрофон — с повторами.
+ *
+ * Звуковая подсистема Chromium после загрузки Windows порой держит
+ * устаревший список устройств: «по умолчанию» указывает на то, чего уже
+ * нет, и getUserMedia раз за разом отвечает OverconstrainedError, пока
+ * список не перечитают. Человеку приходилось выбирать в настройках другой
+ * микрофон и возвращать «по умолчанию». Теперь перечитываем сами: список
+ * устройств, затем устройство по умолчанию напрямую, затем без обработки.
+ * Выбранного микрофона нет — пишем с микрофона по умолчанию, а не молчим.
+ */
+async function openStream(deviceId) {
+  const processing = { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+  const chosen = deviceId && deviceId !== 'default' ? deviceId : '';
+  const failures = [];
+  let first = null;
+
+  const attempt = async (label, audio) => {
+    try {
+      const opened = await navigator.mediaDevices.getUserMedia({ audio });
+      if (failures.length) {
+        window.recorderBridge.note(`открыт не с первой попытки (${failures.join('; ')}) — записываю: ${label}`);
+      }
+      return opened;
+    } catch (error) {
+      if (!first) first = error;
+      failures.push(`${label}: ${error.name}`);
+      // Доступ запрещён — повторы не помогут, говорим сразу.
+      if (error.name === 'NotAllowedError') throw error;
+      return null;
+    }
+  };
+
+  let opened = null;
+  if (chosen) opened = await attempt('выбранный микрофон', { ...processing, deviceId: { exact: chosen } });
+  if (!opened && !chosen) opened = await attempt('по умолчанию', { ...processing });
+  if (!opened) {
+    let inputs = [];
+    try {
+      inputs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput');
+    } catch { /* перечитать не вышло — пробуем как есть */ }
+    if (chosen && inputs.some((d) => d.deviceId === chosen)) {
+      opened = await attempt('выбранный, после обновления списка', { ...processing, deviceId: { exact: chosen } });
+    }
+    if (!opened) {
+      // «По умолчанию» — псевдоним; настоящее устройство с тем же groupId.
+      const alias = inputs.find((d) => d.deviceId === 'default');
+      const real = alias && inputs.find((d) => d.groupId === alias.groupId
+        && d.deviceId !== 'default' && d.deviceId !== 'communications');
+      if (real) opened = await attempt('устройство по умолчанию напрямую', { ...processing, deviceId: { exact: real.deviceId } });
+    }
+    if (!opened) opened = await attempt('по умолчанию, после обновления списка', { ...processing });
+    if (!opened) opened = await attempt('без обработки звука', true);
+  }
+  if (!opened) throw first;
+  return opened;
+}
+
 async function start(options) {
   await stop();
   try {
-    stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        deviceId: options.deviceId && options.deviceId !== 'default'
-          ? { exact: options.deviceId }
-          : undefined,
-        channelCount: 1,
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-      },
-    });
+    stream = await openStream(options.deviceId);
   } catch (error) {
     window.recorderBridge.failed(describe(error));
     return;

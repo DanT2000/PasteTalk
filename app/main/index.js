@@ -87,11 +87,22 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 app.setAppUserModelId('ru.appswire.pastetalk');
+
+// Окна рисует процессор, а не видеокарта: на глаз разницы нет, а процесс
+// GPU почти пустеет — в фоне это 15–30 МБ памяти меньше. Включается
+// обратно в «Вид и размер», действует после перезапуска.
+if (!config.get('appearance.hardwareAcceleration', false)) app.disableHardwareAcceleration();
 global.pastetalkQuitting = false;
 
 // ---------- порядок запуска ----------
 
-app.on('second-instance', () => windows.showSettings());
+app.on('second-instance', (_event, argv) => {
+  // Копия из автозагрузки (--tray) — не просьба человека открыть окно.
+  // Раньше каждая лишняя запись автозапуска открывала настройки при входе
+  // в Windows и держала их процесс в памяти весь день.
+  if (Array.isArray(argv) && argv.includes('--tray')) return;
+  windows.showSettings();
+});
 
 app.whenReady().then(async () => {
   log.info(`PasteTalk ${app.getVersion()} запускается`);
@@ -769,6 +780,12 @@ ipcMain.on('audio:level', (_event, payload) => {
   windows.send('capsule', 'capsule:level', payload);
 });
 
+// Микрофон открылся, но не с первой попытки — в журнал: по этим строкам
+// видно, что именно лечит повтор, если сбой повторится.
+ipcMain.on('audio:note', (_event, payload) => {
+  log.warn(`микрофон: ${payload.message}`);
+});
+
 ipcMain.on('audio:error', (_event, payload) => {
   log.error(`микрофон: ${payload.message}`);
   // Наговорённое дороже диагностики: если речь уже была, запись
@@ -842,6 +859,9 @@ ipcMain.handle('files:improve', async (_event, payload) => {
 ipcMain.handle('files:cancelImprove', () => llm.cancel('digest'));
 
 ipcMain.handle('files:start', (_event, options) => {
+  // Результат расшифровки живёт только в окне настроек: такое окно при
+  // закрытии прячется, а не уничтожается.
+  windows.keepSettingsAlive();
   // Словарь специфики помогает и расшифровке файлов — термины те же.
   return engine.startFile({ ...options, prompt: modes.whisperPrompt(config.get('speech.vocabulary', '')) });
 });

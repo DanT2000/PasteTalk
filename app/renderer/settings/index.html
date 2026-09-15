@@ -373,13 +373,13 @@
           </div>
         </div>
 
-        <div class="group-title">Видеопамять</div>
+        <div class="group-title">Память</div>
         <div class="card">
           <div class="row">
             <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 9h4M7 13h7"/></svg>
             <div class="row-text">
               <div class="row-title">Отпускать память при простое</div>
-              <div class="row-sub">Модель занимает несколько гигабайт. Обратно она грузится три-четыре секунды — меньше, чем длится обычная диктовка</div>
+              <div class="row-sub">Модель держит гигабайты видеопамяти, а сам движок — ещё около 600 МБ оперативной. Через этот срок всё это отдаётся системе. Первая фраза после паузы распознаётся на несколько секунд дольше, пока модель грузится обратно</div>
             </div>
             <div class="row-control">
               <select data-cfg="engine.idleUnloadMs" data-number>
@@ -395,7 +395,7 @@
             <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
             <div class="row-text">
               <div class="row-title">Усыплять движок целиком</div>
-              <div class="row-sub">Только на видеокарте: после выгрузки модели процесс всё равно держит около 2 ГБ под CUDA. Сон отдаёт и их. Цена — запуск процесса, 1–3 с сверх обычной перезагрузки модели после простоя; запись идёт с первой секунды. Не раньше 5 минут простоя</div>
+              <div class="row-sub">Только на видеокарте. Без этого после простоя отдаётся лишь видеопамять, а движок держит свои 600 МБ оперативной. Сон гасит процесс целиком; запись при этом идёт с первой секунды. При «сразу после диктовки» движок засыпает через минуту</div>
             </div>
             <div class="row-control"><input class="switch" type="checkbox" data-cfg="engine.deepSleep"></div>
           </div>
@@ -801,6 +801,14 @@
                 <option value="compact">Компактная</option>
               </select>
             </div>
+          </div>
+          <div class="row">
+            <svg class="row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M10 3v4M14 3v4M10 17v4M14 17v4M3 10h4M3 14h4M17 10h4M17 14h4"/></svg>
+            <div class="row-text">
+              <div class="row-title">Рисовать окна видеокартой</div>
+              <div class="row-sub">Выключено — окна рисует процессор: выглядит так же, а в фоне на 15–30 МБ памяти меньше. Включите, если панель рисуется рывками. Действует после перезапуска программы</div>
+            </div>
+            <div class="row-control"><input class="switch" type="checkbox" data-cfg="appearance.hardwareAcceleration"></div>
           </div>
         </div>
       </section>
