@@ -268,7 +268,16 @@ class Recorder extends EventEmitter {
   keepVoiceFile() {
     const parts = this.audioCopy;
     this.audioCopy = null;
-    if (!parts || !parts.length || !this.hadSignal) return null;
+    return this.voiceFileFrom(parts, this.hadSignal);
+  }
+
+  /**
+   * Тот же файл, но из заранее снятой копии звука. Нужен опоздавшему
+   * ответу: пока он шёл, человек мог начать новую запись, и общая копия
+   * в this.audioCopy уже чужая.
+   */
+  voiceFileFrom(parts, hadSignal) {
+    if (!parts || !parts.length || !hadSignal) return null;
     const pcm = Buffer.concat(parts);
     const seconds = pcm.length / (16000 * 2);
     if (seconds < 1) return null;
@@ -461,6 +470,8 @@ class Recorder extends EventEmitter {
     const attempt = this.attempt;
     const pcm = Buffer.concat(this.chunks || []);
     this.chunks = null;
+    // Свой звук для опоздавшего ответа: см. finish().
+    this.rescueParts = pcm.length ? [pcm] : null;
     this.emitState(reason === 'limit' ? 'limit' : 'thinking');
 
     if (!this.everSpoke || pcm.length === 0) {
@@ -501,6 +512,9 @@ class Recorder extends EventEmitter {
     this.emitState(reason === 'limit' ? 'limit' : 'thinking');
 
     const attempt = this.attempt;
+    // Снимок звука именно этой записи: человек может начать новую, пока
+    // эта ещё считается, и тогда общая копия будет уже не её.
+    const mine = { parts: this.audioCopy, hadSignal: this.hadSignal };
     let result;
     try {
       // Дослать недокопленный хвост звука — иначе последние полсекунды
@@ -513,9 +527,9 @@ class Recorder extends EventEmitter {
       }
       result = await engine.stopSession(id);
     } catch (error) {
-      // Ответ отменённой попытки: человек уже начал новую запись или
-      // передумал. Трогать состояние и стэшить ЧУЖУЮ копию звука нельзя.
-      if (attempt !== this.attempt) return;
+      // Человек уже начал новую запись: панель и состояние теперь её,
+      // но голос прошлой обязан попасть в историю.
+      if (attempt !== this.attempt) { this.rescueVoice(mine); return; }
       log.error(error);
       const stashed = this.stashVoice();
       this.emitState('engineDown', stashed
@@ -532,6 +546,13 @@ class Recorder extends EventEmitter {
     // а речь человека — не для чужих глаз. Длины и причины достаточно.
     for (const item of result.dropped || []) {
       log.info(`выброшено как выдумка модели: ${String(item.text || '').length} симв. — ${item.reason}`);
+    }
+
+    // Опоздавший ответ: человек уже говорит новое. В окно не вставляем,
+    // панель не трогаем — только сохраняем сказанное в историю.
+    if (attempt !== this.attempt) {
+      this.rescueText(result.text, result.durationS, mine);
+      return;
     }
 
     // Сессия умерла и текста нет — это не «Тишина», это причина словами.
@@ -558,7 +579,7 @@ class Recorder extends EventEmitter {
     // Пришёл ответ от отменённой попытки — молча выбрасываем. Вставлять
     // его человеку в чужое окно нельзя.
     if (attempt !== this.attempt) {
-      log.info('ответ отменённой записи выброшен');
+      this.rescueText(raw, durationS, { parts: this.rescueParts || null, hadSignal: true });
       return;
     }
     let text = (raw || '').trim();
@@ -588,8 +609,11 @@ class Recorder extends EventEmitter {
     this.plainElevated = Boolean(delivered.elevated);
     log.info(`распознано ${text.length} символов за ${Math.round(durationS)} с звука`);
     this.emit('text', { text, improved: false, seconds: durationS, voice: kept ? kept.file : '' });
+    // Запись истории, в которую лёг этот текст: улучшение допишется
+    // именно к ней, даже если тем временем появится запись поновее.
+    const entryId = this.lastEntryId;
 
-    if (wantsAi) await this.improve(text, autoPaste);
+    if (wantsAi) await this.improve(text, autoPaste, entryId);
     else {
       // Окно «от администратора» не принимает наш Ctrl+V — Windows молча
       // выбрасывает симулированное нажатие. Текст цел, но вставлять руками.
@@ -602,8 +626,31 @@ class Recorder extends EventEmitter {
     }
   }
 
+  /**
+   * Ответ пришёл, когда человек уже начал следующую запись.
+   *
+   * Вставлять текст в чужое окно нельзя, и панель принадлежит новой
+   * записи. Но пропадать сказанному тоже нельзя: текст — в историю, а
+   * нет текста — туда же голос, чтобы распознать заново.
+   */
+  rescueText(raw, durationS, mine) {
+    let text = (raw || '').trim();
+    if (text && !config.get('text.keepPunctuation', true)) text = stripPunctuation(text);
+    if (!text) { this.rescueVoice(mine); return; }
+    const kept = this.voiceFileFrom(mine.parts, mine.hadSignal);
+    log.info(`прошлая запись догналась уже во время новой: ${text.length} символов — в историю`);
+    this.emit('text', { text, improved: false, seconds: durationS, voice: kept ? kept.file : '' });
+  }
+
+  rescueVoice(mine) {
+    const kept = this.voiceFileFrom(mine.parts, mine.hadSignal);
+    if (!kept) return;
+    log.info('прошлая запись не распозналась — голос сохранён в историю');
+    this.emit('voice', { file: kept.file, seconds: kept.seconds });
+  }
+
   /** Прогнать последний текст через языковую модель. */
-  async improve(source, autoPaste = config.get('text.autoPaste', true)) {
+  async improve(source, autoPaste = config.get('text.autoPaste', true), entryId = '') {
     const mode = this.improveMode || '';
     this.improveMode = '';
     if (mode) log.info(`улучшение в разовом режиме: ${mode}`);
@@ -637,7 +684,7 @@ class Recorder extends EventEmitter {
       if (!String(improved || '').trim()) throw new Error('Модель вернула пустой ответ');
       const delivered = await paste.deliver(improved, autoPaste);
       this.lastText = improved;
-      this.emit('text', { text: improved, improved: true });
+      this.emit('text', { text: improved, improved: true, entryId });
       this.emitState('aidone', delivered.elevated
         ? { status: tr('Вставьте сами: Ctrl+V'), hint: tr('Окно запущено от администратора') }
         : {});

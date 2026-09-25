@@ -67,6 +67,8 @@ contextBridge.exposeInMainWorld('pastetalk', {
   },
   app: {
     state: () => ipcRenderer.invoke('app:state'),
+    // Страница расставила настройки — окно можно показывать.
+    ready: () => ipcRenderer.send('settings:ready'),
     displays: () => ipcRenderer.invoke('app:displays'),
     onDisplays: on('displays:changed'),
     setPaused: (value) => ipcRenderer.invoke('app:setPaused', value),

@@ -318,6 +318,8 @@ recorder.on('partial', (payload) => windows.send('capsule', 'capsule:partial', p
 
 recorder.on('text', (payload) => {
   const entry = history.add(payload);
+  // Номер записи нужен рекордеру: улучшение допишется именно в неё.
+  if (entry && !payload.improved) recorder.lastEntryId = entry.id;
   windows.send('settings', 'history:changed', history.all());
   if (entry) windows.send('capsule', 'capsule:history', { has: true });
 });

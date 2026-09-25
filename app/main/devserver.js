@@ -120,6 +120,12 @@ async function feed(query) {
   }
 
   await starting;
+  // nofinishwait — не дожидаться распознавания: так проверяется случай,
+  // когда человек начинает новую запись, пока прошлая ещё считается.
+  if (query.has('nofinishwait')) {
+    recorder.finish('done').catch(() => {});
+    return { seconds: +(target / 16000).toFixed(2), state: recorder.state };
+  }
   await recorder.finish('done');
   return { seconds: +(target / 16000).toFixed(2), state: recorder.state, text: recorder.lastText };
 }

@@ -112,13 +112,23 @@ function makeId() {
  * дописывается к той же: это один и тот же надиктованный кусок, и в
  * списке он должен быть один, с обоими вариантами.
  */
-function add({ text, improved = false, seconds = 0, voice = '' }) {
+function add({ text, improved = false, seconds = 0, voice = '', entryId = '' }) {
   const clean = String(text || '').trim();
   if (!clean) return null;
   load();
 
-  // Улучшение дописывается к последней записи С ТЕКСТОМ: это тот же
-  // надиктованный кусок. Голос у записи теперь бывает и при тексте.
+  // Улучшение дописывается к своей записи: её номер известен с того
+  // момента, как в неё лёг сырой текст. Без номера — к последней с
+  // текстом, как раньше (улучшение из истории и с панели).
+  if (improved && entryId) {
+    const target = items.find((item) => item.id === entryId);
+    if (target) {
+      target.improved = clean;
+      target.improvedAt = Date.now();
+      save();
+      return target;
+    }
+  }
   if (improved && items[0] && !items[0].improved && items[0].text) {
     items[0].improved = clean;
     items[0].improvedAt = Date.now();

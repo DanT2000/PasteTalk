@@ -157,9 +157,12 @@ class ModelManager:
         with self.state.lock:
             if self._model is None or self._busy:
                 return
+            # Всё под одним замком: между «модели уже нет» и «мы спим»
+            # другой поток успевал увидеть «модели нет, и мы не спим» —
+            # и диктовка обрывалась с MODEL_NOT_READY.
             self._model = None
-        self._sleeping = True
-        self.state.state = "sleeping"
+            self._sleeping = True
+            self.state.state = "sleeping"
         gc.collect()
 
     def _sweep_idle(self) -> None:
@@ -190,8 +193,17 @@ class ModelManager:
         if self._model is not None:
             self._used_at = time.time()
             return
-        if not self._sleeping:
-            raise RuntimeError(self.state.error or "MODEL_NOT_READY")
+        # Снимок состояния под замком — иначе можно застать release()
+        # на середине и решить, что модель потеряна.
+        with self.state.lock:
+            loaded = self._model is not None
+            sleeping = self._sleeping
+            error = self.state.error
+        if loaded:
+            self._used_at = time.time()
+            return
+        if not sleeping:
+            raise RuntimeError(error or "MODEL_NOT_READY")
         with self._wake_lock:
             if self._model is not None:
                 return

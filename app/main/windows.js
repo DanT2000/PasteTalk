@@ -5,6 +5,7 @@ const { BrowserWindow, screen, nativeTheme } = require('electron');
 
 const config = require('./config');
 const i18n = require('./i18n');
+const log = require('./logger').scoped('windows');
 
 /**
  * Окон три:
@@ -69,7 +70,19 @@ function createSettings() {
 
   win.removeMenu();
   win.loadFile(path.join(RENDERER, 'settings', 'index.html'));
-  win.once('ready-to-show', () => win.show());
+  // Показываем, когда страница не просто отрисовалась, а расставила по
+  // местам настройки: окно теперь строится заново при каждом открытии, и
+  // по одному ready-to-show человек успевал увидеть его полупустым.
+  // Страница молчит (сбой в скрипте) — показываем сами, но с задержкой.
+  let shown = false;
+  const reveal = (why) => {
+    if (shown || win.isDestroyed()) return;
+    shown = true;
+    log.info(`окно настроек: показываю (${why})`);
+    win.show();
+  };
+  win.webContents.ipc.on('settings:ready', () => reveal('страница готова'));
+  win.once('ready-to-show', () => setTimeout(() => reveal('страница молчит — по таймеру'), 1500));
 
   // Крестик закрывает окно по-настоящему: программа живёт в трее и без
   // него, а спрятанное окно держало бы свой процесс (20–40 МБ) весь день.
