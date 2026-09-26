@@ -149,6 +149,25 @@ function start() {
       return;
     }
 
+    if (url.pathname === '/hotkey') {
+      // Нажатие горячей клавиши из сценария: globalShortcut из скрипта не
+      // нажать, а поведение клавиш проверять надо — особенно столкновения
+      // с идущей записью.
+      const action = (global.pastetalkHotkeyActions || {})[url.searchParams.get('name') || 'record'];
+      if (!action) {
+        response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('нет такой клавиши');
+        return;
+      }
+      try {
+        await action();
+        response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        response.end(JSON.stringify({ ok: true, state: require('./recorder').state }));
+      } catch (error) {
+        response.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' }).end(String(error.message));
+      }
+      return;
+    }
+
     if (url.pathname === '/bench') {
       try {
         const result = await require('./engine').benchmark();

@@ -88,6 +88,11 @@ if (!app.requestSingleInstanceLock()) {
 
 app.setAppUserModelId('ru.appswire.pastetalk');
 
+// Запуск из автозагрузки Windows: программа уходит в трей молча — никаких
+// окон, даже приветствия. Флаг ставит сама запись автозапуска (watchdog).
+// Запуск руками — другое дело: там окна показываются как обычно.
+const trayLaunch = process.argv.includes('--tray');
+
 // Окна рисует процессор, а не видеокарта: на глаз разницы нет, а процесс
 // GPU почти пустеет — в фоне это 15–30 МБ памяти меньше. Включается
 // обратно в «Вид и размер», действует после перезапуска.
@@ -105,7 +110,7 @@ app.on('second-instance', (_event, argv) => {
 });
 
 app.whenReady().then(async () => {
-  log.info(`PasteTalk ${app.getVersion()} запускается`);
+  log.info(`PasteTalk ${app.getVersion()} запускается${trayLaunch ? ' из автозагрузки — окон не показываю' : ''}`);
   // Диктовка — задача на живом голосе: захват звука и ответ модели не
   // должны стоять в очереди за компилятором или виртуалкой. При загруженном
   // на 100 % процессоре именно это растягивало загрузку модели в разы и
@@ -162,7 +167,10 @@ app.whenReady().then(async () => {
   watchdog.syncAutoLaunch();
   if (config.get('startup.restartOnCrash', true)) watchdog.start();
 
-  if (config.get('firstRun', true)) windows.showSettings('welcome');
+  // Приветствие при входе в Windows не к месту: человек включил
+  // компьютер, а не программу. Дождётся первого запуска руками или
+  // открытия настроек из трея — там оно и откроется.
+  if (config.get('firstRun', true) && !trayLaunch) windows.showSettings('welcome');
 
   updates.scheduleStartupCheck(announceUpdate);
 
@@ -335,22 +343,29 @@ recorder.on('hide', () => windows.hideCapsule());
 
 // ---------- горячие клавиши ----------
 
+/**
+ * Что делают горячие клавиши.
+ *
+ * Отдельным объектом, а не на месте: снимочный сервер разработки нажимает
+ * их из сценариев — глобальную клавишу из скрипта не нажать, а проверять
+ * случаи вроде «улучшение просят во время записи» надо именно так.
+ */
+const hotkeyActions = {
+  record: () => toggleRecording('plain'),
+  recordAndImprove: () => {
+    // Решает клавиша завершения: начали запись обычной, закончили
+    // «с улучшением» — значит, человек хочет улучшение. finish() при
+    // режиме improve улучшает сам; второй вызов прогнал бы через модель
+    // уже улучшенный текст: вдвое дольше и вдвое дороже.
+    if (improveRunningRecording()) return;
+    startRecording('improve');
+  },
+  improveClipboard: () => improveClipboard(),
+};
+global.pastetalkHotkeyActions = hotkeyActions;
+
 function registerHotkeys() {
-  const failed = hotkeys.register({
-    record: () => toggleRecording('plain'),
-    recordAndImprove: () => {
-      // finish() при режиме improve улучшает сам — второй вызов прогнал бы
-      // через модель уже улучшенный текст: вдвое дольше и вдвое дороже.
-      if (recorder.active) {
-        // Решает клавиша завершения: начали запись обычной, закончили
-        // «с улучшением» — значит, человек хочет улучшение.
-        recorder.mode = 'improve';
-        windows.send('audio', 'audio:stop', {});
-        recorder.finish('done');
-      } else startRecording('improve');
-    },
-    improveClipboard: () => improveClipboard(),
-  });
+  const failed = hotkeys.register(hotkeyActions);
   if (failed.length) {
     windows.send('settings', 'hotkeys:conflict', failed);
     // Окно настроек на старте ещё не открыто — сообщение туда пропадает.
@@ -366,6 +381,26 @@ function registerHotkeys() {
 }
 
 /**
+ * Улучшение просят, а запись идёт.
+ *
+ * Клавиша улучшения (по умолчанию Ctrl+ScrollLock) стоит рядом с клавишей
+ * записи, и промах ценой всей диктовки недопустим. Раньше improve() просто
+ * переводил панель в «Улучшаю»: звук с этого мгновения не принимался,
+ * сессия движка оставалась висеть, и запись пропадала целиком — ни текста,
+ * ни голоса в истории, ни строки в журнале. Живая запись дороже буфера: заканчиваем её
+ * и улучшаем её же текст — так же, как кнопка ИИ на панели.
+ */
+function improveRunningRecording(mode = '') {
+  if (!recorder.active) return false;
+  log.info('улучшение во время записи — заканчиваю запись и улучшаю её текст');
+  recorder.improveMode = mode;
+  recorder.mode = 'improve';
+  windows.send('audio', 'audio:stop', {});
+  recorder.finish('done');
+  return true;
+}
+
+/**
  * Улучшить то, что уже сказано.
  *
  * Сначала смотрим в буфер обмена — если человек только что вставил свой
@@ -374,6 +409,7 @@ function registerHotkeys() {
  * пять минут назад, и возвращаться к ней должно быть можно.
  */
 async function improveClipboard() {
+  if (improveRunningRecording()) return;
   const fromClipboard = clipboard.readText().trim();
   const last = history.latest();
   // Голосовая запись без текста улучшению не поддаётся — не подсовываем
@@ -395,6 +431,7 @@ async function improveClipboard() {
 
 /** Прогнать через модель последнюю надиктованную запись, минуя буфер. */
 async function improveLast(mode = '') {
+  if (improveRunningRecording(mode)) return;
   const last = history.latest();
   recorder.cancelHide();
   windows.showCapsule();
@@ -743,18 +780,12 @@ ipcMain.on('capsule:action', (_event, action, extra) => {
   if (action === 'toggle') toggleRecording('plain');
   else if (action === 'improve') {
     recorder.cancelHide();
+    // Нажали ИИ во время записи: эта запись заканчивается с улучшением —
+    // finish улучшит сам и вставит только готовый текст. Отдельный вызов
+    // improve() после finish вставлял бы и сырой, и улучшенный.
+    if (improveRunningRecording(mode)) return;
     recorder.improveMode = mode;
-    if (recorder.active) {
-      // Нажали ИИ во время записи: переводим ЭТУ запись в режим
-      // улучшения и заканчиваем — finish улучшит сам и вставит только
-      // готовый текст. Отдельный вызов improve() после finish вставлял
-      // бы и сырой, и улучшенный — два текста подряд в окне.
-      recorder.mode = 'improve';
-      windows.send('audio', 'audio:stop', {});
-      recorder.finish('done');
-    } else {
-      recorder.improve();
-    }
+    recorder.improve();
   }
   else if (action === 'settings') windows.showSettings();
   else if (action === 'history') windows.showSettings('history');

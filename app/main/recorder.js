@@ -506,7 +506,17 @@ class Recorder extends EventEmitter {
     }
     if (this.state !== 'listening') return;
     if (this.chunks) return this.finishRemote(reason);
-    if (!this.sessionId) return;
+    if (!this.sessionId) {
+      // Сессии уже нет, а панель всё ещё слушает: так быть не должно, но
+      // молча висеть с включённым микрофоном — худшее из возможного.
+      log.warn('запись нечем закончить: сессии уже нет — сохраняю голос');
+      const kept = this.stashVoice();
+      this.emitState(kept ? 'engineDown' : 'nospeech', kept
+        ? { status: tr('Не распозналось'), hint: tr('Голос сохранён в истории — можно распознать заново') }
+        : {});
+      this.scheduleHide(kept ? 4200 : 1800);
+      return;
+    }
     const id = this.sessionId;
     this.sessionId = null;
     this.emitState(reason === 'limit' ? 'limit' : 'thinking');
@@ -587,7 +597,14 @@ class Recorder extends EventEmitter {
     if (!text) {
       // Речь была, а текста нет — распознавание оступилось, не человек.
       // Голос в историю: там есть кнопка «Распознать» для второй попытки.
-      const stashed = this.everSpoke && this.stashVoice();
+      // Сигнал с микрофона — достаточное основание: детектор речи мог не
+      // услышать тихий голос, и тогда сказанное пропадало целиком.
+      const stashed = (this.everSpoke || this.hadSignal) && this.stashVoice();
+      // Почему пусто — в журнал: без этой строки в отчёте оставалась
+      // «запись началась» и тишина, и причину приходилось угадывать.
+      log.info(`текста нет: ${Math.round(durationS)} с звука, ${this.hadSignal
+        ? (this.everSpoke ? 'речь была' : 'сигнал был, но речи движок не услышал')
+        : 'микрофон отдавал ровный ноль'}`);
       this.emitState('nospeech', stashed
         ? { hint: tr('Голос сохранён в истории — можно распознать заново') }
         : {});
@@ -790,6 +807,9 @@ class Recorder extends EventEmitter {
     // речь обязаны: человек наговорил, и «извините, пропало» не ответ.
     // Отмена же значит «выбросить»: крестик не должен тайком копить wav.
     const stashed = reason !== 'nospeech' && reason !== 'cancelled' && this.stashVoice();
+    // Только когда было что бросать: пауза и поздние сигналы с микрофона
+    // тоже заходят сюда, и «запись брошена» на пустом месте сбивало бы с толку.
+    if (id || this.active) log.info(`запись брошена (${reason})${stashed ? ' — голос в историю' : ''}`);
     this.emitState(reason, {
       hint: tr(stashed ? 'Голос сохранён в истории — можно распознать заново' : hint),
     });
@@ -805,6 +825,14 @@ class Recorder extends EventEmitter {
   scheduleHide(ms) {
     clearTimeout(this.hideTimer);
     this.hideTimer = setTimeout(() => {
+      // Живую запись прятать и сбрасывать нельзя. Таймер мог достаться от
+      // чужого сообщения на панели («улучшать пока нечего»), поставленного
+      // уже во время записи, — и тогда сброс выбрасывал диктовку целиком:
+      // ни текста, ни голоса, ни строки в журнале.
+      if (this.state === 'listening' || this.state === 'waking') {
+        log.warn('таймер панели пришёлся на живую запись — не трогаю её');
+        return;
+      }
       this.emit('hide');
       // Последний текст переживает закрытие панели: кнопку «улучшить»
       // и горячую клавишу можно нажать и после того, как окно погасло.
