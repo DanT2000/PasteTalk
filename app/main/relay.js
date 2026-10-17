@@ -24,6 +24,23 @@ const log = require('./logger').scoped('relay');
 
 const RETRY_MS = [2000, 5000, 15000, 30000, 60000];
 
+/**
+ * Сторожок тишины.
+ *
+ * Сервер окликает нас каждые двадцать секунд и сам снимает с линии ПК,
+ * который не ответил минуту. Но обрыв бывает немым: сервер перезапустили,
+ * провайдер подменил туннель, маршрутизатор забыл соединение — и тогда
+ * сокет у нас остаётся «открытым» навсегда. Программа считает, что она на
+ * связи, сервер считает, что компьютера нет, и диктовки из Telegram молча
+ * уходят в облако. Так ПК однажды «отвязался» на полтора суток.
+ *
+ * Поэтому считаем тишину сами: три пропущенных оклика — рвём сокет и
+ * переподключаемся. Проверять чаще незачем, реже — значит дольше висеть
+ * отвязанным.
+ */
+const SILENCE_MS = 70 * 1000;
+const WATCH_MS = 15 * 1000;
+
 class Relay extends EventEmitter {
   constructor() {
     super();
@@ -32,6 +49,10 @@ class Relay extends EventEmitter {
     this.hint = '';
     this.attempt = 0;
     this.timer = null;
+    // Когда сервер в последний раз подал голос (любое сообщение, включая
+    // оклик). Ноль — соединения нет.
+    this.heardAt = 0;
+    this.watch = null;
   }
 
   state() {
@@ -79,10 +100,15 @@ class Relay extends EventEmitter {
         name: config.get('relay.name', '') || os.hostname(),
       }));
       this.setState('online');
+      this.heardAt = Date.now();
+      this.startWatch(socket);
       log.info('соединение с сервером установлено');
     });
 
-    socket.on('message', (raw) => this.handle(raw.toString()));
+    socket.on('message', (raw) => {
+      this.heardAt = Date.now();
+      this.handle(raw.toString());
+    });
 
     socket.on('error', (error) => {
       // Само по себе это ещё не конец: за ошибкой придёт close, и там мы
@@ -93,9 +119,34 @@ class Relay extends EventEmitter {
 
     socket.on('close', () => {
       if (this.socket !== socket) return;
+      this.stopWatch();
       this.socket = null;
-      if (this.status !== 'off') this.retry();
+      // В журнал: без этой строки обрыв выглядел как ровная тишина, и
+      // понять задним числом, был ли ПК на связи, было нечем.
+      if (this.status !== 'off') {
+        log.info('связь с сервером разорвана — переподключаюсь');
+        this.retry();
+      }
     });
+  }
+
+  /** Следить, что сервер подаёт голос; замолчал — рвать и звонить заново. */
+  startWatch(socket) {
+    this.stopWatch();
+    this.watch = setInterval(() => {
+      if (this.socket !== socket) { this.stopWatch(); return; }
+      if (Date.now() - this.heardAt < SILENCE_MS) return;
+      log.warn('сервер молчит больше минуты — соединение мёртвое, переподключаюсь');
+      this.stopWatch();
+      // terminate, а не close: закрытие по-хорошему ждёт ответа, а
+      // отвечать на мёртвом соединении некому.
+      try { socket.terminate(); } catch { /* уже закрыт */ }
+    }, WATCH_MS);
+  }
+
+  stopWatch() {
+    clearInterval(this.watch);
+    this.watch = null;
   }
 
   retry() {
@@ -107,6 +158,7 @@ class Relay extends EventEmitter {
 
   disconnect() {
     clearTimeout(this.timer);
+    this.stopWatch();
     this.attempt = 0;
     this.setState('off');
     const socket = this.socket;

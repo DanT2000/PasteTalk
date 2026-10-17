@@ -33,6 +33,34 @@ test('ответил первый — до второго не доходим', 
   assert.strictEqual(result.provider, 'aitunnel');
 });
 
+test('ответил без текста — спрашиваем следующего', async () => {
+  const calls = [];
+  const result = await chains.run(['openai', 'aitunnel'], async (id) => {
+    calls.push(id);
+    return id === 'openai' ? { text: '  ' } : { text: 'услышал' };
+  }, 'распознаванием', { retryIfEmpty: true });
+  assert.deepStrictEqual(calls, ['openai', 'aitunnel']);
+  assert.strictEqual(result.provider, 'aitunnel');
+  assert.strictEqual(result.text, 'услышал');
+});
+
+test('пусто у всех — это настоящая тишина, а не ошибка', async () => {
+  const result = await chains.run(['openai', 'aitunnel'], async () => ({ text: '' }),
+    'распознаванием', { retryIfEmpty: true });
+  assert.strictEqual(result.text, '');
+  assert.strictEqual(result.provider, 'openai');
+});
+
+test('без retryIfEmpty пустой ответ остаётся ответом', async () => {
+  const calls = [];
+  const result = await chains.run(['openai', 'aitunnel'], async (id) => {
+    calls.push(id);
+    return { text: '' };
+  });
+  assert.deepStrictEqual(calls, ['openai']);
+  assert.strictEqual(result.provider, 'openai');
+});
+
 test('молчат все — говорим об этом честно, с причинами', async () => {
   const attempt = async (id) => { throw new Error(`${id} упал`); };
   await assert.rejects(

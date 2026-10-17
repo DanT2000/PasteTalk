@@ -145,6 +145,9 @@ async function transcribe({ audio, filename, language, clientSeconds, prompt = '
       chains.sttChain(),
       (id) => stt.transcribe(id, { audio, filename, language, clientSeconds, prompt }),
       'распознаванием',
+      // Шлюз, ответивший без текста, — повод спросить следующего, а не
+      // говорить человеку «Тишина».
+      { retryIfEmpty: true },
     ),
     executedBy: 'cloud',
   });
@@ -159,12 +162,22 @@ async function transcribe({ audio, filename, language, clientSeconds, prompt = '
     executedBy: 'agent',
   });
 
+  // Пустой ответ — не ошибка, и человеку уходит «Тишина». Без строки в
+  // журнале разбираться потом не с чем: ни кто считал, ни сколько было
+  // звука. Сам текст не пишем — это речь человека.
+  const told = (result) => {
+    if (!String(result.text || '').trim()) {
+      process.stdout.write(`Распознавание вернуло пустоту: ${Math.round(result.seconds || clientSeconds || 0)} с звука, считал ${result.executedBy}\n`);
+    }
+    return result;
+  };
+
   // «Никогда не тратить деньги» должно значить именно это.
-  if (!spillAllowed()) return throughAgents(job, null, false);
-  if (!socket.online()) return cloud();
+  if (!spillAllowed()) return told(await throughAgents(job, null, false));
+  if (!socket.online()) return told(await cloud());
   // Облака может не быть вовсе — тогда ждём машины, сколько нужно.
-  if (!chains.sttChain().length) return throughAgents(job, null, false);
-  return throughAgents(job, cloud, true);
+  if (!chains.sttChain().length) return told(await throughAgents(job, null, false));
+  return told(await throughAgents(job, cloud, true));
 }
 
 async function improve({ text, mode }) {

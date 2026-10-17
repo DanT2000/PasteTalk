@@ -20,14 +20,32 @@ class AllFailed extends Error {
   }
 }
 
-async function run(providerIds, attempt, what = 'облаком') {
+/**
+ * @param retryIfEmpty  Пустой ответ считать неудачей и пробовать следующего.
+ *   Для распознавания это важно: шлюз может ответить «200 и ничего» — у
+ *   него сорвался собственный поставщик, — и человек получал «Тишина»,
+ *   хотя запасной провайдер справился бы. Если пусто у всех, возвращаем
+ *   первый такой ответ: тишина бывает и настоящей.
+ */
+async function run(providerIds, attempt, what = 'облаком', { retryIfEmpty = false } = {}) {
   const causes = [];
+  let silent = null;
   for (const id of providerIds) {
     try {
-      return { ...(await attempt(id)), provider: id };
+      const result = { ...(await attempt(id)), provider: id };
+      if (retryIfEmpty && !String(result.text || '').trim()) {
+        if (!silent) silent = result;
+        causes.push(`${id}: ответил без текста`);
+        continue;
+      }
+      return result;
     } catch (error) {
       causes.push(`${id}: ${error.message}`);
     }
+  }
+  if (silent) {
+    process.stderr.write(`Пусто с ${what}: ${causes.join('; ')}\n`);
+    return silent;
   }
   // Причины обязаны быть видны: без них владелец, забывший вписать ключ,
   // читает «связи нет» и лезет чинить сеть и прокси.
