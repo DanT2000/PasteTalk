@@ -888,6 +888,15 @@ async function drawSettings() {
       + '<span id="bot-restart-res" class="muted"></span></div>'
     + '</div>'
 
+    + '<div class="card"><h2>' + t('Тревоги') + '</h2>'
+    + '<p class="muted">' + t('Сервер сам проверяет, цела ли цепочка: на связи ли домашний компьютер и отвечают ли облачные провайдеры из списка ниже. Сломалось — придёт одно сообщение, вернулось в строй — ещё одно. Пока всё работает, сторож молчит. Свой номер узнаете командой /id в боте; пустое поле — тревоги выключены, минус — стереть номер.') + '</p>'
+    + '<label class="field"><span>' + t('Кому писать (номер в Telegram)') + '</span>'
+      + '<input type="text" data-set="alerts.chat" value="' + safe(get('alerts.chat', '')) + '" placeholder="123456789">'
+      + '<span class="why muted">' + t('Это ваш личный номер, а не номер бота') + '</span></label>'
+    + '<div class="row-actions"><button class="btn ghost tiny" id="alerts-test">' + t('Отправить проверочное') + '</button>'
+      + '<span id="alerts-test-res" class="muted"></span></div>'
+    + '</div>'
+
     + '<div class="card"><h2>' + t('Прокси') + '</h2>'
     + '<p class="muted">' + t('Нужен, если отсюда не достучаться до Telegram или до провайдера. Поддерживается HTTP(S)-прокси, SOCKS — нет; логин и пароль вписываются прямо в адрес.') + '</p>'
     + keyField(t('Адрес прокси'), 'proxy.url', get('proxy.url', ''),
@@ -1148,6 +1157,20 @@ async function drawSettings() {
       const r = await api('/admin/api/bot/restart', { method: 'POST' });
       out.className = r.running ? 'ok' : 'err';
       out.textContent = t(r.running ? 'Бот перезапущен и опрашивает' : 'Бот выключен: токен не задан');
+    } catch (error) {
+      out.className = 'err';
+      out.textContent = error.message;
+    }
+  });
+
+  $('alerts-test')?.addEventListener('click', async () => {
+    const out = $('alerts-test-res');
+    out.className = 'muted';
+    out.textContent = t('Отправляю…');
+    try {
+      await api('/admin/api/alerts/test', { method: 'POST' });
+      out.className = 'ok';
+      out.textContent = t('Отправлено — посмотрите в Telegram');
     } catch (error) {
       out.className = 'err';
       out.textContent = error.message;

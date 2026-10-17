@@ -251,6 +251,23 @@ function register(app) {
     return { ok: true, running: bot.sync() };
   });
 
+  // Проверочная тревога: сторож пишет редко и только о поломках, и
+  // владелец должен знать заранее, что сообщение к нему вообще дойдёт.
+  app.post('/admin/api/alerts/test', async (request, reply) => {
+    if (!guard(request, reply)) return undefined;
+    const chat = String(settings.get('alerts.chat', '') || '').trim();
+    if (!chat) return reply.code(400).send({ error: 'Не указан номер для тревог' });
+    const token = String(settings.get('bot.token', '') || '').trim();
+    if (!token) return reply.code(400).send({ error: 'Бот выключен: нет токена' });
+    try {
+      await require('../bot/telegram').makeTelegram(token)
+        .sendMessage(chat, '🔔 Проверка тревог: сюда придут сообщения о поломках и о возврате в строй.');
+      return { ok: true };
+    } catch (error) {
+      return reply.code(400).send({ error: error.message });
+    }
+  });
+
   // Пробы провайдера: список моделей и проверка связи. Значения из формы
   // имеют приоритет над сохранёнными — человек проверяет то, что вписал.
   app.post('/admin/api/providers/:id/models', async (request, reply) => {
