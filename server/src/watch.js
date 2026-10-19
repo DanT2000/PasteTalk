@@ -31,10 +31,15 @@ const PROVIDER_STRIKES = 2;
 // при этом уходит следующему в цепочке. Будим владельца, только если это
 // держится час: тогда это уже исчерпанный лимит, а не всплеск.
 const SOFT_STRIKES = 4;
+// Полная проба (запрос к модели и полсекунды звука) — раз в сутки на
+// провайдера: она единственная, что стоит денег, и то доли копейки.
+const DEEP_EVERY_MS = 24 * 60 * 60 * 1000;
 const SOFT = /\b429\b|rate.?limit|слишком часто/i;
 
 // id проверки → { bad, since, told, strikes }
 const state = new Map();
+// id провайдера → когда его проверяли полной пробой
+const deepAt = new Map();
 let timer = null;
 let ticks = 0;
 
@@ -103,9 +108,24 @@ async function tick({ probeNow = false, at = Date.now() } = {}) {
   const stt = new Set(chains.sttChain());
   const llm = new Set(chains.llmChain());
   for (const id of new Set([...stt, ...llm])) {
+    // Обычная проверка — список моделей: ни токенов, ни секунд звука, ни
+    // счёта. Она ловит то, ради чего сторож и заведён: отозванный ключ,
+    // упавший шлюз, обрыв сети. Полная проба (фраза модели и полсекунды
+    // звука) стоит копейки, но её хватает раз в сутки — заодно она не
+    // долбит ключ парой одновременных запросов каждые четверть часа.
+    const deep = at - (deepAt.get(id) || 0) >= DEEP_EVERY_MS;
     let result;
     try {
-      result = await probe.check(id);
+      if (deep) {
+        deepAt.set(id, at);
+        result = await probe.check(id);
+      } else {
+        const list = await probe.models(id);
+        result = {
+          stt: { ok: list.stt.length > 0, error: 'у провайдера нет речевых моделей' },
+          llm: { ok: list.llm.length > 0, error: 'у провайдера нет текстовых моделей' },
+        };
+      }
     } catch (error) {
       result = { stt: { ok: false, error: error.message }, llm: { ok: false, error: error.message } };
     }
@@ -143,9 +163,10 @@ function stop() {
   clearInterval(timer);
   timer = null;
   state.clear();
+  deepAt.clear();
 }
 
 module.exports = {
   start, stop, tick, howLong, state,
-  TICK_MS, AGENT_GRACE_MS, PROVIDER_STRIKES, SOFT_STRIKES,
+  TICK_MS, AGENT_GRACE_MS, PROVIDER_STRIKES, SOFT_STRIKES, DEEP_EVERY_MS,
 };
