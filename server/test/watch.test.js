@@ -40,8 +40,8 @@ test.after(() => {
 test('всё цело — сторож молчит', async () => {
   socket.online = () => true;
   probe.models = async () => ({ all: 2, stt: ['whisper-large-v3-turbo'], llm: ['deepseek-chat'] });
-  await watch.tick({ probeNow: true, at: 0 });
-  await watch.tick({ probeNow: true, at: 30 * MINUTE });
+  await watch.tick({ at: 0 });
+  await watch.tick({ at: 30 * MINUTE });
   assert.deepStrictEqual(sent, []);
 });
 
@@ -78,16 +78,16 @@ test('провайдер: одиночный сбой прощаем, второ
     return { all: 2, stt: ['whisper-large-v3-turbo'], llm: ['deepseek-chat'] };
   };
 
-  await watch.tick({ probeNow: true, at: 0 });
+  await watch.tick({ at: 0 });
   assert.deepStrictEqual(sent, [], 'одна пятисотка — не поломка');
 
-  await watch.tick({ probeNow: true, at: 15 * MINUTE });
+  await watch.tick({ at: 15 * MINUTE });
   assert.strictEqual(sent.length, 1);
   assert.match(sent[0], /Облако «aitunnel»/);
   assert.match(sent[0], /не принял ключ/);
 
   bad = false;
-  await watch.tick({ probeNow: true, at: 30 * MINUTE });
+  await watch.tick({ at: 30 * MINUTE });
   assert.strictEqual(sent.length, 2);
   assert.match(sent[1], /снова в строю/);
 });
@@ -96,10 +96,10 @@ test('429 — не поломка: молчим час, потом говори�
   socket.online = () => true;
   probe.models = async () => { throw new Error('AITunnel ответил 429'); };
 
-  for (const minutes of [0, 15, 30]) await watch.tick({ probeNow: true, at: minutes * MINUTE });
+  for (const minutes of [0, 15, 30]) await watch.tick({ at: minutes * MINUTE });
   assert.deepStrictEqual(sent, [], 'всплеск частоты не повод писать');
 
-  await watch.tick({ probeNow: true, at: 45 * MINUTE });
+  await watch.tick({ at: 45 * MINUTE });
   assert.strictEqual(sent.length, 1);
   assert.match(sent[0], /429/);
   assert.match(sent[0], /ограничение частоты, а не поломка/);
@@ -111,9 +111,9 @@ test('проверяем только тех, кем сервер пользуе
   settings.set('chain.llm', []);
   const asked = [];
   probe.models = async (id) => { asked.push(id); return { all: 1, stt: ['whisper'], llm: [] }; };
-  await watch.tick({ probeNow: true, at: 0 });
-  await watch.tick({ probeNow: true, at: 15 * MINUTE });
-  assert.deepStrictEqual(asked, ['custom', 'custom']);
+  await watch.tick({ at: 0 });
+  await watch.tick({ at: 15 * MINUTE });
+  assert.deepStrictEqual(asked, ['custom'], 'пока всё хорошо — не чаще раза в час');
   assert.deepStrictEqual(sent, [], 'текстовых моделей нет, но текстовая цепочка пуста — не наше дело');
 });
 
@@ -133,12 +133,15 @@ test('обычная проверка бесплатна, полная — ра�
   probe.check = async (id) => { deep.push(id); return { stt: { ok: true }, llm: { ok: true } }; };
 
   const day = 24 * 60 * MINUTE;
-  await watch.tick({ probeNow: true, at: 10 * MINUTE });
-  await watch.tick({ probeNow: true, at: 25 * MINUTE });
+  await watch.tick({ at: 10 * MINUTE });
+  await watch.tick({ at: 25 * MINUTE });
   assert.deepStrictEqual(deep, [], 'каждые четверть часа платных запросов не делаем');
-  assert.strictEqual(cheap.length, 2);
+  assert.strictEqual(cheap.length, 1, 'здоровый провайдер — не чаще раза в час');
 
-  await watch.tick({ probeNow: true, at: day + MINUTE });
+  await watch.tick({ at: 75 * MINUTE });
+  assert.strictEqual(cheap.length, 2, 'через час — снова бесплатная проверка');
+
+  await watch.tick({ at: day + MINUTE });
   assert.deepStrictEqual(deep, ['aitunnel'], 'раз в сутки — полная проба');
   assert.deepStrictEqual(sent, []);
 });
