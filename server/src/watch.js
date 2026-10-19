@@ -27,6 +27,11 @@ const AGENT_GRACE_MS = 15 * 60 * 1000;
 // Провайдер считается упавшим со второй неудачи подряд: у шлюзов бывают
 // одиночные пятисотки, и сообщать о каждой — то же, что не сообщать ни о чём.
 const PROVIDER_STRIKES = 2;
+// «Слишком частые запросы» — не поломка: шлюз просит подождать, а работа
+// при этом уходит следующему в цепочке. Будим владельца, только если это
+// держится час: тогда это уже исчерпанный лимит, а не всплеск.
+const SOFT_STRIKES = 4;
+const SOFT = /\b429\b|rate.?limit|слишком часто/i;
 
 // id проверки → { bad, since, told, strikes }
 const state = new Map();
@@ -48,6 +53,9 @@ async function tell(text) {
   if (!chat || !token) return false;
   try {
     await telegram.makeTelegram(token).sendMessage(chat, text);
+    // Отправленное — в журнал: иначе потом не узнать, о чём сторож писал
+    // и писал ли вообще.
+    process.stdout.write(`сторож: ${text}\n`);
     return true;
   } catch (error) {
     process.stderr.write(`сторож: не доставил «${text}» — ${error.message}\n`);
@@ -104,11 +112,15 @@ async function tick({ probeNow = false, at = Date.now() } = {}) {
     const broken = [];
     if (stt.has(id) && result.stt && !result.stt.ok) broken.push(`распознавание: ${result.stt.error}`);
     if (llm.has(id) && result.llm && !result.llm.ok) broken.push(`текст: ${result.llm.error}`);
+    // Отказ «подождите» и отказ «сломано» — разные вещи, и терпение к ним
+    // разное.
+    const soft = broken.length > 0 && broken.every((part) => SOFT.test(part));
     await judge(`provider:${id}`, {
       ok: broken.length === 0,
       what: `Облако «${id}»`,
-      error: broken.join('; '),
-    }, { strikes: PROVIDER_STRIKES, at });
+      error: broken.join('; ')
+        + (soft ? ' — это ограничение частоты, а не поломка, но держится уже час: похоже, кончился лимит' : ''),
+    }, { strikes: soft ? SOFT_STRIKES : PROVIDER_STRIKES, at });
   }
 }
 
@@ -133,4 +145,7 @@ function stop() {
   state.clear();
 }
 
-module.exports = { start, stop, tick, howLong, state, TICK_MS, AGENT_GRACE_MS, PROVIDER_STRIKES };
+module.exports = {
+  start, stop, tick, howLong, state,
+  TICK_MS, AGENT_GRACE_MS, PROVIDER_STRIKES, SOFT_STRIKES,
+};

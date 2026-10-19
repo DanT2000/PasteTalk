@@ -90,6 +90,19 @@ test('провайдер: одиночный сбой прощаем, второ
   assert.match(sent[1], /снова в строю/);
 });
 
+test('429 — не поломка: молчим час, потом говорим и объясняем', async () => {
+  socket.online = () => true;
+  probe.check = async () => ({ stt: { ok: true }, llm: { ok: false, error: 'ответил 429' } });
+
+  for (const minutes of [0, 15, 30]) await watch.tick({ probeNow: true, at: minutes * MINUTE });
+  assert.deepStrictEqual(sent, [], 'всплеск частоты не повод писать');
+
+  await watch.tick({ probeNow: true, at: 45 * MINUTE });
+  assert.strictEqual(sent.length, 1);
+  assert.match(sent[0], /ответил 429/);
+  assert.match(sent[0], /ограничение частоты, а не поломка/);
+});
+
 test('проверяем только тех, кем сервер пользуется', async () => {
   socket.online = () => true;
   settings.set('chain.stt', ['custom']);
