@@ -149,6 +149,26 @@ function start() {
       return;
     }
 
+    if (url.pathname === '/capsule') {
+      // Где стоит панель, и возможность сдвинуть её руками: проверять
+      // самовозврат на место иначе нечем — окно без рамки и без фокуса,
+      // из отрисовщика его не подвинуть.
+      const win = windows.windows.capsule;
+      if (!win || win.isDestroyed()) {
+        response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('панели нет');
+        return;
+      }
+      const dx = Number(url.searchParams.get('dx') || 0);
+      const dy = Number(url.searchParams.get('dy') || 0);
+      if (dx || dy) {
+        const at = win.getBounds();
+        win.setPosition(at.x + dx, at.y + dy, false);
+      }
+      response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      response.end(JSON.stringify({ bounds: win.getBounds(), wanted: windows.capsuleBoundsHere(win) }));
+      return;
+    }
+
     if (url.pathname === '/hotkey') {
       // Нажатие горячей клавиши из сценария: globalShortcut из скрипта не
       // нажать, а поведение клавиш проверять надо — особенно столкновения

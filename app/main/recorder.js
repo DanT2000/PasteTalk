@@ -84,6 +84,9 @@ class Recorder extends EventEmitter {
     // здесь отменённое пробуждение обрывало бы следующую запись сразу.
     this.preroll = null;
     this.stopAfterWake = '';
+    // Подсказка «сейчас не к месту» и когда она погаснет.
+    this.noteText = '';
+    this.noteUntil = 0;
     // Номер попытки. Растёт при каждой отмене: ответ, пришедший от
     // прежней, узнаётся по устаревшему номеру и выбрасывается.
     this.attempt = (this.attempt || 0) + 1;
@@ -402,7 +405,20 @@ class Recorder extends EventEmitter {
    * прямо во время записи и сам решает, что делать, — а не узнаёт о
    * проблеме после того, как наговорил десять минут в пустоту.
    */
+  /**
+   * Короткая подсказка на живой панели.
+   *
+   * Нужна, когда человек нажал кнопку, которая во время записи не к месту:
+   * ответить ему надо, а трогать запись нельзя. Висит несколько секунд и
+   * уступает место обычным подсказкам.
+   */
+  note(text, ms = 5000) {
+    this.noteText = text;
+    this.noteUntil = Date.now() + ms;
+  }
+
   quietHint() {
+    if (this.noteText && Date.now() < this.noteUntil) return { hint: tr(this.noteText) };
     if (Date.now() - this.silentSince > MIC_QUIET_MS) {
       return { status: tr('Микрофон отдаёт тишину'), hint: tr('Запись идёт — проверьте устройство') };
     }

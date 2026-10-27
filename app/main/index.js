@@ -318,6 +318,9 @@ function toggleRecording(mode) {
 
 recorder.on('state', (payload) => {
   windows.send('capsule', 'capsule:state', payload);
+  // Проверка дешёвая, а панель, уехавшая с места, возвращается сама —
+  // не дожидаясь следующей диктовки.
+  windows.keepCapsuleInPlace();
   // Пока движок просыпается, звук уже пишется — глушить его нельзя.
   if (payload.state !== 'listening' && payload.state !== 'waking') windows.send('audio', 'audio:stop', {});
 });
@@ -409,7 +412,14 @@ function improveRunningRecording(mode = '') {
  * пять минут назад, и возвращаться к ней должно быть можно.
  */
 async function improveClipboard() {
-  if (improveRunningRecording()) return;
+  // Клавиша улучшения буфера стоит рядом с клавишей записи, и промах не
+  // должен стоить диктовки. Но и заканчивать запись за человека неверно:
+  // он просил причесать буфер, а не её. Отвечаем подсказкой на панели.
+  if (recorder.active) {
+    log.info('улучшение буфера во время записи — запись не трогаю');
+    recorder.note('Сначала закончите запись — потом причешу буфер');
+    return;
+  }
   const fromClipboard = clipboard.readText().trim();
   const last = history.latest();
   // Голосовая запись без текста улучшению не поддаётся — не подсовываем
@@ -431,7 +441,14 @@ async function improveClipboard() {
 
 /** Прогнать через модель последнюю надиктованную запись, минуя буфер. */
 async function improveLast(mode = '') {
-  if (improveRunningRecording(mode)) return;
+  // «Причесать прошлую» — про прошлую запись, а не про идущую. В 2.16.17
+  // эта кнопка заканчивала текущую диктовку, и человек терял обе: эта
+  // обрывалась на полуслове, а прошлая так и оставалась непричёсанной.
+  if (recorder.active) {
+    log.info('«причесать прошлую» во время записи — запись не трогаю');
+    recorder.note('Сначала закончите запись — потом причешу прошлую');
+    return;
+  }
   const last = history.latest();
   recorder.cancelHide();
   windows.showCapsule();

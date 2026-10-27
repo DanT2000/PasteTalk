@@ -178,10 +178,13 @@ function pickDisplay(cursor) {
   return pinned || screen.getPrimaryDisplay();
 }
 
-function capsuleBounds() {
+function capsuleBounds(forDisplay = null) {
   const { width, height } = capsuleSize();
   const cursor = screen.getCursorScreenPoint();
-  const display = pickDisplay(cursor);
+  // Экран можно задать: при сверке места панель не должна менять монитор —
+  // иначе при настройке «там, где курсор» она ходила бы за мышью посреди
+  // записи, хотя показалась совсем на другом экране.
+  const display = forDisplay || pickDisplay(cursor);
   const area = display.workArea;
   const position = config.get('appearance.capsulePosition', 'bottom');
 
@@ -261,6 +264,39 @@ function showCapsule() {
   win.setAlwaysOnTop(true, 'screen-saver');
 }
 
+/**
+ * Панель обязана стоять ровно там, где ей положено, — и оставаться там.
+ *
+ * Положение ставится в момент показа и больше не трогается, а между
+ * показами мир меняется: подключают и отключают виртуальные экраны, Windows
+ * пересчитывает рабочую область и масштаб. Панель оставалась на старом
+ * месте — человек видел, что она «съехала влево». Теперь при каждой
+ * перемене состояния сверяем и, если разъехалось, возвращаем на место.
+ *
+ * Положение «у курсора» не сверяем вовсе: там панель и должна ходить
+ * за мышью, а не стоять.
+ */
+function keepCapsuleInPlace() {
+  const win = windows.capsule;
+  if (!win || win.isDestroyed() || !win.isVisible()) return;
+  if (config.get('appearance.capsulePosition', 'bottom') === 'cursor') return;
+
+  const now = win.getBounds();
+  const wanted = capsuleBounds(screen.getDisplayMatching(now));
+  // Пиксель туда-сюда даёт само округление масштаба — это не съезд.
+  if (Math.abs(now.x - wanted.x) <= 1 && Math.abs(now.y - wanted.y) <= 1
+    && now.width === wanted.width && now.height === wanted.height) return;
+
+  log.warn(`панель съехала: была ${now.width}×${now.height} в (${now.x}, ${now.y}),`
+    + ` возвращаю ${wanted.width}×${wanted.height} в (${wanted.x}, ${wanted.y})`);
+  place(win, wanted);
+}
+
+/** Куда панели встать, не меняя экрана. Нужно сверке места и стенду. */
+function capsuleBoundsHere(win) {
+  return capsuleBounds(screen.getDisplayMatching(win.getBounds()));
+}
+
 function hideCapsule() {
   if (windows.capsule && !windows.capsule.isDestroyed()) windows.capsule.hide();
 }
@@ -319,6 +355,8 @@ module.exports = {
   createCapsule,
   showCapsule,
   hideCapsule,
+  keepCapsuleInPlace,
+  capsuleBoundsHere,
   capsuleBounds,
   createAudio,
   send,
