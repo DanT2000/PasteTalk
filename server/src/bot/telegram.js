@@ -22,18 +22,50 @@ const API = 'https://api.telegram.org';
 
 let live = null;   // { token, offset, stop }
 
-function api(token, method, body) {
-  return fetch(`${API}/bot${token}/${method}`, proxy.through('telegram', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body || {}),
-    // Опрос висит до POLL_SECONDS, поэтому ждём с запасом.
-    signal: AbortSignal.timeout((POLL_SECONDS + 15) * 1000),
-  })).then(async (response) => {
-    const data = await response.json();
-    if (!data.ok) throw new Error(data.description || `Telegram ответил ${response.status}`);
-    return data.result;
-  });
+/**
+ * Сетевая икота, а не отказ.
+ *
+ * Дорога до Telegram идёт через прокси и моргает по нескольку раз в час:
+ * «fetch failed», оборванный сокет, пятьсот второй от шлюза. Это не повод
+ * бросать работу человека — повод повторить через секунду. Отказ самого
+ * Telegram («chat not found», «message is not modified») повторять нельзя:
+ * он будет таким же и на третий раз.
+ */
+function wobble(error) {
+  const text = String((error && error.message) || '');
+  // «Conflict: terminated by other getUpdates request» — это не сеть, а
+  // вторая копия бота. Повторять бессмысленно, и слово «terminated» здесь
+  // чужое: у сетевого обрыва undici оно стоит одно.
+  if (/^Conflict\b/i.test(text)) return false;
+  return /fetch failed|aborted|terminated|socket|network|ECONN|ETIMEDOUT|EAI_AGAIN|EPIPE|Bad Gateway|Service Unavailable|Gateway Time-?out|502|503|504/i
+    .test(text);
+}
+
+const NET_TRIES = 3;
+// Столько раз ждём одно и то же сообщение, прежде чем шагнуть дальше.
+const UPDATE_TRIES = 3;
+
+async function api(token, method, body, { tries = NET_TRIES } = {}) {
+  let last;
+  for (let attempt = 1; attempt <= tries; attempt++) {
+    try {
+      const response = await fetch(`${API}/bot${token}/${method}`, proxy.through('telegram', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body || {}),
+        // Опрос висит до POLL_SECONDS, поэтому ждём с запасом.
+        signal: AbortSignal.timeout((POLL_SECONDS + 15) * 1000),
+      }));
+      const data = await response.json();
+      if (!data.ok) throw new Error(data.description || `Telegram ответил ${response.status}`);
+      return data.result;
+    } catch (error) {
+      last = error;
+      if (attempt >= tries || !wobble(error)) throw error;
+      await new Promise((wait) => setTimeout(wait, 700 * attempt));
+    }
+  }
+  throw last;
 }
 
 function makeTelegram(token) {
@@ -61,10 +93,20 @@ function makeTelegram(token) {
 
     download: async (fileId) => {
       const file = await api(token, 'getFile', { file_id: fileId });
-      const response = await fetch(`${API}/file/bot${token}/${file.file_path}`,
-        proxy.through('telegram', { signal: AbortSignal.timeout(120000) }));
-      if (!response.ok) throw new Error(`не скачалось, ${response.status}`);
-      return Buffer.from(await response.arrayBuffer());
+      let last;
+      for (let attempt = 1; attempt <= NET_TRIES; attempt++) {
+        try {
+          const response = await fetch(`${API}/file/bot${token}/${file.file_path}`,
+            proxy.through('telegram', { signal: AbortSignal.timeout(120000) }));
+          if (!response.ok) throw new Error(`не скачалось, ${response.status}`);
+          return Buffer.from(await response.arrayBuffer());
+        } catch (error) {
+          last = error;
+          if (attempt >= NET_TRIES || !wobble(error)) throw error;
+          await new Promise((wait) => setTimeout(wait, 700 * attempt));
+        }
+      }
+      throw last;
     },
   };
 }
@@ -83,11 +125,13 @@ async function loop(state) {
   while (!state.stop) {
     let updates;
     try {
+      // Опрос не повторяем внутри: он и так в цикле, а лишние попытки
+      // только задержали бы строку о сбое в журнале.
       updates = await api(state.token, 'getUpdates', {
         offset: state.offset,
         timeout: POLL_SECONDS,
         allowed_updates: ['message', 'callback_query'],
-      });
+      }, { tries: 1 });
       if (failing) {
         say('бот: опрос работает');
         failing = false;
@@ -101,18 +145,43 @@ async function loop(state) {
       continue;
     }
 
-    for (const update of updates) {
-      state.offset = update.update_id + 1;
-      settings.set('bot.offset', state.offset);
-      if (state.stop) return;
-      try {
-        await handlers.handle(update, { tg, queue });
-      } catch (error) {
-        // Одно неудачное сообщение не должно ронять опрос для остальных.
-        process.stderr.write(`бот: сообщение не обработано — ${error.message}\n`);
-      }
-    }
+    if (await runUpdates(state, updates, tg)) return;
   }
+}
+
+/**
+ * Обработать пачку обновлений, не теряя ни одного.
+ *
+ * Смещение сдвигается ТОЛЬКО после того, как сообщение обработано. Раньше
+ * оно сдвигалось до обработки, и голосовое, попавшее в моргнувшую сеть,
+ * пропадало навсегда: Telegram считал его доставленным, а человек не
+ * получал даже ответа об ошибке. Теперь при сетевом сбое смещение остаётся
+ * на месте, и Telegram принесёт это же сообщение снова. Вечно пробовать
+ * нельзя — после трёх попыток шагаем дальше, чтобы одно битое сообщение не
+ * заперло очередь всем остальным.
+ *
+ * Возвращает true, если пора остановиться.
+ */
+async function runUpdates(state, updates, tg) {
+  for (const update of updates) {
+    if (state.stop) return true;
+    try {
+      await handlers.handle(update, { tg, queue });
+    } catch (error) {
+      const again = state.retry && state.retry.id === update.update_id ? state.retry.n + 1 : 1;
+      state.retry = { id: update.update_id, n: again };
+      if (wobble(error) && again < UPDATE_TRIES) {
+        say(`бот: сообщение не обработано (попытка ${again}) — ${error.message}; жду его снова`);
+        await new Promise((wait) => setTimeout(wait, 2000));
+        return false;
+      }
+      say(`бот: сообщение пропущено после ${again} попыток — ${error.message}`);
+    }
+    state.offset = update.update_id + 1;
+    settings.set('bot.offset', state.offset);
+    state.retry = null;
+  }
+  return false;
 }
 
 function running() {
@@ -155,4 +224,4 @@ function sync() {
   return true;
 }
 
-module.exports = { sync, stop, running, makeTelegram, POLL_SECONDS };
+module.exports = { sync, stop, running, makeTelegram, runUpdates, wobble, POLL_SECONDS, UPDATE_TRIES };
