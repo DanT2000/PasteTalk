@@ -292,7 +292,12 @@ function register(app) {
     if (!guard(request, reply)) return undefined;
     // Проверяем адрес из поля формы, если он передан: человек вписал
     // новый и жмёт «Проверить» до «Сохранить» — проверка старого врала бы.
-    return require('../proxy').check(String((request.body || {}).url || ''));
+    // which: 'spare' — проверить запасной прокси, а не основной. Без этого
+    // пустое поле запасного проверяло бы основной и говорило «работает».
+    return require('../proxy').check(
+      String((request.body || {}).url || ''),
+      (request.body || {}).which === 'spare' ? 'spare' : 'main',
+    );
   });
 
   app.post('/admin/api/agent/ping', async (request, reply) => {

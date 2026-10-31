@@ -24,6 +24,10 @@ window.PASTETALK_EN = {
   'Сохранено, проверяю…': 'Saved, checking…',
   'Сохранено · Telegram через прокси отвечает за': 'Saved · Telegram responds via the proxy in',
   'Сохранено, но:': 'Saved, but:',
+  'Сохранено ·': 'Saved ·',
+  'основной': 'main',
+  'запасной': 'spare',
+  'Прокси не задан': 'No proxy set',
   // ---------- пробы провайдеров ----------
   'стандартная': 'default',
   'вписать вручную…': 'type manually…',
@@ -234,6 +238,9 @@ window.PASTETALK_EN = {
   'Адрес прокси': 'Proxy address',
   'Например, http://логин:пароль@1.vpn.appswire.ru:8080. Минус — выключить':
     'For example, http://user:password@1.vpn.appswire.ru:8080. A minus sign turns it off',
+  'Запасной прокси': 'Spare proxy',
+  'Другой адрес на случай, если первый перестанет пускать: бот сам перейдёт на него и вернётся, когда основной оживёт. Минус — убрать':
+    'Another address in case the first one stops letting the bot through: it switches over by itself and comes back when the main one recovers. A minus sign removes it',
   'Что пускать через прокси': 'What goes through the proxy',
   'Telegram отвечает через прокси за': 'Telegram replies through the proxy in',
   'Облако: провайдеры, модели и цены': 'Cloud: providers, models, and prices',

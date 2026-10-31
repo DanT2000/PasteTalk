@@ -46,46 +46,78 @@ const NET_TRIES = 3;
 const UPDATE_TRIES = 3;
 
 /**
- * Дорога до Telegram: через прокси, а если он не пускает — напрямую.
+ * Дорога до Telegram: основной прокси, запасной, напрямую.
  *
  * Прокси — чужой канал, и он падает. 31 октября он не пускал к Telegram
- * четыре с половиной часа, и бот всё это время молчал, хотя сам Telegram
- * работал: люди отправляли голосовые в пустоту. Поэтому на сетевом сбое
- * пробуем прямую дорогу. Видит сервер Telegram сам — бот работает дальше
- * как ни в чём не бывало; не видит (ради этого прокси и заводят) — прямая
- * попытка не удастся, и мы вернёмся к той же ошибке, что и раньше.
+ * четыре с половиной часа: бот ничего не получал, люди отправляли
+ * голосовые в пустоту. Поэтому на сетевом сбое пробуем другие дороги по
+ * очереди, а ту, что сработала, держим десять минут и потом снова пробуем
+ * основную — она быстрее, и это её работа.
  *
- * Прямую дорогу держим десять минут, потом снова пробуем прокси: он
- * быстрее и это его работа.
+ * Прямую дорогу пробуем только пока не доказано обратное: там, где
+ * Telegram закрыт, это сорок секунд ожидания на каждый неудачный опрос и
+ * больше ничего. Разведка на запуске как раз это и выясняет.
  *
  * make() собирает параметры заново на каждую попытку: AbortSignal
  * одноразовый, и повтор с уже сработавшим упал бы сразу.
  */
-const DIRECT_MS = 10 * 60 * 1000;
-let directUntil = 0;
-let directSaid = 0;
+const ROUTE_MS = 10 * 60 * 1000;
+let held = null;        // { name, until } — дорога, выбранная вместо основной
+let saidRoute = '';
+// Видит ли сервер Telegram без прокси. null — ещё не выясняли.
+let seesDirect = null;
+
+function roads() {
+  const direct = { name: 'напрямую', dress: (options) => options };
+  if (!proxy.usedFor('telegram')) return [direct];
+  const list = [{ name: 'через прокси', dress: (options) => proxy.through('telegram', options) }];
+  if (proxy.spare()) {
+    list.push({ name: 'через запасной прокси', dress: (options) => proxy.throughSpare(options) });
+  }
+  if (seesDirect !== false) list.push(direct);
+  return list;
+}
+
+/** О перемене дороги говорим один раз, а не на каждый запрос. */
+function sayRoute(text, key) {
+  if (saidRoute === key) return;
+  saidRoute = key;
+  say(text);
+}
 
 async function reach(where, make) {
-  const bypass = Date.now() < directUntil;
-  try {
-    return await fetch(where, bypass ? make() : proxy.through('telegram', make()));
-  } catch (error) {
-    if (bypass || !wobble(error) || !proxy.usedFor('telegram')) throw error;
+  const list = roads();
+  // Выбранная ранее дорога идёт первой: пока она держится, основную не
+  // трогаем — иначе каждый запрос начинался бы с той, что не пускает.
+  const kept = held && Date.now() < held.until
+    ? list.findIndex((road) => road.name === held.name)
+    : -1;
+  const order = kept > 0 ? [list[kept], ...list.filter((_, index) => index !== kept)] : list;
+
+  let first;
+  for (const road of order) {
     let response;
     try {
-      response = await fetch(where, make());
-    } catch {
-      // Напрямую тоже нельзя — значит дело не в прокси. Рассказываем о
-      // первой ошибке: она про настоящий канал бота.
-      throw error;
+      response = await fetch(where, road.dress(make()));
+    } catch (error) {
+      if (!first) first = error;
+      // Не сетевой сбой — другая дорога не поможет.
+      if (!wobble(error)) throw error;
+      continue;
     }
-    directUntil = Date.now() + DIRECT_MS;
-    if (Date.now() - directSaid > DIRECT_MS) {
-      directSaid = Date.now();
-      say(`бот: прокси не пускает (${proxy.reason(error)}) — иду к Telegram напрямую`);
+    if (road === list[0]) {
+      if (held) {
+        held = null;
+        sayRoute('бот: основная дорога к Telegram снова работает', 'основная');
+      }
+    } else {
+      held = { name: road.name, until: Date.now() + ROUTE_MS };
+      sayRoute(`бот: прокси не пускает (${first ? proxy.reason(first) : 'не пускал и раньше'})`
+        + ` — иду к Telegram ${road.name}`, road.name);
     }
     return response;
   }
+  throw first;
 }
 
 async function api(token, method, body, { tries = NET_TRIES } = {}) {
@@ -241,20 +273,23 @@ function running() {
 /**
  * Разовая разведка на запуске: виден ли Telegram без прокси.
  *
- * От этого зависит, спасёт ли обход упавшего прокси. По живому опросу
- * этого не узнать — он идёт так, как настроено, — а знать надо: если
- * Telegram виден напрямую, падение прокси бот переживёт сам; если не
- * виден, прокси незаменим, и его падение — это молчащий бот. Один запрос
- * на запуск, без токена и без данных.
+ * От этого зависит, какие дороги вообще имеет смысл пробовать. По живому
+ * опросу этого не узнать — он идёт так, как настроено. 31 октября ответ
+ * оказался «не виден, ETIMEDOUT»: Telegram оттуда закрыт, и единственная
+ * замена упавшему прокси — второй прокси. Один запрос на запуск, без
+ * токена и без данных.
  */
 async function scout() {
   if (!proxy.usedFor('telegram')) return;
   try {
     const response = await fetch(`${API}/`, { signal: AbortSignal.timeout(10000) });
     await response.body?.cancel().catch(() => {});
+    seesDirect = true;
     say(`бот: Telegram виден и без прокси (${response.status}) — упадёт прокси, пойду напрямую`);
   } catch (error) {
-    say(`бот: без прокси Telegram не виден (${proxy.reason(error)}) — прокси незаменим`);
+    seesDirect = false;
+    say(`бот: без прокси Telegram не виден (${proxy.reason(error)}) — спасёт только запасной прокси`
+      + (proxy.spare() ? ', он задан' : ', а он не задан'));
   }
 }
 
@@ -271,6 +306,11 @@ function health() {
 }
 
 function stop() {
+  // Выбранный объезд и разведку забываем: со следующим запуском дороги
+  // проверяются заново — адрес прокси мог измениться ровно поэтому.
+  held = null;
+  saidRoute = '';
+  seesDirect = null;
   if (!live) return;
   live.stop = true;
   live = null;
@@ -315,5 +355,5 @@ function sync() {
 
 module.exports = {
   sync, stop, running, health, makeTelegram, runUpdates, wobble, reach,
-  POLL_SECONDS, UPDATE_TRIES, DIRECT_MS,
+  POLL_SECONDS, UPDATE_TRIES, ROUTE_MS,
 };

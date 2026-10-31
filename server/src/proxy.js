@@ -16,22 +16,50 @@ const settings = require('./settings');
  * лишнее. Поэтому у каждого назначения свой выключатель.
  */
 
-let cached = null;      // { url, agent }
+// роль ('main' | 'spare') → { url, agent }
+const pools = new Map();
 
 function url() {
   return String(settings.get('proxy.url', '') || '').trim();
 }
 
-/** Собрать переходник. Один и тот же держим, пока адрес не поменялся. */
-function agent() {
-  const current = url();
-  if (!current) {
-    cached = null;
-    return undefined;
+/**
+ * Запасной прокси. Основной — чужой канал, и он падает: 31 октября он не
+ * пускал бота к Telegram четыре с половиной часа. Прямой дороги оттуда
+ * нет (Telegram в России закрыт), поэтому единственная настоящая замена —
+ * второй прокси. Пусто — запасного нет, всё работает как раньше.
+ */
+function spare() {
+  return String(settings.get('proxy.spare', '') || '').trim();
+}
+
+/**
+ * Собрать переходник. Один и тот же держим, пока адрес не поменялся:
+ * ProxyAgent — это пул соединений, и новый на каждый запрос течёт
+ * памятью. Сменился адрес — прежний пул закрываем, иначе он так и будет
+ * держать соединения с уже ненужным прокси.
+ */
+function agentFor(role, address) {
+  const have = pools.get(role);
+  if (have && have.url === address) return have.agent;
+  if (have) {
+    pools.delete(role);
+    have.agent.close().catch(() => {});
   }
-  if (cached && cached.url === current) return cached.agent;
-  cached = { url: current, agent: new ProxyAgent(current) };
-  return cached.agent;
+  if (!address) return undefined;
+  const made = new ProxyAgent(address);
+  pools.set(role, { url: address, agent: made });
+  return made;
+}
+
+function agent() {
+  return agentFor('main', url());
+}
+
+/** То же, но через запасной прокси. */
+function throughSpare(options = {}) {
+  const dispatcher = agentFor('spare', spare());
+  return dispatcher ? { ...options, dispatcher } : options;
 }
 
 /**
@@ -83,8 +111,9 @@ function reason(error) {
  * candidate — адрес из ПОЛЯ формы: человек вписал новый адрес и жмёт
  * «Проверить» до сохранения; проверять в этот момент старый — ловушка.
  */
-async function check(candidate) {
-  const current = candidate && candidate !== '***' ? String(candidate).trim() : url();
+async function check(candidate, which = 'main') {
+  const saved = which === 'spare' ? spare() : url();
+  const current = candidate && candidate !== '***' ? String(candidate).trim() : saved;
   if (!current) return { ok: false, error: 'Прокси не задан' };
 
   let parsed;
@@ -118,11 +147,14 @@ async function check(candidate) {
   // поля собираем разовый переходник, кэш не трогаем.
   // Для адреса из поля — разовый переходник, который после проверки
   // закрываем: иначе каждая «Проверить» оставляла бы пул соединений.
-  const throwaway = current === url() ? null : new ProxyAgent(current);
+  const throwaway = current === saved ? null : new ProxyAgent(current);
   try {
     const started = Date.now();
     const response = await fetch('https://api.telegram.org/', {
-      dispatcher: throwaway || agent(),
+      // Проверяем именно ту дорогу, о которой спросили: у запасного свой
+      // переходник, и подсунуть вместо него основной — значит сказать
+      // «запасной работает», ни разу его не тронув.
+      dispatcher: throwaway || agentFor(which === 'spare' ? 'spare' : 'main', saved),
       signal: AbortSignal.timeout(20000),
     });
     await response.body?.cancel().catch(() => {});
@@ -140,4 +172,4 @@ async function check(candidate) {
   }
 }
 
-module.exports = { through, usedFor, check, url, reason };
+module.exports = { through, throughSpare, usedFor, check, url, spare, reason };

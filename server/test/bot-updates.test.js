@@ -92,6 +92,35 @@ test('прокси не пускает, а Telegram виден сам — идё
   } finally { global.fetch = real; }
 });
 
+test('основной прокси не пускает — бот идёт через запасной', async () => {
+  telegram.stop();   // забыть дорогу, выбранную прошлым тестом
+  settings.set('proxy.url', 'http://127.0.0.1:9');
+  settings.set('proxy.spare', 'http://127.0.0.2:9');
+  const real = global.fetch;
+  // У каждой дороги свой переходник — по нему и узнаём, через какую пошли.
+  const proxy = require('../src/proxy');
+  const mainWay = proxy.through('telegram', {}).dispatcher;
+  const spareWay = proxy.throughSpare({}).dispatcher;
+  assert.ok(mainWay && spareWay && mainWay !== spareWay, 'у основного и запасного переходники разные');
+  const seen = [];
+  global.fetch = async (_where, options) => {
+    const way = options && options.dispatcher;
+    const road = way === mainWay ? 'основной' : (way === spareWay ? 'запасной' : 'напрямую');
+    seen.push(road);
+    if (road === 'основной') throw new Error('fetch failed');
+    return { ok: true };
+  };
+  try {
+    const got = await telegram.reach('https://api.telegram.org/x', () => ({}));
+    assert.strictEqual(got.ok, true);
+    assert.deepStrictEqual(seen, ['основной', 'запасной'], 'прямую дорогу не трогали — есть запасной');
+  } finally {
+    global.fetch = real;
+    telegram.stop();
+    settings.set('proxy.spare', '');
+  }
+});
+
 test('сетевую икоту отличаем от отказа', () => {
   for (const text of ['fetch failed', 'The operation was aborted due to timeout', 'Bad Gateway',
     'socket hang up', 'connect ECONNRESET 1.2.3.4:443']) {

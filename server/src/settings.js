@@ -14,7 +14,7 @@ const db = require('./db');
 const SECRET_KEYS = [
   'key.openai', 'key.deepseek', 'key.aitunnel', 'key.custom', 'bot.token',
   // В адресе прокси лежит пароль — показывать его обратно нельзя.
-  'proxy.url',
+  'proxy.url', 'proxy.spare',
 ];
 
 function decode(raw) {
