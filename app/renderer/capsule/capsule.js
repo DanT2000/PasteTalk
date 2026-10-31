@@ -16,6 +16,7 @@ const hintEl = document.getElementById('hint');
 const timerEl = document.getElementById('timer');
 const micIcon = document.getElementById('mic-icon');
 const aiBtn = document.getElementById('ai');
+const lastBtn = document.getElementById('last');
 
 const BARS = 13;
 
@@ -115,7 +116,9 @@ function chime(next) {
 function apply(payload) {
   if (payload.state !== 'countdown') clearInterval(countdownTimer);
   clearTimeout(hintTimer);
-  hintEl.classList.remove('is-warning');
+  // warn — ответ на нажатие, которое сейчас не к месту. Его подсвечиваем:
+  // обычную серую строчку человек не замечает и жмёт кнопку снова.
+  hintEl.classList.toggle('is-warning', Boolean(payload.warn));
   cap.dataset.state = payload.state;
   chime(payload.state);
   previous = payload.state;
@@ -133,6 +136,11 @@ function apply(payload) {
   // есть горячая клавиша — второе нажатие и заканчивает её, — а крестик
   // по центру там только мешает целиться.
   cap.dataset.busy = ['thinking', 'ai', 'limit'].includes(payload.state) ? '1' : '0';
+  // Прошлую диктовку во время записи причесать нельзя: панель и буфер
+  // заняты живой записью. Гасим кнопку, чтобы это было видно до нажатия,
+  // а не только по ответу после него. Нажатие при этом работает — оно
+  // объясняет, почему кнопка погасла.
+  lastBtn.classList.toggle('is-off', RECORDING.has(payload.state));
   syncAiButton(state);
   if (state.wave !== 'live') flatten(state.wave === 'busy' ? 0.12 : 0.02);
 }
@@ -184,7 +192,6 @@ document.getElementById('close').addEventListener('click', () => window.capsule.
 document.getElementById('prefs').addEventListener('click', () => window.capsule.action('settings'));
 
 // Короткое нажатие — причесать прошлую диктовку, долгое — открыть всю историю.
-const lastBtn = document.getElementById('last');
 let holdTimer = null;
 lastBtn.addEventListener('mousedown', () => {
   holdTimer = setTimeout(() => { holdTimer = null; window.capsule.action('history'); }, 600);

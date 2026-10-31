@@ -417,7 +417,7 @@ async function improveClipboard() {
   // он просил причесать буфер, а не её. Отвечаем подсказкой на панели.
   if (recorder.active) {
     log.info('улучшение буфера во время записи — запись не трогаю');
-    recorder.note('Сначала закончите запись — потом причешу буфер');
+    recorder.note('Сначала закончите запись', 'Потом причешу буфер');
     return;
   }
   const fromClipboard = clipboard.readText().trim();
@@ -446,7 +446,7 @@ async function improveLast(mode = '') {
   // обрывалась на полуслове, а прошлая так и оставалась непричёсанной.
   if (recorder.active) {
     log.info('«причесать прошлую» во время записи — запись не трогаю');
-    recorder.note('Сначала закончите запись — потом причешу прошлую');
+    recorder.note('Сначала закончите запись', 'Потом причешу прошлую');
     return;
   }
   const last = history.latest();

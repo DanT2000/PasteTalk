@@ -71,10 +71,37 @@ async function openStream(deviceId) {
   return opened;
 }
 
+// Ошибки «устройства нет». После пробуждения и загрузки Windows звуковой
+// список приходит с опозданием, и первый запрос упирается в пустоту.
+const MISSING = new Set(['NotFoundError', 'OverconstrainedError']);
+const OPEN_TRIES = 3;
+
+/**
+ * Подождать микрофон, если список устройств ещё не подъехал.
+ *
+ * 31 октября в 6:36 диктовка умерла в тот же миг, когда началась: Windows
+ * только проснулась, Chromium не видел ни одного входа, и вся цепочка
+ * попыток отработала впустую за один тик — человек нажал клавишу и
+ * получил «Микрофон не найден». Устройства появляются в первую секунду,
+ * столько и ждём: рекордер всё равно спокойно ждёт первого звука минутами.
+ */
+async function openWaiting(deviceId) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const opened = await openStream(deviceId);
+      if (attempt > 1) window.recorderBridge.note(`микрофон появился не сразу — открыт с ${attempt}-й попытки`);
+      return opened;
+    } catch (error) {
+      if (!MISSING.has(error.name) || attempt >= OPEN_TRIES) throw error;
+      await new Promise((wait) => setTimeout(wait, 400 * attempt));
+    }
+  }
+}
+
 async function start(options) {
   await stop();
   try {
-    stream = await openStream(options.deviceId);
+    stream = await openWaiting(options.deviceId);
   } catch (error) {
     window.recorderBridge.failed(describe(error));
     return;
