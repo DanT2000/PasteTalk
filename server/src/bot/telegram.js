@@ -45,17 +45,61 @@ const NET_TRIES = 3;
 // Столько раз ждём одно и то же сообщение, прежде чем шагнуть дальше.
 const UPDATE_TRIES = 3;
 
+/**
+ * Дорога до Telegram: через прокси, а если он не пускает — напрямую.
+ *
+ * Прокси — чужой канал, и он падает. 31 октября он не пускал к Telegram
+ * четыре с половиной часа, и бот всё это время молчал, хотя сам Telegram
+ * работал: люди отправляли голосовые в пустоту. Поэтому на сетевом сбое
+ * пробуем прямую дорогу. Видит сервер Telegram сам — бот работает дальше
+ * как ни в чём не бывало; не видит (ради этого прокси и заводят) — прямая
+ * попытка не удастся, и мы вернёмся к той же ошибке, что и раньше.
+ *
+ * Прямую дорогу держим десять минут, потом снова пробуем прокси: он
+ * быстрее и это его работа.
+ *
+ * make() собирает параметры заново на каждую попытку: AbortSignal
+ * одноразовый, и повтор с уже сработавшим упал бы сразу.
+ */
+const DIRECT_MS = 10 * 60 * 1000;
+let directUntil = 0;
+let directSaid = 0;
+
+async function reach(where, make) {
+  const bypass = Date.now() < directUntil;
+  try {
+    return await fetch(where, bypass ? make() : proxy.through('telegram', make()));
+  } catch (error) {
+    if (bypass || !wobble(error) || !proxy.usedFor('telegram')) throw error;
+    let response;
+    try {
+      response = await fetch(where, make());
+    } catch {
+      // Напрямую тоже нельзя — значит дело не в прокси. Рассказываем о
+      // первой ошибке: она про настоящий канал бота.
+      throw error;
+    }
+    directUntil = Date.now() + DIRECT_MS;
+    if (Date.now() - directSaid > DIRECT_MS) {
+      directSaid = Date.now();
+      say(`бот: прокси не пускает (${proxy.reason(error)}) — иду к Telegram напрямую`);
+    }
+    return response;
+  }
+}
+
 async function api(token, method, body, { tries = NET_TRIES } = {}) {
+  const make = () => ({
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body || {}),
+    // Опрос висит до POLL_SECONDS, поэтому ждём с запасом.
+    signal: AbortSignal.timeout((POLL_SECONDS + 15) * 1000),
+  });
   let last;
   for (let attempt = 1; attempt <= tries; attempt++) {
     try {
-      const response = await fetch(`${API}/bot${token}/${method}`, proxy.through('telegram', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body || {}),
-        // Опрос висит до POLL_SECONDS, поэтому ждём с запасом.
-        signal: AbortSignal.timeout((POLL_SECONDS + 15) * 1000),
-      }));
+      const response = await reach(`${API}/bot${token}/${method}`, make);
       const data = await response.json();
       if (!data.ok) throw new Error(data.description || `Telegram ответил ${response.status}`);
       return data.result;
@@ -96,8 +140,8 @@ function makeTelegram(token) {
       let last;
       for (let attempt = 1; attempt <= NET_TRIES; attempt++) {
         try {
-          const response = await fetch(`${API}/file/bot${token}/${file.file_path}`,
-            proxy.through('telegram', { signal: AbortSignal.timeout(120000) }));
+          const response = await reach(`${API}/file/bot${token}/${file.file_path}`,
+            () => ({ signal: AbortSignal.timeout(120000) }));
           if (!response.ok) throw new Error(`не скачалось, ${response.status}`);
           return Buffer.from(await response.arrayBuffer());
         } catch (error) {
@@ -119,9 +163,6 @@ function say(text) {
 
 async function loop(state) {
   const tg = makeTelegram(state.token);
-  // Об успехе тоже говорим — один раз после каждой полосы неудач. Молчащий
-  // при успехе бот неотличим в журнале от давно умершего.
-  let failing = true;
   while (!state.stop) {
     let updates;
     try {
@@ -132,14 +173,23 @@ async function loop(state) {
         timeout: POLL_SECONDS,
         allowed_updates: ['message', 'callback_query'],
       }, { tries: 1 });
-      if (failing) {
-        say('бот: опрос работает');
-        failing = false;
+      // Об успехе тоже говорим — один раз после каждой полосы неудач, и со
+      // сроком: молчащий при успехе бот неотличим в журнале от давно
+      // умершего, а без срока не видно, сколько люди ждали ответа.
+      if (state.failingSince) {
+        const down = Date.now() - state.failingSince;
+        state.failingSince = 0;
+        say(down > 60000
+          ? `бот: опрос работает — не работал ${Math.round(down / 60000)} мин`
+          : 'бот: опрос работает');
       }
     } catch (error) {
       if (state.stop) return;
-      failing = true;
-      say(`бот: опрос не удался — ${error.message}`);
+      if (!state.failingSince) state.failingSince = Date.now();
+      // «fetch failed» само по себе не говорит ничего: настоящую причину
+      // (ECONNREFUSED, ETIMEDOUT, 407 от прокси) undici прячет в цепочке
+      // cause. Раскручиваем — иначе четыре часа журнала ни о чём.
+      say(`бот: опрос не удался — ${proxy.reason(error)}`);
       // Пауза, чтобы при недоступном Telegram не молотить запросами.
       await new Promise((wait) => setTimeout(wait, 5000));
       continue;
@@ -188,6 +238,38 @@ function running() {
   return Boolean(live);
 }
 
+/**
+ * Разовая разведка на запуске: виден ли Telegram без прокси.
+ *
+ * От этого зависит, спасёт ли обход упавшего прокси. По живому опросу
+ * этого не узнать — он идёт так, как настроено, — а знать надо: если
+ * Telegram виден напрямую, падение прокси бот переживёт сам; если не
+ * виден, прокси незаменим, и его падение — это молчащий бот. Один запрос
+ * на запуск, без токена и без данных.
+ */
+async function scout() {
+  if (!proxy.usedFor('telegram')) return;
+  try {
+    const response = await fetch(`${API}/`, { signal: AbortSignal.timeout(10000) });
+    await response.body?.cancel().catch(() => {});
+    say(`бот: Telegram виден и без прокси (${response.status}) — упадёт прокси, пойду напрямую`);
+  } catch (error) {
+    say(`бот: без прокси Telegram не виден (${proxy.reason(error)}) — прокси незаменим`);
+  }
+}
+
+/**
+ * Как дела у опроса — для сторожа.
+ *
+ * Пока бот не достаёт до Telegram, сообщения людей до сервера не доходят
+ * вовсе, и человек узнаёт об этом только от самих людей. Сказать во время
+ * обрыва некому — сторож пишет тем же каналом; значит, надо хотя бы
+ * помнить, с какого момента всё плохо, и рассказать, когда связь вернётся.
+ */
+function health() {
+  return { running: Boolean(live), failingSince: (live && live.failingSince) || 0 };
+}
+
 function stop() {
   if (!live) return;
   live.stop = true;
@@ -217,11 +299,21 @@ function sync() {
   // Смещение переживает перезапуск: Telegram подтверждает пачку только
   // следующим запросом, и без памяти то же голосовое распозналось бы и
   // оплатилось второй раз — после смены настроек или пересборки.
-  live = { token, route, offset: Number(settings.get('bot.offset', 0)) || 0, stop: false };
+  live = {
+    token, route, offset: Number(settings.get('bot.offset', 0)) || 0, stop: false,
+    // С этого мгновения опрос ещё не удавался ни разу: до первого успеха
+    // считаем, что связи нет.
+    failingSince: Date.now(),
+  };
   loop(live).catch((error) => {
     process.stderr.write(`бот остановился: ${error.message}\n`);
   });
+  // Разведку не ждём: опрос должен начаться сразу, а её ответ нужен не ему.
+  scout().catch(() => {});
   return true;
 }
 
-module.exports = { sync, stop, running, makeTelegram, runUpdates, wobble, POLL_SECONDS, UPDATE_TRIES };
+module.exports = {
+  sync, stop, running, health, makeTelegram, runUpdates, wobble, reach,
+  POLL_SECONDS, UPDATE_TRIES, DIRECT_MS,
+};

@@ -16,8 +16,10 @@ const realOnline = socket.online;
 const realCheck = probe.check;
 const realModels = probe.models;
 const realMake = telegram.makeTelegram;
+const realHealth = telegram.health;
 
 test.beforeEach(() => {
+  telegram.health = realHealth;
   db.close();
   db.open(':memory:');
   settings.set('bot.token', 'test-token');
@@ -34,8 +36,21 @@ test.after(() => {
   probe.check = realCheck;
   probe.models = realModels;
   telegram.makeTelegram = realMake;
+  telegram.health = realHealth;
   watch.stop();
 });
+
+/** Канал, который можно уронить: сообщения сторожа идут через того же бота. */
+function channel() {
+  const live = { up: true };
+  telegram.makeTelegram = () => ({
+    sendMessage: async (chat, text) => {
+      if (!live.up) throw new Error('fetch failed');
+      sent.push(`${chat}: ${text}`);
+    },
+  });
+  return live;
+}
 
 test('всё цело — сторож молчит', async () => {
   socket.online = () => true;
@@ -144,4 +159,56 @@ test('обычная проверка бесплатна, полная — ра�
   await watch.tick({ at: day + MINUTE });
   assert.deepStrictEqual(deep, ['aitunnel'], 'раз в сутки — полная проба');
   assert.deepStrictEqual(sent, []);
+});
+
+test('бот моргнул — молчим, молчал полчаса — скажем, когда связь вернётся', async () => {
+  socket.online = () => true;
+  probe.models = async () => ({ all: 2, stt: ['whisper'], llm: ['deepseek-chat'] });
+  const live = channel();
+  // Опрос перестал удаваться на пятой минуте, и связи с Telegram нет —
+  // значит и сторожу сказать некуда.
+  live.up = false;
+  telegram.health = () => ({ running: true, failingSince: 5 * MINUTE });
+
+  await watch.tick({ at: 10 * MINUTE });
+  assert.deepStrictEqual(sent, [], 'пять минут без опроса — моргание, а не поломка');
+
+  await watch.tick({ at: 20 * MINUTE });
+  assert.deepStrictEqual(sent, [], 'сказать некому: сторож пишет тем же каналом');
+
+  live.up = true;
+  telegram.health = () => ({ running: true, failingSince: 0 });
+  await watch.tick({ at: 65 * MINUTE });
+  assert.strictEqual(sent.length, 1);
+  assert.match(sent[0], /Опрос Telegram — снова в строю/);
+  assert.match(sent[0], /1 ч 0 мин/, 'срок считаем от настоящего начала, а не от обхода');
+  assert.match(sent[0], /Сказать сразу не вышло/);
+});
+
+test('бот выключен — сторож о нём не говорит', async () => {
+  socket.online = () => true;
+  probe.models = async () => ({ all: 2, stt: ['whisper'], llm: ['deepseek-chat'] });
+  telegram.health = () => ({ running: false, failingSince: 0 });
+  await watch.tick({ at: 0 });
+  await watch.tick({ at: 60 * MINUTE });
+  assert.deepStrictEqual(sent, []);
+});
+
+test('сообщение не доставилось — повторяем на следующем обходе', async () => {
+  socket.online = () => false;
+  probe.models = async () => ({ all: 2, stt: ['whisper'], llm: ['deepseek-chat'] });
+  const live = channel();
+  live.up = false;
+
+  await watch.tick({ at: 0 });
+  await watch.tick({ at: 20 * MINUTE });
+  assert.deepStrictEqual(sent, [], 'доставить не вышло');
+
+  live.up = true;
+  await watch.tick({ at: 25 * MINUTE });
+  assert.strictEqual(sent.length, 1, 'сказали, как только стало куда');
+  assert.match(sent[0], /Домашний компьютер — не на связи/);
+
+  await watch.tick({ at: 40 * MINUTE });
+  assert.strictEqual(sent.length, 1, 'и не повторяем, когда уже сказали');
 });

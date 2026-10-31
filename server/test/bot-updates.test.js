@@ -54,6 +54,44 @@ test('отказ самого Telegram не повторяем — он буде
   assert.strictEqual(state.offset, 11, 'шагнули сразу, без трёх кругов');
 });
 
+/**
+ * Дорога до Telegram. Эти два теста идут в таком порядке не случайно:
+ * удачный обход прокси запоминается на десять минут, и проверять «не
+ * пускает никто» после него было бы уже не то.
+ */
+test('не пускает ни прокси, ни прямая дорога — ошибка про прокси, как и была', async () => {
+  settings.set('proxy.url', 'http://127.0.0.1:9');
+  const real = global.fetch;
+  global.fetch = async (_where, options) => {
+    throw new Error(options && options.dispatcher ? 'через прокси: fetch failed' : 'напрямую: fetch failed');
+  };
+  try {
+    await assert.rejects(() => telegram.reach('https://api.telegram.org/x', () => ({})),
+      /через прокси/);
+  } finally { global.fetch = real; }
+});
+
+test('прокси не пускает, а Telegram виден сам — идём напрямую и запоминаем дорогу', async () => {
+  settings.set('proxy.url', 'http://127.0.0.1:9');
+  const real = global.fetch;
+  let routes = [];
+  global.fetch = async (_where, options) => {
+    const viaProxy = Boolean(options && options.dispatcher);
+    routes.push(viaProxy ? 'прокси' : 'напрямую');
+    if (viaProxy) throw new Error('fetch failed');
+    return { ok: true };
+  };
+  try {
+    const got = await telegram.reach('https://api.telegram.org/x', () => ({}));
+    assert.strictEqual(got.ok, true, 'запрос всё-таки прошёл');
+    assert.deepStrictEqual(routes, ['прокси', 'напрямую']);
+
+    routes = [];
+    await telegram.reach('https://api.telegram.org/x', () => ({}));
+    assert.deepStrictEqual(routes, ['напрямую'], 'пока дорога держится, прокси не трогаем');
+  } finally { global.fetch = real; }
+});
+
 test('сетевую икоту отличаем от отказа', () => {
   for (const text of ['fetch failed', 'The operation was aborted due to timeout', 'Bad Gateway',
     'socket hang up', 'connect ECONNRESET 1.2.3.4:443']) {

@@ -27,6 +27,11 @@ const PROBE_OK_MS = 60 * 60 * 1000;
 const PROBE_BAD_MS = 15 * 60 * 1000;
 // Перезагрузка компьютера или обрыв на минуту — не повод будить владельца.
 const AGENT_GRACE_MS = 15 * 60 * 1000;
+// Сколько терпеть молчащий опрос Telegram. Моргания на полминуты бывают
+// каждый день и ничего не стоят: Telegram держит непрочитанное сутки и
+// отдаёт его позже. А вот десять минут — это уже люди, которые отправили
+// голосовое и не получили даже «принял».
+const BOT_GRACE_MS = 10 * 60 * 1000;
 // Провайдер считается упавшим со второй неудачи подряд: у шлюзов бывают
 // одиночные пятисотки, и сообщать о каждой — то же, что не сообщать ни о чём.
 const PROVIDER_STRIKES = 2;
@@ -39,8 +44,9 @@ const SOFT_STRIKES = 4;
 const DEEP_EVERY_MS = 24 * 60 * 60 * 1000;
 const SOFT = /\b429\b|rate.?limit|слишком часто/i;
 
-// id проверки → { bad, since, told, strikes }
+// id проверки → { bad, since, ripe, told, strikes, downMs }
 const state = new Map();
+const fresh = () => ({ bad: false, since: 0, ripe: false, told: false, strikes: 0, downMs: 0 });
 // id провайдера → когда его проверяли полной пробой
 const deepAt = new Map();
 // id провайдера → когда его можно трогать снова
@@ -75,26 +81,41 @@ async function tell(text) {
 /**
  * Свести одну проверку к «цело/сломано» и сказать, если состояние
  * переменилось. grace — сколько терпеть поломку до сообщения; strikes —
- * сколько неудач подряд считать поломкой.
+ * сколько неудач подряд считать поломкой; since — когда поломка началась
+ * на самом деле, если это известно точнее, чем «увидели на этом обходе».
+ *
+ * Про недоставленное. Сообщения сторожа идут через того же бота, и когда
+ * рвётся связь с Telegram, рассказать об этом некому. Поэтому «сломалось»
+ * и «сломано» мы различаем: ripe — поломка состоялась, told — о ней
+ * удалось сказать. Не сказали — повторим на следующем обходе, а на
+ * возврате расскажем и о поломке, и о том, что она прошла. Иначе самый
+ * важный случай — упавший канал — остался бы единственным, о котором
+ * сторож молчит.
  */
-async function judge(id, { ok, what, error }, { grace = 0, strikes = 1, at = Date.now() } = {}) {
-  const was = state.get(id) || { bad: false, since: 0, told: false, strikes: 0 };
+async function judge(id, { ok, what, error }, { grace = 0, strikes = 1, at = Date.now(), since = 0 } = {}) {
+  const was = state.get(id) || fresh();
 
   if (ok) {
-    if (was.told) {
-      await tell(`✅ ${what} — снова в строю. Не работало ${howLong(at - was.since)}.`);
+    // Либо всё время было хорошо, либо поломка не дотянула до порога —
+    // рассказывать не о чем.
+    if (!was.ripe) {
+      state.set(id, fresh());
+      return;
     }
-    state.set(id, { bad: false, since: 0, told: false, strikes: 0 });
+    // Срок простоя замораживаем на первом же возврате: если доставить не
+    // выйдет и сейчас, в следующем сообщении он не должен подрасти.
+    const downMs = was.downMs || at - was.since;
+    const sent = await tell(`✅ ${what} — снова в строю. Не работало ${howLong(downMs)}.`
+      + (was.told ? '' : ' Сказать сразу не вышло: сообщения идут этим же каналом.'));
+    state.set(id, sent ? fresh() : { ...was, bad: false, downMs });
     return;
   }
 
-  const since = was.bad ? was.since : at;
+  const began = was.bad ? was.since : since || at;
   const count = was.strikes + 1;
-  const ripe = count >= strikes && at - since >= grace;
-  if (ripe && !was.told) {
-    await tell(`⚠️ ${what} — ${error || 'не отвечает'}.`);
-  }
-  state.set(id, { bad: true, since, told: was.told || ripe, strikes: count });
+  const ripe = was.ripe || (count >= strikes && at - began >= grace);
+  const told = was.told || (ripe ? await tell(`⚠️ ${what} — ${error || 'не отвечает'}.`) : false);
+  state.set(id, { bad: true, since: began, ripe, told, strikes: count, downMs: 0 });
 }
 
 /** Один обход. Вынесен наружу ради тестов: их не заставишь ждать пять минут. */
@@ -105,6 +126,20 @@ async function tick({ at = Date.now() } = {}) {
     what: 'Домашний компьютер',
     error: 'не на связи, всё считает облако',
   }, { grace: AGENT_GRACE_MS, at });
+
+  // Опрос Telegram. Это не провайдер и не компьютер: пока он молчит,
+  // голосовые людей не доходят до сервера вовсе — ни распознавания, ни
+  // ответа, ни следа в журнале работ. Проверять нечего, кроме памяти
+  // самого бота: сходить и посмотреть — значит сходить через тот же
+  // канал. Включённого бота не трогаем вопросом «а ты включён».
+  const bot = telegram.health();
+  if (bot.running) {
+    await judge('bot', {
+      ok: !bot.failingSince,
+      what: 'Опрос Telegram',
+      error: 'бот не достаёт до Telegram — голосовые людей не доходят',
+    }, { grace: BOT_GRACE_MS, since: bot.failingSince, at });
+  }
 
   // Проверяем только тех, кем сервер действительно пользуется.
   const stt = new Set(chains.sttChain());
@@ -174,7 +209,7 @@ function stop() {
 }
 
 module.exports = {
-  start, stop, tick, howLong, state,
-  TICK_MS, AGENT_GRACE_MS, PROVIDER_STRIKES, SOFT_STRIKES, DEEP_EVERY_MS,
+  start, stop, tick, judge, howLong, state,
+  TICK_MS, AGENT_GRACE_MS, BOT_GRACE_MS, PROVIDER_STRIKES, SOFT_STRIKES, DEEP_EVERY_MS,
   PROBE_OK_MS, PROBE_BAD_MS,
 };

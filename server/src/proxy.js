@@ -140,4 +140,4 @@ async function check(candidate) {
   }
 }
 
-module.exports = { through, usedFor, check, url };
+module.exports = { through, usedFor, check, url, reason };
