@@ -136,11 +136,6 @@ function apply(payload) {
   // есть горячая клавиша — второе нажатие и заканчивает её, — а крестик
   // по центру там только мешает целиться.
   cap.dataset.busy = ['thinking', 'ai', 'limit'].includes(payload.state) ? '1' : '0';
-  // Прошлую диктовку во время записи причесать нельзя: панель и буфер
-  // заняты живой записью. Гасим кнопку, чтобы это было видно до нажатия,
-  // а не только по ответу после него. Нажатие при этом работает — оно
-  // объясняет, почему кнопка погасла.
-  lastBtn.classList.toggle('is-off', RECORDING.has(payload.state));
   syncAiButton(state);
   if (state.wave !== 'live') flatten(state.wave === 'busy' ? 0.12 : 0.02);
 }

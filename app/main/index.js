@@ -404,6 +404,43 @@ function improveRunningRecording(mode = '') {
 }
 
 /**
+ * Нажали «причесать…» прямо во время записи.
+ *
+ * Заканчиваем запись сами и убираем её в историю: второго нажатия с
+ * человека не требуем (кнопка для этого и сделана), но и диктовку не
+ * теряем. Панель и вставка в окно достаются тому, о чём попросили.
+ */
+function takeRecordingAside(next) {
+  if (!recorder.active) return false;
+  // Микрофон глушим сразу: дальше панель принадлежит улучшению.
+  windows.send('audio', 'audio:stop', {});
+  return recorder.setAside(next);
+}
+
+/** Улучшение выключено в настройках — одинаковый ответ у обеих кнопок. */
+const AI_OFF = { status: 'Улучшение выключено', hint: 'Включите его в настройках' };
+
+/**
+ * Сказать на панели, что причесать нечем.
+ *
+ * Идёт запись — отвечаем строкой статуса прямо поверх неё и пишем
+ * дальше: ради улучшения, которое всё равно не состоится, диктовку
+ * терять незачем.
+ */
+function cantImprove(trouble) {
+  if (recorder.active) {
+    recorder.note(trouble.status, trouble.hint);
+    return;
+  }
+  recorder.cancelHide();
+  windows.showCapsule();
+  windows.send('capsule', 'capsule:state', {
+    state: 'aierror', status: tr(trouble.status), hint: tr(trouble.hint),
+  });
+  recorder.scheduleHide(2600);
+}
+
+/**
  * Улучшить то, что уже сказано.
  *
  * Сначала смотрим в буфер обмена — если человек только что вставил свой
@@ -412,61 +449,51 @@ function improveRunningRecording(mode = '') {
  * пять минут назад, и возвращаться к ней должно быть можно.
  */
 async function improveClipboard() {
-  // Клавиша улучшения буфера стоит рядом с клавишей записи, и промах не
-  // должен стоить диктовки. Но и заканчивать запись за человека неверно:
-  // он просил причесать буфер, а не её. Отвечаем подсказкой на панели.
-  if (recorder.active) {
-    log.info('улучшение буфера во время записи — запись не трогаю');
-    recorder.note('Сначала закончите запись', 'Потом причешу буфер');
-    return;
-  }
   const fromClipboard = clipboard.readText().trim();
   const last = history.latest();
   // Голосовая запись без текста улучшению не поддаётся — не подсовываем
   // вместо неё более старую диктовку, это обмануло бы человека.
   const text = fromClipboard || (last && last.text ? (last.improved || last.text) : '');
 
-  if (!text) {
-    recorder.cancelHide();
-    windows.showCapsule();
-    windows.send('capsule', 'capsule:state', { state: 'aierror', hint: tr('Улучшать пока нечего') });
-    recorder.scheduleHide(2600);
-    return;
-  }
+  // Чем помочь нельзя — выясняем ДО того, как трогать идущую запись.
+  if (!text) return cantImprove({ status: 'Улучшать пока нечего', hint: 'Скопируйте текст или надиктуйте' });
+  if (!config.get('ai.enabled', false)) return cantImprove(AI_OFF);
 
+  // Клавиша улучшения буфера стоит рядом с клавишей записи, и промах не
+  // должен стоить ни диктовки, ни лишних движений: запись заканчиваем
+  // сами и кладём в историю, а в окно приедет причёсанный буфер.
+  takeRecordingAside('Причешу буфер');
   recorder.cancelHide();
   windows.showCapsule();
-  await recorder.improve(text);
+  // Причёсанный текст дописывается к той записи, из которой он взят, —
+  // её номер снимаем до улучшения. Без номера он лёг бы к самой свежей
+  // записи, а ею вот-вот станет диктовка, убранная в историю.
+  await recorder.improve(text, config.get('text.autoPaste', true), last ? last.id : '');
 }
 
 /** Прогнать через модель последнюю надиктованную запись, минуя буфер. */
 async function improveLast(mode = '') {
-  // «Причесать прошлую» — про прошлую запись, а не про идущую. В 2.16.17
-  // эта кнопка заканчивала текущую диктовку, и человек терял обе: эта
-  // обрывалась на полуслове, а прошлая так и оставалась непричёсанной.
-  if (recorder.active) {
-    log.info('«причесать прошлую» во время записи — запись не трогаю');
-    recorder.note('Сначала закончите запись', 'Потом причешу прошлую');
-    return;
-  }
   const last = history.latest();
-  recorder.cancelHide();
-  windows.showCapsule();
-  if (!last) {
-    windows.send('capsule', 'capsule:state', { state: 'aierror', hint: tr('История пока пуста') });
-    recorder.scheduleHide(2600);
-    return;
-  }
+  if (!last) return cantImprove({ status: 'История пуста', hint: 'Сначала надиктуйте' });
   // Звук с 2.16.0 хранится у КАЖДОЙ записи — «не распозналось» это
   // отсутствие текста, а не наличие голоса. Старая проверка по voice
   // отвергала любую свежую диктовку.
-  if (!last.text) {
-    windows.send('capsule', 'capsule:state', { state: 'aierror', hint: tr('Последняя запись не распознана — нажмите «Распознать» в истории') });
-    recorder.scheduleHide(2600);
-    return;
-  }
+  if (!last.text) return cantImprove({ status: 'Прошлая не распозналась', hint: 'Распознайте её в истории' });
+  if (!config.get('ai.enabled', false)) return cantImprove(AI_OFF);
+
+  // «Причесать прошлую» во время записи. 2.16.17 обрывал диктовку, и
+  // человек терял обе записи; 2.16.19 отказывал и требовал закончить
+  // запись руками — кнопка выглядела сломанной, по ней жали трижды.
+  // Теперь запись уходит в историю, а кнопка делает своё дело с первого
+  // нажатия: для этого она и создана.
+  takeRecordingAside('Причешу прошлую');
+  recorder.cancelHide();
+  windows.showCapsule();
   recorder.improveMode = mode;
-  await recorder.improve(last.text);
+  // Номер записи обязателен: причёсанный текст принадлежит прошлой
+  // записи, а не диктовке, которая только что уехала в историю и успеет
+  // стать самой свежей.
+  await recorder.improve(last.text, config.get('text.autoPaste', true), last.id);
 }
 
 // ---------- управление ----------
