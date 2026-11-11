@@ -52,5 +52,7 @@
   "История пуста": "History is empty",
   "Сначала надиктуйте": "Dictate something first",
   "Прошлая не распозналась": "Last one wasn't recognized",
-  "Распознайте её в истории": "Transcribe it in History"
+  "Распознайте её в истории": "Transcribe it in History",
+  "Ищу микрофон": "Looking for the mic",
+  "Устройство ещё не проснулось": "The device hasn't woken up yet"
 }

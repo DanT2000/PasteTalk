@@ -43,7 +43,17 @@ html, body {
   user-select: none; cursor: default;
 }
 
-body { display: grid; place-items: center; padding: .5rem; }
+/*
+ * Колонка сетки — ровно по окну (100%), а не «по содержимому».
+ *
+ * Длинная строка под рядом кнопок («Микрофон не найден» и рядом «Голос
+ * сохранён в истории — можно распознать заново») не переносится, и её
+ * ширина раздвигала невидимую колонку сетки. Панель, центрируясь уже в
+ * этой колонке, уезжала вправо на 20–40 px — ровно это человек и видел,
+ * когда запись кончалась ошибкой: панель «сдвигается чуть-чуть вправо».
+ * С колонкой по окну ширина строки на положение панели больше не влияет.
+ */
+body { display: grid; grid-template-columns: 100%; place-items: center; padding: .5rem; }
 
 .capsule {
   position: relative;
@@ -149,7 +159,10 @@ html[data-size="compact"] #close { order: 2; }
 .capsule[data-wave="live"] .wave i { background: var(--live); opacity: 1; }
 .capsule[data-wave="busy"] .wave i { background: var(--accent); opacity: .9; }
 
-.cap-foot { display: flex; align-items: baseline; gap: .5rem; padding: 0 .125rem; min-width: 0; }
+/* overflow — страховка: подпись, которая не влезла даже после ужимания
+   подсказки, обрезается по краю панели, а не рисуется поверх стола. */
+.cap-foot { display: flex; align-items: baseline; gap: .5rem; padding: 0 .125rem;
+  min-width: 0; overflow: hidden; }
 .cap-status { font-size: .8125rem; font-weight: 600; white-space: nowrap; }
 .cap-hint { font-size: .75rem; color: var(--dim); white-space: nowrap; min-width: 0;
   overflow: hidden; text-overflow: ellipsis; }

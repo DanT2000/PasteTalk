@@ -193,7 +193,10 @@ class Recorder extends EventEmitter {
         this.pendingBytes += piece.chunk.length;
         if (piece.peak > 0.0005) this.hadSignal = true;
       }
-      this.emitState('listening', { elapsedMs: 0 });
+      // quietHint — сразу: пока открывался движок, окно записи могло уже
+      // доложить, что микрофона ещё нет. Без этого ответ ждал бы первого
+      // куска звука, а его-то и нет — панель врала бы «Говорите».
+      this.emitState('listening', { elapsedMs: 0, ...this.quietHint() });
       this.watchStream();
       // Клавишу отпустили, пока движок просыпался, — заканчиваем сразу.
       if (this.stopAfterWake) {
@@ -236,7 +239,7 @@ class Recorder extends EventEmitter {
     this.lastText = '';
     this.audioCopy = [];
     this.audioBytes = 0;
-    this.emitState('listening', { elapsedMs: 0 });
+    this.emitState('listening', { elapsedMs: 0, ...this.quietHint() });
     this.watchStream();
     log.info(`запись начата (${mode}), считать будет ${remote.where()}`);
   }
@@ -427,9 +430,15 @@ class Recorder extends EventEmitter {
     this.noteStatus = status;
     this.noteHint = hint;
     this.noteUntil = Date.now() + ms;
-    // Пока движок просыпается, панель не обновляется потоком звука —
-    // там ответ надо показать сразу, иначе он не покажется вовсе.
-    if (this.state === 'waking') this.emitState('waking', this.quietHint());
+    // Панель обновляется потоком звука — но отвечать приходится как раз
+    // тогда, когда звука нет: движок ещё просыпается, микрофон ещё
+    // ищется. Ждать потока бессмысленно, показываем сразу.
+    if (this.active) {
+      this.emitState(this.state, {
+        elapsedMs: this.startedAt ? Date.now() - this.startedAt : 0,
+        ...this.quietHint(),
+      });
+    }
   }
 
   quietHint() {
@@ -638,8 +647,14 @@ class Recorder extends EventEmitter {
       log.info(`текста нет: ${Math.round(durationS)} с звука, ${this.hadSignal
         ? (this.everSpoke ? 'речь была' : 'сигнал был, но речи движок не услышал')
         : 'микрофон отдавал ровный ноль'}`);
+      // «Тишина» — только когда её и правда было слышно. Если движок
+      // слышал речь, а текста не дал, писать человеку «Тишина» нечестно:
+      // 11 ноября он наговорил 12 секунд и получил именно это.
       this.emitState('nospeech', stashed
-        ? { hint: tr('Голос сохранён в истории — можно распознать заново') }
+        ? {
+          ...(this.everSpoke ? { status: tr('Не распозналось') } : {}),
+          hint: tr('Голос сохранён в истории — можно распознать заново'),
+        }
         : {});
       this.scheduleHide(stashed ? 3600 : 1800);
       return;
